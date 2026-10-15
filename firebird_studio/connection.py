@@ -35,9 +35,10 @@ def test_connection(profile: ConnectionProfile, password: str | None = None) -> 
             "dsn": _dsn(profile),
             "user": profile.user,
             "password": password or "",
-            "role": profile.role or None,
             "charset": profile.charset,
         }
+        if profile.role:
+            kwargs["role"] = profile.role
         with connect(**kwargs) as con:
             server_version = getattr(con, "server_version", None)
         return ConnectionResult(True, "Conexão realizada com sucesso.", server_version)

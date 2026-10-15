@@ -32,6 +32,8 @@ class MainWindow:
             QVBoxLayout,
             QWidget,
             QComboBox,
+            QTableWidget,
+            QTableWidgetItem,
         )
 
         self._window = QMainWindow()
@@ -47,10 +49,12 @@ class MainWindow:
         self.database = QLineEdit()
         self.version = QComboBox(); self.version.addItems(SUPPORTED_VERSIONS)
         self.user = QLineEdit("SYSDBA")
+        self.password = QLineEdit(); self.password.setEchoMode(QLineEdit.Password); self.password.setPlaceholderText("Senha temporária; não é salva no perfil")
         self.charset = QLineEdit("UTF8")
         self.status = QLabel("Pronto. Nenhum banco conectado.")
         self.editor = QTextEdit()
-        self.editor.setPlaceholderText("Cole um script SQL aqui para executar na próxima etapa.")
+        self.editor.setPlaceholderText("Execute uma instrução SQL. Scripts com múltiplos comandos usarão o runner isql em uma próxima etapa.")
+        self.result_table = QTableWidget(); self.result_table.setEditTriggers(QTableWidget.NoEditTriggers)
 
         left = QWidget(); left_layout = QVBoxLayout(left)
         left_layout.addWidget(QLabel("Bancos configurados")); left_layout.addWidget(self.profile_list)
@@ -60,12 +64,14 @@ class MainWindow:
 
         form = QFormLayout(); form.addRow("Nome", self.name); form.addRow("Host", self.host)
         form.addRow("Porta", self.port); form.addRow("Caminho ou alias", self.database)
-        form.addRow("Firebird", self.version); form.addRow("Usuário", self.user); form.addRow("Charset", self.charset)
+        form.addRow("Firebird", self.version); form.addRow("Usuário", self.user); form.addRow("Senha", self.password); form.addRow("Charset", self.charset)
         box = QGroupBox("Perfil selecionado"); box.setLayout(form)
         right = QWidget(); right_layout = QVBoxLayout(right); right_layout.addWidget(box)
         right_layout.addWidget(QLabel("Editor SQL")); right_layout.addWidget(self.editor)
         action_row = QHBoxLayout(); test_button = QPushButton("Testar conexão"); test_button.clicked.connect(self.test_selected)
-        action_row.addWidget(test_button); action_row.addStretch(); right_layout.addLayout(action_row); right_layout.addWidget(self.status)
+        execute_button = QPushButton("Executar SQL"); execute_button.clicked.connect(self.execute_selected)
+        action_row.addWidget(test_button); action_row.addWidget(execute_button); action_row.addStretch(); right_layout.addLayout(action_row)
+        right_layout.addWidget(self.result_table); right_layout.addWidget(self.status)
         splitter = QSplitter(); splitter.addWidget(left); splitter.addWidget(right); splitter.setSizes([260, 840])
         self._window.setCentralWidget(splitter)
         self.profile_list.currentRowChanged.connect(self.select_profile)
@@ -83,6 +89,7 @@ class MainWindow:
         p = self.profiles[index]
         for widget, value in ((self.name, p.name), (self.host, p.host), (self.database, p.database), (self.user, p.user), (self.charset, p.charset)):
             widget.setText(value)
+        self.password.clear()
         self.port.setValue(p.port); self.version.setCurrentText(p.version)
 
     def _profile_from_form(self):
@@ -99,5 +106,19 @@ class MainWindow:
     def test_selected(self):
         from .connection import test_connection
 
-        result = test_connection(self._profile_from_form())
+        from .credentials import CredentialStore
+        result = test_connection(self._profile_from_form(), self.password.text() or CredentialStore().get(self.name.text()))
         self.status.setText(result.message)
+
+    def execute_selected(self):
+        from .credentials import CredentialStore
+        from .sql import execute_sql
+
+        result = execute_sql(self._profile_from_form(), self.editor.toPlainText(), self.password.text() or CredentialStore().get(self.name.text()))
+        self.status.setText(result.message)
+        self.result_table.clear()
+        self.result_table.setColumnCount(len(result.columns)); self.result_table.setRowCount(len(result.rows))
+        self.result_table.setHorizontalHeaderLabels(result.columns)
+        for row_index, row in enumerate(result.rows):
+            for column_index, value in enumerate(row):
+                self.result_table.setItem(row_index, column_index, QTableWidgetItem("" if value is None else str(value)))
