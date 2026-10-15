@@ -2,7 +2,7 @@
 
 Projeto de uma aplicação desktop Windows, de código aberto, para administração e manutenção de bancos Firebird 2.5, 3, 4 e 5. A referência de experiência é o IBExpert, com foco inicial nas tarefas de manutenção mais frequentes.
 
-**Estado atual:** primeira base executável criada, ainda em validação técnica. A interface oferece perfis de conexão sem senhas, teste de conexão, execução de uma instrução SQL com resultado tabular, execução de arquivos SQL pelo `isql`, backup/restore pelo `gbak`, leitura inicial da estrutura do banco, análise de plano com `SET PLANONLY`/`SET EXPLAIN`, painel inicial de saúde baseado em MON$ e comparação visual entre dois perfis. A comparação mostra diferenças e prévia de migração sem aplicar alterações. A compatibilidade precisa ser comprovada com bancos de teste de cada versão.
+**Estado atual:** base executável em validação técnica. A interface oferece perfis de conexão, senha opcional no cofre do Windows, árvore de objetos, conexão por duplo clique, execução SQL, múltiplas abas, grid paginado, copiar seleção, exportação CSV/JSON, execução de arquivos SQL pelo `isql`, backup/restore pelo `gbak`, leitura de estrutura sob demanda, plano em árvore com sugestões, painel de saúde baseado em MON$ e comparação visual entre perfis. A comparação mostra diferenças e prévia de migração sem aplicar alterações. A compatibilidade precisa ser comprovada com bancos de teste de cada versão.
 
 Para preparar um ambiente de desenvolvimento:
 
@@ -44,6 +44,10 @@ O produto será independente de IDE comercial. **IBExpert é apenas referência 
 - [Escopo, etapas e critérios de aceite](docs/roteiro.md)
 - [Segurança e regras para operações sensíveis](docs/seguranca.md)
 - [Revisão comparativa e plano de melhorias](docs/melhorias.md)
+
+## Executável Windows para testes
+
+O build portátil x64 fica em `outputs/FirebirdMaintenanceStudio/FirebirdMaintenanceStudio.exe` no ambiente de desenvolvimento. Para usar o aplicativo, mantenha a pasta `_internal` ao lado do executável. Configure no perfil os caminhos do `isql.exe` e `gbak.exe` correspondentes à versão do Firebird do banco.
 
 ## Próxima validação prática
 
