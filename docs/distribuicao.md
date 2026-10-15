@@ -12,6 +12,8 @@ Existe também uma versão de arquivo único, `FirebirdMaintenanceStudioOnefile.
 
 Para corrigir incompatibilidades de DLL do Qt em algumas máquinas, foi gerado o pacote final `FirebirdMaintenanceStudio-x64-final.zip`. Ele usa um hook de inicialização que força o Windows a priorizar as DLLs internas do Qt. O executável dentro dele é `FirebirdMaintenanceStudioFinal.exe`.
 
+O pacote portátil `FirebirdMaintenanceStudio-x64-portable.zip` distribui a pasta inteira do aplicativo e é a opção preferida quando o modo arquivo único apresentar falha. Execute `FirebirdMaintenanceStudio/FirebirdMaintenanceStudio.exe` depois de extrair.
+
 O primeiro início deve ser feito em uma máquina de teste, com um banco descartável. O build foi validado iniciando a janela por mais de três segundos; não foi possível validar conexão ou backup porque nenhum banco de teste foi fornecido.
 
 ## Instalador
