@@ -307,7 +307,7 @@ class MainWindow:
             self.status.setText(f"Conectando ao cadastro '{self.profiles[index].name}'...")
             self._last_tree_activation_key = item_key
             self._last_tree_activation_time = now
-            self.open_profile()
+            self.open_profile(index)
 
     def _on_tree_pressed(self, item):
         """Fallback for packaged Windows builds that omit itemDoubleClicked."""
@@ -326,7 +326,7 @@ class MainWindow:
             if is_object_item and obj is not None:
                 self.open_object(item)
             elif 0 <= index < len(self.profiles):
-                self.open_profile()
+                self.open_profile(index)
         self._last_tree_click_key = key
         self._last_tree_click_time = now
 
@@ -350,7 +350,7 @@ class MainWindow:
             self.open_object(item, _column)
             return
         if index >= 0:
-            self.open_profile()
+            self.open_profile(index)
 
     def _profile_index_for_item(self, item=None):
         item = item or self.profile_list.currentItem()
@@ -410,7 +410,7 @@ class MainWindow:
             return
         self._execute_sql_text(selected)
 
-    def open_profile(self):
+    def open_profile(self, selected_index: int | None = None):
         """Open the selected database, like opening a connection in IBExpert."""
         self._log_event("open_profile chamado", current_item=self.profile_list.currentItem().text(0) if self.profile_list.currentItem() else "", form_name=self.name.text(), form_database=self.database.text())
         if self._open_thread is not None and self._open_thread.isRunning():
@@ -448,7 +448,7 @@ class MainWindow:
                     self.progress.emit(f"Falha ao ler objetos: {exc}")
                     self.finished.emit(result, [], str(exc))
 
-        selected = self._profile_index_for_item()
+        selected = selected_index if selected_index is not None else self._profile_index_for_item()
         self._log_event("Perfil identificado para abrir", selected=selected, profiles=len(self.profiles))
         # When activation comes from the list, use the saved object directly.
         # This avoids relying on the form repaint completing before the worker
