@@ -103,6 +103,9 @@ class MainWindow:
         self.profile_list.setMinimumHeight(120)
         self.profile_list.setColumnCount(1)
         self.profile_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.tree_filter = QLineEdit()
+        self.tree_filter.setPlaceholderText("Filtrar bancos e objetos...")
+        self.tree_filter.textChanged.connect(self._filter_tree)
         self.name = QLineEdit()
         self.host = QLineEdit("localhost")
         self.port = QSpinBox(); self.port.setRange(1, 65535); self.port.setValue(3050)
@@ -145,7 +148,7 @@ class MainWindow:
         self.result_tabs = QTabWidget(); self.result_tabs.addTab(self.result_table, "Resultado"); self.result_tabs.addTab(plan_panel, "Plano e sugestões")
 
         left = QWidget(); left_layout = QVBoxLayout(left); left.setMinimumWidth(280)
-        left_layout.addWidget(QLabel("Bancos e objetos (clique para conectar)")); left_layout.addWidget(self.profile_list, 1)
+        left_layout.addWidget(QLabel("Bancos e objetos (duplo clique para conectar)")); left_layout.addWidget(self.tree_filter); left_layout.addWidget(self.profile_list, 1)
         self.open_data_button = QPushButton("Abrir dados da tabela")
         self.open_data_button.setEnabled(False)
         self.open_data_button.clicked.connect(self.open_table_data)
@@ -756,6 +759,21 @@ class MainWindow:
             if index >= 0:
                 self.query_profile_combo.setCurrentIndex(index)
         self.query_profile_combo.blockSignals(False)
+        self._filter_tree(self.tree_filter.text())
+
+    def _filter_tree(self, text):
+        query = (text or "").strip().casefold()
+        for index in range(self.profile_list.topLevelItemCount()):
+            root = self.profile_list.topLevelItem(index)
+            visible = not query or query in root.text(0).casefold()
+            for child_index in range(root.childCount()):
+                child = root.child(child_index)
+                child_visible = not query or query in child.text(0).casefold()
+                for object_index in range(child.childCount()):
+                    object_item = child.child(object_index)
+                    object_item.setHidden(bool(query) and not (child_visible or query in object_item.text(0).casefold()))
+                child.setHidden(bool(query) and not (child_visible or any(not child.child(i).isHidden() for i in range(child.childCount()))))
+            root.setHidden(bool(query) and not (visible or any(not root.child(i).isHidden() for i in range(root.childCount()))))
 
     def new_profile(self):
         self._show_profile_details(); self.profile_list.clearSelection(); self.name.clear(); self.database.clear(); self.password.clear(); self.save_password.setChecked(False); self.status.setText("Novo perfil.")
