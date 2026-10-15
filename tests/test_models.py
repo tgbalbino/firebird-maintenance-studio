@@ -4,6 +4,7 @@ import unittest
 
 from firebird_studio.models import ConnectionProfile, ProfileStore
 from firebird_studio.sql import execute_sql
+from firebird_studio.script_runner import build_isql_args, run_script
 
 
 class ProfileTests(unittest.TestCase):
@@ -23,3 +24,14 @@ class ProfileTests(unittest.TestCase):
         result = execute_sql(ConnectionProfile("Local", database="sample.fdb"), " ")
         self.assertFalse(result.ok)
         self.assertIn("SQL", result.message)
+
+    def test_isql_arguments_never_include_password(self):
+        profile = ConnectionProfile("Local", database="sample.fdb", user="SYSDBA")
+        args = build_isql_args(profile, Path("script.sql"), Path("isql.exe"))
+        self.assertNotIn("password", " ".join(args).lower())
+
+    def test_missing_script_is_reported(self):
+        profile = ConnectionProfile("Local", database="sample.fdb")
+        result = run_script(profile, Path("missing.sql"), "secret", Path("isql.exe"))
+        self.assertFalse(result.ok)
+        self.assertIn("não encontrado", result.error)

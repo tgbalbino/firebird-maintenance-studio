@@ -19,6 +19,7 @@ class ConnectionProfile:
     role: str = ""
     charset: str = "UTF8"
     trusted: bool = False
+    isql_path: str = ""
 
     def validate(self) -> list[str]:
         errors: list[str] = []
@@ -45,7 +46,7 @@ class ProfileStore:
         if not self.path.exists():
             return []
         raw = json.loads(self.path.read_text(encoding="utf-8"))
-        return [ConnectionProfile(**item) for item in raw]
+        return [ConnectionProfile(**{**item, "isql_path": item.get("isql_path", "")}) for item in raw]
 
     def save(self, profiles: list[ConnectionProfile]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
