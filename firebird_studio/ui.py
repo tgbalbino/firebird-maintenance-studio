@@ -140,7 +140,9 @@ class MainWindow:
         self.result_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.result_table.customContextMenuRequested.connect(self._table_context_menu)
         self.plan_output = QTextEdit(); self.plan_output.setReadOnly(True); self.plan_output.setPlaceholderText("O plano de acesso e as sugestões aparecerão aqui.")
-        self.result_tabs = QTabWidget(); self.result_tabs.addTab(self.result_table, "Resultado"); self.result_tabs.addTab(self.plan_output, "Plano e sugestões")
+        self.plan_tree = QTreeWidget(); self.plan_tree.setHeaderLabels(["Árvore do plano"])
+        plan_panel = QWidget(); plan_layout = QVBoxLayout(plan_panel); plan_layout.addWidget(self.plan_tree); plan_layout.addWidget(self.plan_output, 1)
+        self.result_tabs = QTabWidget(); self.result_tabs.addTab(self.result_table, "Resultado"); self.result_tabs.addTab(plan_panel, "Plano e sugestões")
 
         left = QWidget(); left_layout = QVBoxLayout(left); left.setMinimumWidth(280)
         left_layout.addWidget(QLabel("Bancos e objetos (clique para conectar)")); left_layout.addWidget(self.profile_list, 1)
@@ -1006,6 +1008,16 @@ class MainWindow:
             self._show_message("Falha ao obter plano", result.error)
             return
         lines = ["ÁRVORE DO PLANO", ""]
+        self.plan_tree.clear()
+        from PySide6.QtWidgets import QTreeWidgetItem
+        def fill_tree(node, parent=None):
+            target = parent
+            if node.label != "Plano de acesso":
+                target = QTreeWidgetItem(parent, [node.label]) if parent is not None else QTreeWidgetItem(self.plan_tree, [node.label])
+            for child in node.children:
+                fill_tree(child, target)
+        fill_tree(result.tree)
+        self.plan_tree.expandAll()
         def visit(node, depth=0):
             if node.label != "Plano de acesso": lines.append("  " * depth + "• " + node.label)
             for child in node.children: visit(child, depth + (0 if node.label == "Plano de acesso" else 1))
