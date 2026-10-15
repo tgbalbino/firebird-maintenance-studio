@@ -413,10 +413,19 @@ class MainWindow:
     def open_profile(self, selected_index: int | None = None):
         """Open the selected database, like opening a connection in IBExpert."""
         self._log_event("open_profile chamado", current_item=self.profile_list.currentItem().text(0) if self.profile_list.currentItem() else "", form_name=self.name.text(), form_database=self.database.text())
-        if self._open_thread is not None and self._open_thread.isRunning():
-            self._log_event("Conexão ignorada: já existe worker ativo", profile=self._opening_profile_name or "")
-            self.status.setText("Já existe uma conexão em andamento.")
-            return
+        self._log_event("Verificando worker de conexão")
+        if self._open_thread is not None:
+            try:
+                if self._open_thread.isRunning():
+                    self._log_event("Conexão ignorada: já existe worker ativo", profile=self._opening_profile_name or "")
+                    self.status.setText("Já existe uma conexão em andamento.")
+                    return
+            except RuntimeError:
+                # The C++ QThread may already have been deleted after a
+                # previous attempt while the Python reference remained.
+                self._log_event("Referência de worker anterior descartada")
+                self._open_thread = None
+                self._open_worker = None
 
         class OpenWorker(QObject):
             finished = Signal(object, object, str)
