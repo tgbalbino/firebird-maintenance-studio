@@ -615,6 +615,21 @@ class MainWindow:
         self.selected_object = obj
         self._set_table_data_enabled(obj.kind.upper() == "TABLE")
         if obj.kind.upper() == "TABLE":
+            if not obj.columns:
+                from .catalog import load_table_metadata
+                try:
+                    profile = self._profile_from_form()
+                    self.status.setText(f"Lendo estrutura da tabela {obj.name}...")
+                    from PySide6.QtWidgets import QApplication
+                    QApplication.processEvents()
+                    obj = load_table_metadata(profile, self._password_for(profile), obj.name)
+                    self.selected_object = obj
+                    self._log_event("Metadados de tabela carregados", table=obj.name, columns=len(obj.columns))
+                except Exception as exc:
+                    self._log_event("Falha ao ler metadados de tabela", table=obj.name, error=str(exc))
+                    self.status.setText(f"Falha ao ler estrutura: {exc}")
+                    self._show_message("Falha ao ler estrutura da tabela", str(exc), warning=True)
+                    return
             self.table_page = 0
             self.data_page_label.setText("Dados: tabela selecionada; clique em Dados da tabela")
             self.result_table.clear()
