@@ -39,6 +39,9 @@ def run_script(
         return ScriptResult(False, -1, "", " ".join(errors), "isql")
     if not script.exists() or not script.is_file():
         return ScriptResult(False, -1, "", f"Arquivo SQL não encontrado: {script}", "isql")
+    isql_path = Path(str(isql_path).strip().strip('"')).expanduser()
+    if isql_path.is_dir():
+        isql_path = isql_path / "isql.exe"
     if not isql_path.exists() or not isql_path.is_file():
         return ScriptResult(False, -1, "", f"Executável isql não encontrado: {isql_path}", "isql")
     args = build_isql_args(profile, script, isql_path)
@@ -54,10 +57,13 @@ def run_script(
             errors="replace",
             timeout=timeout_seconds,
             check=False,
+            cwd=str(isql_path.parent),
         )
     except subprocess.TimeoutExpired:
         return ScriptResult(False, -1, "", f"Script excedeu o limite de {timeout_seconds} segundos.", "isql")
     except OSError as exc:
+        if getattr(exc, "winerror", None) == 5 or getattr(exc, "errno", None) == 13:
+            return ScriptResult(False, -1, "", f"Acesso negado ao isql.exe: {isql_path}. Verifique as permissões do arquivo e se o Windows não o bloqueou.", "isql")
         return ScriptResult(False, -1, "", f"Não foi possível iniciar o isql: {exc}", "isql")
     output = completed.stdout or ""
     error = completed.stderr or ""

@@ -74,16 +74,31 @@ def explain_query(profile: ConnectionProfile, sql: str, password: str | None, is
         return PlanResult(False, "", None, [], " ".join(errors))
     if not sql.strip():
         return PlanResult(False, "", None, [], "Informe uma consulta SQL.")
-    if not isql_path.exists():
+    isql_path = Path(str(isql_path).strip().strip('"')).expanduser()
+    if isql_path.is_dir():
+        isql_path = isql_path / "isql.exe"
+    if not isql_path.exists() or not isql_path.is_file():
         return PlanResult(False, "", None, [], f"Executável isql não encontrado: {isql_path}")
     args = [str(isql_path), "-user", profile.user, "-ch", profile.charset, "-m2", _dsn(profile)]
     if profile.role:
         args.extend(["-role", profile.role])
     try:
-        completed = subprocess.run(args, input=(password or "") + os.linesep + build_plan_script(sql, profile.version), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout_seconds, check=False)
+        completed = subprocess.run(
+            args,
+            input=(password or "") + os.linesep + build_plan_script(sql, profile.version),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout_seconds,
+            check=False,
+            cwd=str(isql_path.parent),
+        )
     except subprocess.TimeoutExpired:
         return PlanResult(False, "", None, [], "A análise do plano excedeu o limite de tempo.")
     except OSError as exc:
+        if getattr(exc, "winerror", None) == 5 or getattr(exc, "errno", None) == 13:
+            return PlanResult(False, "", None, [], f"Acesso negado ao isql.exe: {isql_path}. Verifique as permissões do arquivo e se o Windows não o bloqueou.")
         return PlanResult(False, "", None, [], f"Não foi possível iniciar o isql: {exc}")
     raw = (completed.stdout or "") + ("\n" + completed.stderr if completed.stderr else "")
     if completed.returncode != 0:
