@@ -10,6 +10,7 @@ Data da revisão: 15/10/2026.
 - Explorador em árvore no estilo IBExpert: vários bancos ficam abertos no mesmo painel, cada um com seus grupos de objetos.
 - DDL e modelos de DML para tabelas.
 - Editor SQL com várias abas, execução de consulta, scripts e análise de plano.
+- Cada janela SQL pode apontar para um banco diferente; o resultado e o plano ficam em abas separadas, com sugestões preservadas.
 - Controle explícito de transação: alterações ficam desfeitas por padrão; a confirmação exige marcar a opção e confirmar o diálogo.
 - Backup/restore com `gbak`, leitura de saúde e comparação inicial de estruturas.
 - Executável portátil Windows x64 em uma pasta fixa para testes.

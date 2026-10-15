@@ -83,6 +83,9 @@ class MainWindow:
         self.object_tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.sql_tabs = QTabWidget(); self.sql_tabs.setMinimumHeight(320); self.sql_tabs.setTabsClosable(True); self.sql_tabs.tabCloseRequested.connect(self.close_sql_tab)
         self.sql_tabs.currentChanged.connect(self._sync_editor)
+        self.query_profile_combo = QComboBox()
+        self.query_profile_combo.setMinimumWidth(240)
+        self.query_profile_combo.currentTextChanged.connect(self._set_current_query_profile)
         self.query_history = []
         self.history_combo = QComboBox()
         self.history_combo.setMinimumWidth(260)
@@ -91,6 +94,8 @@ class MainWindow:
         self.editor = None
         self._new_sql_tab()
         self.result_table = QTableWidget(); self.result_table.setMinimumHeight(180); self.result_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.plan_output = QTextEdit(); self.plan_output.setReadOnly(True); self.plan_output.setPlaceholderText("O plano de acesso e as sugestões aparecerão aqui.")
+        self.result_tabs = QTabWidget(); self.result_tabs.addTab(self.result_table, "Resultado"); self.result_tabs.addTab(self.plan_output, "Plano e sugestões")
 
         left = QWidget(); left_layout = QVBoxLayout(left); left.setMinimumWidth(280)
         left_layout.addWidget(QLabel("Bancos e objetos (duplo clique para abrir)")); left_layout.addWidget(self.profile_list, 1)
@@ -120,6 +125,8 @@ class MainWindow:
         right_layout = QVBoxLayout(right); right_layout.addWidget(self.profile_toggle); right_layout.addWidget(box)
         history_row = QHBoxLayout(); history_row.addWidget(QLabel("Histórico SQL:")); history_row.addWidget(self.history_combo, 1)
         right_layout.addLayout(history_row)
+        connection_row = QHBoxLayout(); connection_row.addWidget(QLabel("Conexão desta janela:")); connection_row.addWidget(self.query_profile_combo, 1)
+        right_layout.addLayout(connection_row)
         right_layout.addWidget(QLabel("Janelas SQL")); right_layout.addWidget(self.sql_tabs, 1)
         action_row = QHBoxLayout(); test_button = QPushButton("Testar conexão"); test_button.clicked.connect(self.test_selected)
         new_sql_button = QPushButton("Nova janela SQL"); new_sql_button.clicked.connect(self._new_sql_tab)
@@ -148,7 +155,7 @@ class MainWindow:
         self.next_data_button.setEnabled(False)
         self.next_data_button.clicked.connect(lambda: self._load_table_page(self.table_page + 1))
         pagination_row.addWidget(self.previous_data_button); pagination_row.addWidget(self.data_page_label, 1); pagination_row.addWidget(self.next_data_button)
-        right_layout.addWidget(self.result_table); right_layout.addLayout(pagination_row); right_layout.addWidget(self.status)
+        right_layout.addWidget(self.result_tabs); right_layout.addLayout(pagination_row); right_layout.addWidget(self.status)
         splitter = QSplitter(Qt.Horizontal); splitter.addWidget(left); splitter.addWidget(right)
         self.main_splitter = splitter
         splitter.setChildrenCollapsible(False)
@@ -207,11 +214,27 @@ class MainWindow:
 
     def _sync_editor(self, index: int):
         self.editor = self.sql_tabs.widget(index) if index >= 0 else None
+        if self.editor is not None:
+            self.query_profile_combo.blockSignals(True)
+            profile_name = self.editor.property("query_profile") or ""
+            combo_index = self.query_profile_combo.findText(profile_name)
+            self.query_profile_combo.setCurrentIndex(combo_index if combo_index >= 0 else -1)
+            self.query_profile_combo.blockSignals(False)
+
+    def _set_current_query_profile(self, profile_name: str):
+        if self.editor is not None and profile_name:
+            self.editor.setProperty("query_profile", profile_name)
+
+    def _query_profile(self):
+        name = self.editor.property("query_profile") if self.editor is not None else ""
+        return next((profile for profile in self.profiles if profile.name == name), self._profile_from_form())
 
     def _new_sql_tab(self):
         from PySide6.QtWidgets import QTextEdit
         editor = QTextEdit()
         editor.setPlaceholderText("Execute uma instrução SQL...")
+        selected_name = self.query_profile_combo.currentText() if hasattr(self, "query_profile_combo") else ""
+        editor.setProperty("query_profile", selected_name or (self.profiles[0].name if self.profiles else ""))
         index = self.sql_tabs.addTab(editor, f"SQL {self.sql_tabs.count() + 1}")
         self.sql_tabs.setCurrentIndex(index)
         self.editor = editor
@@ -530,6 +553,15 @@ class MainWindow:
             item.setExpanded(bool(objects))
         self.target_profile.clear()
         self.target_profile.addItems([p.name for p in self.profiles])
+        current_query_name = self.editor.property("query_profile") if self.editor is not None else ""
+        self.query_profile_combo.blockSignals(True)
+        self.query_profile_combo.clear()
+        self.query_profile_combo.addItems([p.name for p in self.profiles])
+        if current_query_name:
+            index = self.query_profile_combo.findText(current_query_name)
+            if index >= 0:
+                self.query_profile_combo.setCurrentIndex(index)
+        self.query_profile_combo.blockSignals(False)
 
     def new_profile(self):
         self._show_profile_details(); self.profile_list.clearSelection(); self.name.clear(); self.database.clear(); self.password.clear(); self.save_password.setChecked(False); self.status.setText("Novo perfil.")
@@ -654,11 +686,12 @@ class MainWindow:
             if answer != QMessageBox.Yes:
                 self.status.setText("Execução cancelada; nenhuma alteração foi aplicada.")
                 return
-        profile = self._profile_from_form()
+        profile = self._query_profile()
         result = execute_sql(profile, sql_text, self._password_for(profile), commit=commit)
         self._add_query_history(sql_text)
         suffix = " Alterações confirmadas." if changes_data and commit and result.ok else (" Alterações desfeitas (modo seguro)." if changes_data and result.ok else "")
         self.status.setText(result.message + suffix)
+        self.result_tabs.setCurrentWidget(self.result_table)
         self.result_table.clear()
         self.result_table.setColumnCount(len(result.columns)); self.result_table.setRowCount(len(result.rows))
         self.result_table.setHorizontalHeaderLabels(result.columns)
@@ -760,7 +793,7 @@ class MainWindow:
     def inspect_plan(self):
         from .plan import explain_query
 
-        profile = self._profile_from_form()
+        profile = self._query_profile()
         if not profile.isql_path:
             self.status.setText("Configure o caminho do isql no perfil antes de analisar o plano.")
             self._show_message("Ver plano", "Configure o caminho do isql.exe no perfil antes de analisar o plano.", warning=True)
@@ -777,7 +810,8 @@ class MainWindow:
         visit(result.tree)
         lines.extend(["", "SUGESTÕES", ""])
         lines.extend(f"- {item}" for item in result.suggestions)
-        self.editor.setPlainText("\n".join(lines) + "\n\nSAÍDA ISQL\n" + result.raw)
+        self.plan_output.setPlainText("\n".join(lines) + "\n\nSAÍDA ISQL\n" + result.raw)
+        self.result_tabs.setCurrentWidget(self.plan_output)
         self.status.setText("Plano analisado sem executar a consulta.")
 
     def inspect_health(self):
