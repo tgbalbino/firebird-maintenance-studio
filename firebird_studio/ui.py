@@ -15,6 +15,39 @@ def create_application():
     return app
 
 
+try:
+    from PySide6.QtCore import QObject, Signal, Slot
+
+    class OpenConnectionWorker(QObject):
+        finished = Signal(object, object, str)
+        progress = Signal(str)
+
+        def __init__(self, profile, password):
+            super().__init__()
+            self.profile = profile
+            self.password = password
+
+        @Slot()
+        def run(self):
+            from .catalog import load_schema
+            from .connection import test_connection
+
+            result = test_connection(self.profile, self.password)
+            if not result.ok:
+                self.progress.emit(f"Falha ao conectar: {result.message}")
+                self.finished.emit(result, [], "")
+                return
+            self.progress.emit("Conexão realizada. Lendo objetos do banco...")
+            try:
+                objects = load_schema(self.profile, self.password, detailed=False)
+                self.finished.emit(result, objects, "")
+            except Exception as exc:
+                self.progress.emit(f"Falha ao ler objetos: {exc}")
+                self.finished.emit(result, [], str(exc))
+except ImportError:  # pragma: no cover - allows headless model tests
+    OpenConnectionWorker = None
+
+
 class MainWindow:
     """Initial shell; keeps Qt imports out of headless validation."""
 
@@ -419,36 +452,6 @@ class MainWindow:
         # References are cleared only by the finished/timeout handlers.
         self._log_event("Preparando worker de conexão")
 
-        class OpenWorker(QObject):
-            finished = Signal(object, object, str)
-            progress = Signal(str)
-
-            def __init__(self, profile, password):
-                super().__init__()
-                self.profile = profile
-                self.password = password
-
-            @Slot()
-            def run(self):
-                from .catalog import load_schema
-                from .connection import test_connection
-
-                result = test_connection(self.profile, self.password)
-                if not result.ok:
-                    self.progress.emit(f"Falha ao conectar: {result.message}")
-                    self.finished.emit(result, [], "")
-                    return
-                self.progress.emit("Conexão realizada. Lendo objetos do banco...")
-                try:
-                    # The first catalog pass is intentionally lightweight so
-                    # opening a large database never waits on every column or
-                    # source BLOB. Full DDL remains available through Ler estrutura.
-                    objects = load_schema(self.profile, self.password, detailed=False)
-                    self.finished.emit(result, objects, "")
-                except Exception as exc:
-                    self.progress.emit(f"Falha ao ler objetos: {exc}")
-                    self.finished.emit(result, [], str(exc))
-
         self._log_event("Worker de conexão preparado")
 
         # Click handlers pass the already resolved index. Avoid querying the
@@ -482,7 +485,9 @@ class MainWindow:
         self._log_event("Conexão iniciada", profile=profile.name, host=profile.host, database=profile.database, version=profile.version, password_present=bool(password))
         self.status.setText("Conectando e carregando objetos do banco...")
         self._open_thread = QThread()
-        self._open_worker = OpenWorker(profile, password)
+        if OpenConnectionWorker is None:
+            raise RuntimeError("PySide6 não está disponível para iniciar a conexão")
+        self._open_worker = OpenConnectionWorker(profile, password)
         self._open_worker.moveToThread(self._open_thread)
         self._open_thread.started.connect(self._open_worker.run)
         self._open_worker.progress.connect(self.status.setText)
