@@ -49,6 +49,7 @@ class MainWindow:
         self.port = QSpinBox(); self.port.setRange(1, 65535); self.port.setValue(3050)
         self.database = QLineEdit()
         self.version = QComboBox(); self.version.addItems(SUPPORTED_VERSIONS)
+        self.target_profile = QComboBox()
         self.user = QLineEdit("SYSDBA")
         self.password = QLineEdit(); self.password.setEchoMode(QLineEdit.Password); self.password.setPlaceholderText("Senha temporária; não é salva no perfil")
         self.charset = QLineEdit("UTF8")
@@ -67,7 +68,7 @@ class MainWindow:
 
         form = QFormLayout(); form.addRow("Nome", self.name); form.addRow("Host", self.host)
         form.addRow("Porta", self.port); form.addRow("Caminho ou alias", self.database)
-        form.addRow("Firebird", self.version); form.addRow("Usuário", self.user); form.addRow("Senha", self.password); form.addRow("Charset", self.charset); form.addRow("Caminho isql", self.isql_path); form.addRow("Caminho gbak", self.gbak_path)
+        form.addRow("Firebird", self.version); form.addRow("Usuário", self.user); form.addRow("Senha", self.password); form.addRow("Charset", self.charset); form.addRow("Caminho isql", self.isql_path); form.addRow("Caminho gbak", self.gbak_path); form.addRow("Comparar com", self.target_profile)
         box = QGroupBox("Perfil selecionado"); box.setLayout(form)
         right = QWidget(); right_layout = QVBoxLayout(right); right_layout.addWidget(box)
         right_layout.addWidget(QLabel("Editor SQL")); right_layout.addWidget(self.editor)
@@ -79,7 +80,8 @@ class MainWindow:
         schema_button = QPushButton("Ler estrutura"); schema_button.clicked.connect(self.inspect_schema)
         plan_button = QPushButton("Ver plano"); plan_button.clicked.connect(self.inspect_plan)
         health_button = QPushButton("Saúde"); health_button.clicked.connect(self.inspect_health)
-        action_row.addWidget(test_button); action_row.addWidget(execute_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addWidget(health_button); action_row.addStretch(); right_layout.addLayout(action_row)
+        compare_button = QPushButton("Comparar"); compare_button.clicked.connect(self.compare_selected)
+        action_row.addWidget(test_button); action_row.addWidget(execute_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addWidget(health_button); action_row.addWidget(compare_button); action_row.addStretch(); right_layout.addLayout(action_row)
         right_layout.addWidget(self.result_table); right_layout.addWidget(self.status)
         splitter = QSplitter(); splitter.addWidget(left); splitter.addWidget(right); splitter.setSizes([260, 840])
         self._window.setCentralWidget(splitter)
@@ -89,6 +91,8 @@ class MainWindow:
     def refresh_profiles(self):
         self.profile_list.clear()
         self.profile_list.addItems([f"{p.name} · FB {p.version}" for p in self.profiles])
+        self.target_profile.clear()
+        self.target_profile.addItems([p.name for p in self.profiles])
 
     def new_profile(self):
         self.profile_list.clearSelection(); self.name.clear(); self.database.clear(); self.status.setText("Novo perfil.")
@@ -223,3 +227,31 @@ class MainWindow:
             lines.extend([f"[{finding.severity.upper()}] {finding.title}", f"Evidência: {finding.evidence}", f"Ação sugerida: {finding.recommendation}", ""])
         self.editor.setPlainText("\n".join(lines))
         self.status.setText(f"Saúde analisada: {len(report.findings)} recomendação(ões).")
+
+    def compare_selected(self):
+        from .catalog import load_schema
+        from .credentials import CredentialStore
+        from .schema import compare_schema, generate_migration
+
+        target_name = self.target_profile.currentText()
+        source = self._profile_from_form()
+        target = next((profile for profile in self.profiles if profile.name == target_name), None)
+        if target is None or target.name == source.name:
+            self.status.setText("Cadastre e selecione um perfil de destino diferente da origem.")
+            return
+        try:
+            password = self.password.text() or CredentialStore().get(self.name.text())
+            target_password = CredentialStore().get(target.name) or password
+            source_objects = load_schema(source, password)
+            target_objects = load_schema(target, target_password)
+            changes = compare_schema(source_objects, target_objects)
+        except Exception as exc:
+            self.status.setText(f"Falha ao comparar estruturas: {exc}")
+            return
+        lines = [f"ORIGEM: {source.name}", f"DESTINO: {target.name}", "", f"Diferenças: {len(changes)}", ""]
+        for change in changes:
+            marker = "REVISAR" if change.destructive else change.action
+            lines.append(f"[{marker}] {change.object.kind} {change.object.name}")
+        lines.extend(["", "PRÉVIA DE MIGRAÇÃO", "", generate_migration(changes)])
+        self.editor.setPlainText("\n".join(lines))
+        self.status.setText(f"Comparação concluída: {len(changes)} diferença(s). Nenhuma alteração foi aplicada.")
