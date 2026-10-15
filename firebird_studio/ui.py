@@ -125,7 +125,10 @@ class MainWindow:
         plan_button = QPushButton("Ver plano"); plan_button.clicked.connect(self.inspect_plan)
         health_button = QPushButton("Saúde"); health_button.clicked.connect(self.inspect_health)
         compare_button = QPushButton("Comparar"); compare_button.clicked.connect(self.compare_selected)
-        action_row.addWidget(test_button); action_row.addWidget(new_sql_button); action_row.addWidget(execute_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addWidget(health_button); action_row.addWidget(compare_button); action_row.addStretch(); right_layout.addLayout(action_row)
+        self.open_data_action = QPushButton("Dados da tabela")
+        self.open_data_action.setEnabled(False)
+        self.open_data_action.clicked.connect(self.open_table_data)
+        action_row.addWidget(test_button); action_row.addWidget(new_sql_button); action_row.addWidget(execute_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addWidget(health_button); action_row.addWidget(compare_button); action_row.addWidget(self.open_data_action); action_row.addStretch(); right_layout.addLayout(action_row)
         right_layout.addWidget(self.result_table); right_layout.addWidget(self.status)
         splitter = QSplitter(Qt.Horizontal); splitter.addWidget(left); splitter.addWidget(right)
         self.main_splitter = splitter
@@ -170,6 +173,11 @@ class MainWindow:
     def _show_profile_details(self):
         self.profile_box.setVisible(True)
         self.profile_toggle.setText("Ocultar dados do cadastro")
+
+    def _set_table_data_enabled(self, enabled: bool):
+        self.open_data_button.setEnabled(enabled)
+        if hasattr(self, "open_data_action"):
+            self.open_data_action.setEnabled(enabled)
 
     def _resize_sidebar(self, delta: int):
         sizes = self.main_splitter.sizes()
@@ -313,7 +321,7 @@ class MainWindow:
         from PySide6.QtWidgets import QTreeWidgetItem
 
         self.selected_object = None
-        self.open_data_button.setEnabled(False)
+        self._set_table_data_enabled(False)
         self.object_tree.clear()
         groups = {}
         for obj in objects:
@@ -344,10 +352,10 @@ class MainWindow:
         obj = item.data(0, 32)
         if obj is None:
             self.selected_object = None
-            self.open_data_button.setEnabled(False)
+            self._set_table_data_enabled(False)
             return
         self.selected_object = obj
-        self.open_data_button.setEnabled(obj.kind.upper() == "TABLE")
+        self._set_table_data_enabled(obj.kind.upper() == "TABLE")
         if obj.kind.upper() == "TABLE":
             self.result_table.clear()
             self.result_table.setColumnCount(5)
