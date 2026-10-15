@@ -5,6 +5,7 @@ import unittest
 from firebird_studio.models import ConnectionProfile, ProfileStore
 from firebird_studio.sql import execute_sql
 from firebird_studio.script_runner import build_isql_args, run_script
+from firebird_studio.backup import build_gbak_args, run_gbak
 
 
 class ProfileTests(unittest.TestCase):
@@ -35,3 +36,18 @@ class ProfileTests(unittest.TestCase):
         result = run_script(profile, Path("missing.sql"), "secret", Path("isql.exe"))
         self.assertFalse(result.ok)
         self.assertIn("não encontrado", result.error)
+
+    def test_gbak_arguments_do_not_include_password(self):
+        profile = ConnectionProfile("Local", database="sample.fdb")
+        args = build_gbak_args(profile, "backup", Path("sample.fdb"), Path("sample.fbk"), Path("gbak.exe"))
+        self.assertNotIn("secret", " ".join(args))
+
+    def test_restore_refuses_existing_destination(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            backup = root / "sample.fbk"; backup.write_text("x")
+            target = root / "sample.fdb"; target.write_text("x")
+            profile = ConnectionProfile("Local", database="sample.fdb")
+            result = run_gbak(profile, "restore", backup, target, "secret", root / "gbak.exe")
+            self.assertFalse(result.ok)
+            self.assertIn("já existe", result.error)

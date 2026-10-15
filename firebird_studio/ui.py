@@ -53,6 +53,7 @@ class MainWindow:
         self.password = QLineEdit(); self.password.setEchoMode(QLineEdit.Password); self.password.setPlaceholderText("Senha temporária; não é salva no perfil")
         self.charset = QLineEdit("UTF8")
         self.isql_path = QLineEdit(); self.isql_path.setPlaceholderText("C:\\Firebird\\Firebird_5_0\\isql.exe")
+        self.gbak_path = QLineEdit(); self.gbak_path.setPlaceholderText("C:\\Firebird\\Firebird_5_0\\gbak.exe")
         self.status = QLabel("Pronto. Nenhum banco conectado.")
         self.editor = QTextEdit()
         self.editor.setPlaceholderText("Execute uma instrução SQL. Scripts com múltiplos comandos usarão o runner isql em uma próxima etapa.")
@@ -66,14 +67,16 @@ class MainWindow:
 
         form = QFormLayout(); form.addRow("Nome", self.name); form.addRow("Host", self.host)
         form.addRow("Porta", self.port); form.addRow("Caminho ou alias", self.database)
-        form.addRow("Firebird", self.version); form.addRow("Usuário", self.user); form.addRow("Senha", self.password); form.addRow("Charset", self.charset); form.addRow("Caminho isql", self.isql_path)
+        form.addRow("Firebird", self.version); form.addRow("Usuário", self.user); form.addRow("Senha", self.password); form.addRow("Charset", self.charset); form.addRow("Caminho isql", self.isql_path); form.addRow("Caminho gbak", self.gbak_path)
         box = QGroupBox("Perfil selecionado"); box.setLayout(form)
         right = QWidget(); right_layout = QVBoxLayout(right); right_layout.addWidget(box)
         right_layout.addWidget(QLabel("Editor SQL")); right_layout.addWidget(self.editor)
         action_row = QHBoxLayout(); test_button = QPushButton("Testar conexão"); test_button.clicked.connect(self.test_selected)
         execute_button = QPushButton("Executar SQL"); execute_button.clicked.connect(self.execute_selected)
         script_button = QPushButton("Executar arquivo SQL"); script_button.clicked.connect(self.execute_script_file)
-        action_row.addWidget(test_button); action_row.addWidget(execute_button); action_row.addWidget(script_button); action_row.addStretch(); right_layout.addLayout(action_row)
+        backup_button = QPushButton("Backup"); backup_button.clicked.connect(self.execute_backup)
+        restore_button = QPushButton("Restore"); restore_button.clicked.connect(self.execute_restore)
+        action_row.addWidget(test_button); action_row.addWidget(execute_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addStretch(); right_layout.addLayout(action_row)
         right_layout.addWidget(self.result_table); right_layout.addWidget(self.status)
         splitter = QSplitter(); splitter.addWidget(left); splitter.addWidget(right); splitter.setSizes([260, 840])
         self._window.setCentralWidget(splitter)
@@ -90,13 +93,13 @@ class MainWindow:
     def select_profile(self, index: int):
         if index < 0 or index >= len(self.profiles): return
         p = self.profiles[index]
-        for widget, value in ((self.name, p.name), (self.host, p.host), (self.database, p.database), (self.user, p.user), (self.charset, p.charset), (self.isql_path, p.isql_path)):
+        for widget, value in ((self.name, p.name), (self.host, p.host), (self.database, p.database), (self.user, p.user), (self.charset, p.charset), (self.isql_path, p.isql_path), (self.gbak_path, p.gbak_path)):
             widget.setText(value)
         self.password.clear()
         self.port.setValue(p.port); self.version.setCurrentText(p.version)
 
     def _profile_from_form(self):
-        return ConnectionProfile(self.name.text(), self.host.text(), self.port.value(), self.database.text(), self.version.currentText(), self.user.text(), charset=self.charset.text(), isql_path=self.isql_path.text())
+        return ConnectionProfile(self.name.text(), self.host.text(), self.port.value(), self.database.text(), self.version.currentText(), self.user.text(), charset=self.charset.text(), isql_path=self.isql_path.text(), gbak_path=self.gbak_path.text())
 
     def save_profile(self):
         profile = self._profile_from_form(); errors = profile.validate()
@@ -141,3 +144,29 @@ class MainWindow:
         result = run_script(profile, Path(filename), self.password.text() or CredentialStore().get(self.name.text()), Path(profile.isql_path))
         self.editor.setPlainText(result.output + ("\n" + result.error if result.error else ""))
         self.status.setText(("Script concluído. " if result.ok else "Script falhou. ") + result.error)
+
+    def execute_backup(self):
+        from .backup import run_gbak
+        from .credentials import CredentialStore
+
+        source = Path(self.database.text())
+        filename, _ = QFileDialog.getSaveFileName(self._window, "Salvar backup Firebird", "", "Backup Firebird (*.fbk);;Todos (*.*)")
+        if not filename:
+            return
+        result = run_gbak(self._profile_from_form(), "backup", source, Path(filename), self.password.text() or CredentialStore().get(self.name.text()), Path(self.gbak_path.text()))
+        self.editor.setPlainText(result.output + ("\n" + result.error if result.error else ""))
+        self.status.setText("Backup concluído." if result.ok else f"Backup falhou: {result.error}")
+
+    def execute_restore(self):
+        from .backup import run_gbak
+        from .credentials import CredentialStore
+
+        source, _ = QFileDialog.getOpenFileName(self._window, "Selecionar backup Firebird", "", "Backup Firebird (*.fbk *.gbk);;Todos (*.*)")
+        if not source:
+            return
+        target, _ = QFileDialog.getSaveFileName(self._window, "Criar banco restaurado", "", "Banco Firebird (*.fdb *.gdb);;Todos (*.*)")
+        if not target:
+            return
+        result = run_gbak(self._profile_from_form(), "restore", Path(source), Path(target), self.password.text() or CredentialStore().get(self.name.text()), Path(self.gbak_path.text()))
+        self.editor.setPlainText(result.output + ("\n" + result.error if result.error else ""))
+        self.status.setText("Restore concluído." if result.ok else f"Restore falhou: {result.error}")
