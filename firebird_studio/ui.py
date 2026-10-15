@@ -470,6 +470,7 @@ class MainWindow:
         profile = self._profile_from_form()
         if not profile.isql_path:
             self.status.setText("Configure o caminho do isql no perfil antes de executar um arquivo.")
+            self._show_message("Executar script", "Configure o caminho do isql.exe no perfil antes de executar um arquivo.", warning=True)
             return
         result = run_script(profile, Path(filename), self._password_for(profile), Path(profile.isql_path))
         self.editor.setPlainText(result.output + ("\n" + result.error if result.error else ""))
@@ -477,6 +478,9 @@ class MainWindow:
 
     def execute_backup(self):
         from .backup import run_gbak
+        from PySide6.QtWidgets import QFileDialog
+
+        self.status.setText("Selecionando arquivo para salvar o backup...")
         source = Path(self.database.text())
         filename, _ = QFileDialog.getSaveFileName(self._window, "Salvar backup Firebird", "", "Backup Firebird (*.fbk);;Todos (*.*)")
         if not filename:
@@ -493,6 +497,9 @@ class MainWindow:
 
     def execute_restore(self):
         from .backup import run_gbak
+        from PySide6.QtWidgets import QFileDialog
+
+        self.status.setText("Selecionando o backup para restauração...")
         source, _ = QFileDialog.getOpenFileName(self._window, "Selecionar backup Firebird", "", "Backup Firebird (*.fbk *.gbk);;Todos (*.*)")
         if not source:
             return
@@ -516,6 +523,7 @@ class MainWindow:
             objects = load_schema(profile, self._password_for(profile))
         except Exception as exc:
             self.status.setText(f"Falha ao ler estrutura: {exc}")
+            self._show_message("Falha ao ler estrutura", str(exc))
             return
         self.editor.setPlainText("\n".join(f"{obj.kind}: {obj.name}\n{obj.ddl}" for obj in objects))
         self._populate_object_tree(objects)
@@ -527,10 +535,12 @@ class MainWindow:
         profile = self._profile_from_form()
         if not profile.isql_path:
             self.status.setText("Configure o caminho do isql no perfil antes de analisar o plano.")
+            self._show_message("Ver plano", "Configure o caminho do isql.exe no perfil antes de analisar o plano.", warning=True)
             return
         result = explain_query(profile, self.editor.toPlainText(), self._password_for(profile), Path(profile.isql_path))
         if not result.ok:
             self.status.setText(result.error)
+            self._show_message("Falha ao obter plano", result.error)
             return
         lines = ["ÁRVORE DO PLANO", ""]
         def visit(node, depth=0):
@@ -550,6 +560,7 @@ class MainWindow:
             report = inspect_health(profile, self._password_for(profile))
         except Exception as exc:
             self.status.setText(f"Falha ao ler saúde: {exc}")
+            self._show_message("Falha ao analisar saúde", str(exc))
             return
         lines = ["INDICADORES", ""] + [f"{key}: {value}" for key, value in report.metrics.items()]
         lines.extend(["", "RECOMENDAÇÕES", ""])
@@ -576,6 +587,7 @@ class MainWindow:
             changes = compare_schema(source_objects, target_objects)
         except Exception as exc:
             self.status.setText(f"Falha ao comparar estruturas: {exc}")
+            self._show_message("Falha ao comparar estruturas", str(exc))
             return
         lines = [f"ORIGEM: {source.name}", f"DESTINO: {target.name}", "", f"Diferenças: {len(changes)}", ""]
         for change in changes:
