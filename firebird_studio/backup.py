@@ -65,7 +65,7 @@ def run_gbak(
     try:
         completed = subprocess.run(
             args,
-            input=(password or "") + os.linesep,
+            input="",
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -73,6 +73,7 @@ def run_gbak(
             timeout=timeout_seconds,
             check=False,
             cwd=str(gbak_path.parent),
+            env={**os.environ, "ISC_USER": profile.user, "ISC_PASSWORD": password or ""},
         )
     except subprocess.TimeoutExpired:
         return BackupResult(False, -1, "", f"{operation} excedeu o limite de {timeout_seconds} segundos.", operation)

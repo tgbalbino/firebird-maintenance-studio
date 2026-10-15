@@ -45,12 +45,12 @@ def run_script(
     if not isql_path.exists() or not isql_path.is_file():
         return ScriptResult(False, -1, "", f"Executável isql não encontrado: {isql_path}", "isql")
     args = build_isql_args(profile, script, isql_path)
-    # Password is sent on stdin so it is not present in the process command line.
-    input_text = (password or "") + os.linesep
+    # Credentials are supplied through Firebird's environment variables so
+    # they do not appear in the process command line or SQL text.
     try:
         completed = subprocess.run(
             args,
-            input=input_text,
+            input="",
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -58,6 +58,7 @@ def run_script(
             timeout=timeout_seconds,
             check=False,
             cwd=str(isql_path.parent),
+            env={**os.environ, "ISC_USER": profile.user, "ISC_PASSWORD": password or ""},
         )
     except subprocess.TimeoutExpired:
         return ScriptResult(False, -1, "", f"Script excedeu o limite de {timeout_seconds} segundos.", "isql")

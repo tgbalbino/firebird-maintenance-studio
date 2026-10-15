@@ -85,7 +85,7 @@ def explain_query(profile: ConnectionProfile, sql: str, password: str | None, is
     try:
         completed = subprocess.run(
             args,
-            input=(password or "") + os.linesep + build_plan_script(sql, profile.version),
+            input=build_plan_script(sql, profile.version),
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -93,6 +93,7 @@ def explain_query(profile: ConnectionProfile, sql: str, password: str | None, is
             timeout=timeout_seconds,
             check=False,
             cwd=str(isql_path.parent),
+            env={**os.environ, "ISC_USER": profile.user, "ISC_PASSWORD": password or ""},
         )
     except subprocess.TimeoutExpired:
         return PlanResult(False, "", None, [], "A análise do plano excedeu o limite de tempo.")
