@@ -14,6 +14,8 @@ Para corrigir incompatibilidades de DLL do Qt em algumas máquinas, foi gerado o
 
 O pacote portátil `FirebirdMaintenanceStudio-x64-portable.zip` distribui a pasta inteira do aplicativo e é a opção preferida quando o modo arquivo único apresentar falha. Execute `FirebirdMaintenanceStudio/FirebirdMaintenanceStudio.exe` depois de extrair.
 
+O pacote portátil mais recente, `FirebirdMaintenanceStudio-x64-portable-diagnostics.zip`, inclui mensagens de diagnóstico para serviço, caminho do banco, senha e utilitários `isql`/`gbak`.
+
 O primeiro início deve ser feito em uma máquina de teste, com um banco descartável. O build foi validado iniciando a janela por mais de três segundos; não foi possível validar conexão ou backup porque nenhum banco de teste foi fornecido.
 
 ## Instalador
