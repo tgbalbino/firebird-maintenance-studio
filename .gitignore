@@ -17,5 +17,6 @@ dist/
 *.spec
 !FirebirdMaintenanceStudio.spec
 !pysidedeploy.spec
+firebird_studio/pysidedeploy.spec
 profiles*.json
 settings.local.*
