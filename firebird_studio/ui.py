@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import time
+import traceback
 
 from .models import ConnectionProfile, ProfileStore, SUPPORTED_VERSIONS
 
@@ -49,6 +50,8 @@ class MainWindow:
         self._window.setWindowTitle("Firebird Maintenance Studio")
         self._window.resize(1100, 700)
         self.store = store
+        self._event_log_path = Path.home() / ".firebird-maintenance-studio" / "events.txt"
+        self._log_event("Aplicação iniciada", executable=str(Path(__file__).resolve()))
         self._settings = QSettings("TGBalbino", "FirebirdMaintenanceStudio")
         self._open_thread = None
         self._open_worker = None
@@ -128,8 +131,10 @@ class MainWindow:
         self.profile_toggle.clicked.connect(self._toggle_profile_details)
         self.profile_test_button = QPushButton("Testar conexão")
         self.profile_test_button.clicked.connect(self.test_selected)
+        self.profile_log_button = QPushButton("Abrir log")
+        self.profile_log_button.clicked.connect(self.open_event_log)
         right = QWidget(); right.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
-        profile_actions = QHBoxLayout(); profile_actions.addWidget(self.profile_toggle); profile_actions.addWidget(self.profile_test_button)
+        profile_actions = QHBoxLayout(); profile_actions.addWidget(self.profile_toggle); profile_actions.addWidget(self.profile_test_button); profile_actions.addWidget(self.profile_log_button)
         right_layout = QVBoxLayout(right); right_layout.addLayout(profile_actions); right_layout.addWidget(box)
         history_row = QHBoxLayout(); history_row.addWidget(QLabel("Histórico SQL:")); history_row.addWidget(self.history_combo, 1)
         right_layout.addLayout(history_row)
@@ -194,6 +199,27 @@ class MainWindow:
         self._settings.setValue("main_splitter_state", splitter.saveState())
         self._settings.sync()
 
+    def _log_event(self, message: str, **details):
+        """Append a diagnostic event without passwords or SQL contents."""
+        try:
+            self._event_log_path.parent.mkdir(parents=True, exist_ok=True)
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            suffix = " ".join(f"{key}={value!s}" for key, value in details.items() if value not in (None, ""))
+            with self._event_log_path.open("a", encoding="utf-8") as handle:
+                handle.write(f"[{timestamp}] {message}{(' ' + suffix) if suffix else ''}\n")
+        except OSError:
+            pass
+
+    def open_event_log(self):
+        try:
+            self._event_log_path.parent.mkdir(parents=True, exist_ok=True)
+            self._event_log_path.touch(exist_ok=True)
+            import os
+            os.startfile(str(self._event_log_path))
+        except OSError as exc:
+            self._log_event("Falha ao abrir log", error=str(exc))
+            self.status.setText(f"Log: {self._event_log_path}")
+
     def _toggle_profile_details(self):
         visible = not self.profile_box.isVisible()
         self.profile_box.setVisible(visible)
@@ -257,6 +283,7 @@ class MainWindow:
         index = self._profile_index_for_item(item)
         obj = item.data(0, 32)
         item_key = (index, getattr(obj, "kind", ""), getattr(obj, "name", "")) if obj is not None else (index, "PROFILE")
+        self._log_event("Item da árvore clicado", index=index, item=item.text(0), object=getattr(obj, "name", ""))
         is_double_click = item_key == self._last_tree_click_key and now - self._last_tree_click_time <= 0.75
         self._last_tree_click_key = item_key
         self._last_tree_click_time = now
@@ -401,6 +428,7 @@ class MainWindow:
 
                 result = test_connection(self.profile, self.password)
                 if not result.ok:
+                    self.progress.emit(f"Falha ao conectar: {result.message}")
                     self.finished.emit(result, [], "")
                     return
                 self.progress.emit("Conexão realizada. Lendo objetos do banco...")
@@ -411,6 +439,7 @@ class MainWindow:
                     objects = load_schema(self.profile, self.password, detailed=False)
                     self.finished.emit(result, objects, "")
                 except Exception as exc:
+                    self.progress.emit(f"Falha ao ler objetos: {exc}")
                     self.finished.emit(result, [], str(exc))
 
         from .credentials import CredentialStore
@@ -430,6 +459,7 @@ class MainWindow:
             return
         password = self._password_for(profile)
         self._opening_profile_name = profile.name
+        self._log_event("Conexão iniciada", profile=profile.name, host=profile.host, database=profile.database, version=profile.version, password_present=bool(password))
         self.status.setText("Conectando e carregando objetos do banco...")
         self._open_thread = QThread()
         self._open_worker = OpenWorker(profile, password)
@@ -458,6 +488,7 @@ class MainWindow:
         box.exec()
 
     def _on_profile_opened(self, result, objects, schema_error):
+        self._log_event("Conexão finalizada", ok=result.ok, objects=len(objects), error=schema_error or result.message)
         if not result.ok:
             self.status.setText(result.message)
             self._show_message("Falha ao abrir banco", result.message)
@@ -472,6 +503,7 @@ class MainWindow:
             self._show_message("Banco conectado com aviso", message, warning=True)
         else:
             self.status.setText(f"{result.message} Objetos carregados: {len(objects)}.")
+        self._log_event("Catálogo carregado", objects=len(objects), schema_error=schema_error or "")
         self._hide_profile_details()
 
     def _populate_object_tree(self, objects, profile_index=-1):
