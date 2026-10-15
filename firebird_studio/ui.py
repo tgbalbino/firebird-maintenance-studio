@@ -129,6 +129,7 @@ class MainWindow:
     def execute_script_file(self):
         from .credentials import CredentialStore
         from .script_runner import run_script
+        from PySide6.QtWidgets import QFileDialog
 
         filename, _ = QFileDialog.getOpenFileName(self._window, "Selecionar script SQL", "", "SQL (*.sql);;Todos (*.*)")
         if not filename:
