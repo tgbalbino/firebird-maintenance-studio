@@ -60,6 +60,8 @@ def load_schema(profile: ConnectionProfile, password: str | None = None, detaile
                 ("TRIGGER", "SELECT TRIM(RDB$TRIGGER_NAME) FROM RDB$TRIGGERS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 ORDER BY RDB$TRIGGER_NAME"),
                 ("DOMAIN", "SELECT TRIM(RDB$FIELD_NAME) FROM RDB$FIELDS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 AND RDB$FIELD_NAME NOT LIKE 'RDB$%' ORDER BY RDB$FIELD_NAME"),
                 ("INDEX", "SELECT TRIM(RDB$INDEX_NAME) FROM RDB$INDICES WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 ORDER BY RDB$INDEX_NAME"),
+                ("SEQUENCE", "SELECT TRIM(RDB$GENERATOR_NAME) FROM RDB$GENERATORS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 ORDER BY RDB$GENERATOR_NAME"),
+                ("EXCEPTION", "SELECT TRIM(RDB$EXCEPTION_NAME) FROM RDB$EXCEPTIONS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 ORDER BY RDB$EXCEPTION_NAME"),
             )
             for kind, query in queries:
                 try:
@@ -73,6 +75,12 @@ def load_schema(profile: ConnectionProfile, password: str | None = None, detaile
                     for (name,) in _rows(connection, "SELECT TRIM(RDB$FUNCTION_NAME) FROM RDB$FUNCTIONS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 ORDER BY RDB$FUNCTION_NAME"):
                         clean_name = _text(name)
                         objects.append(SchemaObject("FUNCTION", clean_name, f"-- FUNCTION {clean_name}\n-- Use 'Ler estrutura' para carregar o DDL completo."))
+                except Exception:
+                    pass
+                try:
+                    for (name,) in _rows(connection, "SELECT TRIM(RDB$PACKAGE_NAME) FROM RDB$PACKAGES ORDER BY RDB$PACKAGE_NAME"):
+                        clean_name = _text(name)
+                        objects.append(SchemaObject("PACKAGE", clean_name, f"-- PACKAGE {clean_name}\n-- Use 'Ler estrutura' para carregar o DDL completo."))
                 except Exception:
                     pass
             return objects
@@ -164,6 +172,30 @@ def load_schema(profile: ConnectionProfile, password: str | None = None, detaile
             else:
                 ddl = f'-- INDEX {index_name}\n-- Expression index; review its expression in the source database.'
             objects.append(SchemaObject("INDEX", index_name, ddl))
+
+        try:
+            for (name,) in _rows(connection, "SELECT TRIM(RDB$GENERATOR_NAME) FROM RDB$GENERATORS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 ORDER BY RDB$GENERATOR_NAME"):
+                clean_name = _text(name)
+                objects.append(SchemaObject("SEQUENCE", clean_name, f'CREATE SEQUENCE "{clean_name}";'))
+        except Exception:
+            pass
+        try:
+            for name, message in _rows(connection, "SELECT TRIM(RDB$EXCEPTION_NAME), RDB$MESSAGE FROM RDB$EXCEPTIONS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 ORDER BY RDB$EXCEPTION_NAME"):
+                clean_name = _text(name)
+                escaped_message = _text(message).replace("'", "''")
+                objects.append(SchemaObject("EXCEPTION", clean_name, f'CREATE EXCEPTION "{clean_name}" \'{escaped_message}\';'))
+        except Exception:
+            pass
+        if profile.version != "2.5":
+            try:
+                for name, header, body in _rows(connection, "SELECT TRIM(RDB$PACKAGE_NAME), RDB$PACKAGE_HEADER_SOURCE, RDB$PACKAGE_BODY_SOURCE FROM RDB$PACKAGES ORDER BY RDB$PACKAGE_NAME"):
+                    clean_name = _text(name)
+                    ddl = _text(header) or f'-- PACKAGE "{clean_name}"'
+                    if _text(body):
+                        ddl += "\n\n" + _text(body)
+                    objects.append(SchemaObject("PACKAGE", clean_name, ddl))
+            except Exception:
+                pass
     return objects
 
 
@@ -204,9 +236,33 @@ def load_object_definition(profile: ConnectionProfile, password: str | None, kin
         "PROCEDURE": ("SELECT RDB$PROCEDURE_SOURCE FROM RDB$PROCEDURES WHERE RDB$PROCEDURE_NAME = ?", f'CREATE PROCEDURE "{name}"\n'),
         "FUNCTION": ("SELECT RDB$FUNCTION_SOURCE FROM RDB$FUNCTIONS WHERE RDB$FUNCTION_NAME = ?", f'CREATE FUNCTION "{name}"\n'),
         "TRIGGER": ("SELECT RDB$TRIGGER_SOURCE FROM RDB$TRIGGERS WHERE RDB$TRIGGER_NAME = ?", f'CREATE TRIGGER "{name}"\n'),
+        "SEQUENCE": ("SELECT RDB$GENERATOR_NAME FROM RDB$GENERATORS WHERE RDB$GENERATOR_NAME = ?", f'CREATE SEQUENCE "{name}";\n'),
+        "GENERATOR": ("SELECT RDB$GENERATOR_NAME FROM RDB$GENERATORS WHERE RDB$GENERATOR_NAME = ?", f'CREATE SEQUENCE "{name}";\n'),
     }
     if clean_kind == "TABLE":
         return load_table_metadata(profile, password, name)
+    if clean_kind == "EXCEPTION":
+        with open_database(profile, password) as connection:
+            try:
+                rows = _rows(connection, f"SELECT RDB$MESSAGE FROM RDB$EXCEPTIONS WHERE RDB$EXCEPTION_NAME = '{safe_name}'")
+            except Exception:
+                rows = []
+        message = _text(rows[0][0]) if rows else ""
+        escaped_message = message.replace("'", "''")
+        return SchemaObject(clean_kind, name, f'CREATE EXCEPTION "{name}" \'{escaped_message}\';')
+    if clean_kind == "PACKAGE":
+        with open_database(profile, password) as connection:
+            try:
+                rows = _rows(connection, f"SELECT RDB$PACKAGE_HEADER_SOURCE, RDB$PACKAGE_BODY_SOURCE FROM RDB$PACKAGES WHERE RDB$PACKAGE_NAME = '{safe_name}'")
+            except Exception:
+                rows = []
+        if rows:
+            header, body = (_text(value) for value in rows[0][:2])
+            ddl = header or f'-- PACKAGE "{name}"'
+            if body:
+                ddl += "\n\n" + body
+            return SchemaObject(clean_kind, name, ddl)
+        return SchemaObject(clean_kind, name, f"-- PACKAGE {name}\n-- Não foi possível obter o cabeçalho/corpo no catálogo.")
     if clean_kind not in queries:
         return SchemaObject(clean_kind, name, f"-- {clean_kind} {name}\n-- DDL detalhado ainda não está disponível para este tipo.")
     query, prefix = queries[clean_kind]
