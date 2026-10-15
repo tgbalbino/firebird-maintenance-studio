@@ -23,7 +23,6 @@ class MainWindow:
             QHBoxLayout,
             QLabel,
             QLineEdit,
-            QListWidget,
             QMainWindow,
             QPushButton,
             QSpinBox,
@@ -52,14 +51,16 @@ class MainWindow:
         self._settings = QSettings("TGBalbino", "FirebirdMaintenanceStudio")
         self._open_thread = None
         self._open_worker = None
+        self._opening_profile_name = None
         self.selected_object = None
         self.table_page = 0
         self.profiles = store.load()
-        self.profile_list = QListWidget()
+        self.profile_objects = {}
+        self.profile_list = QTreeWidget()
+        self.profile_list.setHeaderLabels(["Bancos e objetos"])
         self.profile_list.setMinimumHeight(120)
+        self.profile_list.setColumnCount(1)
         self.profile_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.profile_list.setTextElideMode(Qt.ElideNone)
-        self.profile_list.setSelectionMode(QAbstractItemView.SingleSelection)
         self.name = QLineEdit()
         self.host = QLineEdit("localhost")
         self.port = QSpinBox(); self.port.setRange(1, 65535); self.port.setValue(3050)
@@ -77,9 +78,7 @@ class MainWindow:
         self.isql_path = QLineEdit(); self.isql_path.setPlaceholderText("C:\\Firebird\\Firebird_5_0\\isql.exe")
         self.gbak_path = QLineEdit(); self.gbak_path.setPlaceholderText("C:\\Firebird\\Firebird_5_0\\gbak.exe")
         self.status = QLabel("Pronto. Nenhum banco conectado.")
-        self.object_tree = QTreeWidget(); self.object_tree.setHeaderLabels(["Objetos do banco"])
-        self.object_tree.itemClicked.connect(self.preview_object)
-        self.object_tree.itemDoubleClicked.connect(self.open_object)
+        self.object_tree = self.profile_list
         self.object_tree.setMinimumWidth(240)
         self.object_tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.sql_tabs = QTabWidget(); self.sql_tabs.setMinimumHeight(320); self.sql_tabs.setTabsClosable(True); self.sql_tabs.tabCloseRequested.connect(self.close_sql_tab)
@@ -94,8 +93,7 @@ class MainWindow:
         self.result_table = QTableWidget(); self.result_table.setMinimumHeight(180); self.result_table.setEditTriggers(QTableWidget.NoEditTriggers)
 
         left = QWidget(); left_layout = QVBoxLayout(left); left.setMinimumWidth(280)
-        left_layout.addWidget(QLabel("Bancos configurados (duplo clique para abrir)")); left_layout.addWidget(self.profile_list, 1)
-        left_layout.addWidget(QLabel("Objetos do banco")); left_layout.addWidget(self.object_tree, 1)
+        left_layout.addWidget(QLabel("Bancos e objetos (duplo clique para abrir)")); left_layout.addWidget(self.profile_list, 1)
         self.open_data_button = QPushButton("Abrir dados da tabela")
         self.open_data_button.setEnabled(False)
         self.open_data_button.clicked.connect(self.open_table_data)
@@ -160,13 +158,8 @@ class MainWindow:
         splitter.setStretchFactor(1, 1)
         splitter.splitterMoved.connect(lambda _position, _index: self._save_splitter_state(splitter))
         self._window.setCentralWidget(splitter)
-        self.profile_list.currentRowChanged.connect(self.select_profile)
-        # Use a named handler for both mouse and keyboard activation.  Keeping
-        # the item argument in the slot avoids the overloaded Qt signal/lambda
-        # mismatch that can make a double click appear to do nothing in a
-        # frozen executable.
         self.profile_list.itemClicked.connect(self._on_profile_clicked)
-        self.profile_list.itemDoubleClicked.connect(self._on_profile_activated)
+        self.profile_list.itemDoubleClicked.connect(self._on_tree_activated)
         self.refresh_profiles()
         if self.profiles:
             self._hide_profile_details()
@@ -224,19 +217,40 @@ class MainWindow:
         self.editor = editor
 
     def _on_profile_clicked(self, item):
-        """Load the clicked profile into the editor without connecting."""
-        index = self.profile_list.row(item)
-        self.select_profile(index)
+        """Select a database or preview one of its child objects."""
+        index = self._profile_index_for_item(item)
+        if 0 <= index < len(self.profiles):
+            self.select_profile(index)
+        obj = item.data(0, 32)
+        if obj is not None:
+            self.preview_object(item)
+            return
         if 0 <= index < len(self.profiles):
             self.status.setText(f"Cadastro '{self.profiles[index].name}' selecionado. Use duplo clique para abrir.")
 
     def _on_profile_activated(self, item=None):
         """Open exactly the profile represented by the activated list item."""
-        if item is not None:
-            index = self.profile_list.row(item)
-            self.profile_list.setCurrentRow(index)
+        self._on_tree_activated(item or self.profile_list.currentItem())
+
+    def _on_tree_activated(self, item, _column=0):
+        index = self._profile_index_for_item(item)
+        if 0 <= index < len(self.profiles):
             self.select_profile(index)
-        self.open_profile()
+        obj = item.data(0, 32)
+        if obj is not None:
+            self.open_object(item, _column)
+            return
+        if index >= 0:
+            self.open_profile()
+
+    def _profile_index_for_item(self, item=None):
+        item = item or self.profile_list.currentItem()
+        if item is None:
+            return -1
+        while item.parent() is not None:
+            item = item.parent()
+        index = item.data(0, 33)
+        return int(index) if index is not None else -1
 
     def _stored_password(self, profile_name: str) -> str | None:
         from .credentials import CredentialStore
@@ -318,7 +332,7 @@ class MainWindow:
 
         from .credentials import CredentialStore
 
-        selected = self.profile_list.currentRow()
+        selected = self._profile_index_for_item()
         # When activation comes from the list, use the saved object directly.
         # This avoids relying on the form repaint completing before the worker
         # starts, which was the reason the button appeared to have no effect.
@@ -332,6 +346,7 @@ class MainWindow:
             self._show_message("Não foi possível abrir o banco", message, warning=True)
             return
         password = self._password_for(profile)
+        self._opening_profile_name = profile.name
         self.status.setText("Conectando e carregando objetos do banco...")
         self._open_thread = QThread()
         self._open_worker = OpenWorker(profile, password)
@@ -363,7 +378,10 @@ class MainWindow:
             self.status.setText(result.message)
             self._show_message("Falha ao abrir banco", result.message)
             return
-        self._populate_object_tree(objects)
+        selected = next((index for index, profile in enumerate(self.profiles) if profile.name == self._opening_profile_name), -1)
+        if 0 <= selected < len(self.profiles):
+            self.profile_objects[self.profiles[selected].name] = objects
+        self._populate_object_tree(objects, selected)
         if schema_error:
             message = f"{result.message}\n\nConectado, mas não foi possível ler os objetos:\n{schema_error}"
             self.status.setText(message.replace("\n", " "))
@@ -372,24 +390,38 @@ class MainWindow:
             self.status.setText(f"{result.message} Objetos carregados: {len(objects)}.")
         self._hide_profile_details()
 
-    def _populate_object_tree(self, objects):
+    def _populate_object_tree(self, objects, profile_index=-1):
         from PySide6.QtWidgets import QTreeWidgetItem
 
         self.selected_object = None
         self._set_table_data_enabled(False)
-        self.object_tree.clear()
+        if profile_index < 0:
+            profile_index = self._profile_index_for_item()
+        if 0 <= profile_index < len(self.profiles):
+            self.profile_objects[self.profiles[profile_index].name] = objects
+        self.refresh_profiles()
+        profile_item = self._profile_item(profile_index)
+        if profile_item is None:
+            return
+        profile_item.takeChildren()
         groups = {}
         for obj in objects:
             label = {"TABLE": "Tabelas", "VIEW": "Views", "PROCEDURE": "Procedures", "FUNCTION": "Functions", "TRIGGER": "Triggers"}.get(obj.kind, obj.kind.title())
             groups.setdefault(label, []).append(obj)
         for label in sorted(groups):
             parent = QTreeWidgetItem([f"{label} ({len(groups[label])})"])
-            self.object_tree.addTopLevelItem(parent)
+            profile_item.addChild(parent)
             for obj in groups[label]:
                 item = QTreeWidgetItem([obj.name])
                 item.setData(0, 32, obj)
                 parent.addChild(item)
             parent.setExpanded(True)
+        profile_item.setExpanded(True)
+
+    def _profile_item(self, index):
+        if index < 0 or index >= self.profile_list.topLevelItemCount():
+            return None
+        return self.profile_list.topLevelItem(index)
 
     def _show_object_sql(self, obj, new_tab=False):
         if new_tab:
@@ -477,7 +509,25 @@ class MainWindow:
 
     def refresh_profiles(self):
         self.profile_list.clear()
-        self.profile_list.addItems([f"{p.name} · FB {p.version}" for p in self.profiles])
+        from PySide6.QtWidgets import QTreeWidgetItem
+        for index, profile in enumerate(self.profiles):
+            item = QTreeWidgetItem([f"{profile.name} · FB {profile.version}"])
+            item.setData(0, 33, index)
+            self.profile_list.addTopLevelItem(item)
+            objects = self.profile_objects.get(profile.name, [])
+            groups = {}
+            for obj in objects:
+                label = {"TABLE": "Tabelas", "VIEW": "Views", "PROCEDURE": "Procedures", "FUNCTION": "Functions", "TRIGGER": "Triggers"}.get(obj.kind, obj.kind.title())
+                groups.setdefault(label, []).append(obj)
+            for label in sorted(groups):
+                parent = QTreeWidgetItem([f"{label} ({len(groups[label])})"])
+                item.addChild(parent)
+                for obj in groups[label]:
+                    child = QTreeWidgetItem([obj.name])
+                    child.setData(0, 32, obj)
+                    parent.addChild(child)
+                parent.setExpanded(True)
+            item.setExpanded(bool(objects))
         self.target_profile.clear()
         self.target_profile.addItems([p.name for p in self.profiles])
 
@@ -485,7 +535,7 @@ class MainWindow:
         self._show_profile_details(); self.profile_list.clearSelection(); self.name.clear(); self.database.clear(); self.password.clear(); self.save_password.setChecked(False); self.status.setText("Novo perfil.")
 
     def delete_profile(self):
-        selected = self.profile_list.currentRow()
+        selected = self._profile_index_for_item()
         if selected < 0 or selected >= len(self.profiles):
             self._show_message("Excluir cadastro", "Selecione um cadastro na lista lateral.", warning=True)
             return
@@ -508,7 +558,7 @@ class MainWindow:
             CredentialStore().delete(profile.name)
         except Exception:
             pass
-        self.object_tree.clear()
+        self.profile_objects.pop(profile.name, None)
         self.refresh_profiles()
         self.name.clear(); self.database.clear(); self.password.clear(); self.save_password.setChecked(False)
         self.status.setText("Cadastro excluído. O arquivo do banco foi mantido.")
@@ -533,7 +583,7 @@ class MainWindow:
             self.status.setText(message)
             self._show_message("Perfil inválido", message, warning=True)
             return
-        selected = self.profile_list.currentRow()
+        selected = self._profile_index_for_item()
         duplicate = next((item for index, item in enumerate(self.profiles) if index != selected and item.name.casefold() == profile.name.casefold()), None)
         if duplicate is not None:
             message = f"Já existe um banco configurado com o nome '{duplicate.name}'. Escolha outro nome."

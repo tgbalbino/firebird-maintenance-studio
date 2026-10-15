@@ -7,6 +7,7 @@ Data da revisão: 15/10/2026.
 - Perfis locais e remotos para Firebird 2.5, 3, 4 e 5.
 - Senha opcional no Gerenciador de Credenciais do Windows.
 - Abertura assíncrona e árvore inicial de tabelas, views, procedures, functions e triggers.
+- Explorador em árvore no estilo IBExpert: vários bancos ficam abertos no mesmo painel, cada um com seus grupos de objetos.
 - DDL e modelos de DML para tabelas.
 - Editor SQL com várias abas, execução de consulta, scripts e análise de plano.
 - Controle explícito de transação: alterações ficam desfeitas por padrão; a confirmação exige marcar a opção e confirmar o diálogo.
