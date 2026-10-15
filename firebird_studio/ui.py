@@ -116,6 +116,8 @@ class MainWindow:
         self.version = QComboBox(); self.version.addItems(SUPPORTED_VERSIONS)
         self.target_profile = QComboBox()
         self.user = QLineEdit("SYSDBA")
+        self.role = QLineEdit()
+        self.role.setPlaceholderText("Opcional, por exemplo RDB$ADMIN")
         self.password = QLineEdit(); self.password.setEchoMode(QLineEdit.Password); self.password.setPlaceholderText("Senha temporária; não é salva no perfil")
         self.save_password = QCheckBox("Salvar senha criptografada neste computador")
         self.show_password = QCheckBox("Mostrar senha")
@@ -164,7 +166,7 @@ class MainWindow:
 
         form = QFormLayout(); form.addRow("Nome", self.name); form.addRow("Host", self.host)
         form.addRow("Porta", self.port); form.addRow("Caminho ou alias", self.database)
-        form.addRow("Firebird", self.version); form.addRow("Usuário", self.user); form.addRow("Senha", password_row); form.addRow("Charset", self.charset); form.addRow("Caminho isql", self.isql_path); form.addRow("Caminho gbak", self.gbak_path); form.addRow("Comparar com", self.target_profile)
+        form.addRow("Firebird", self.version); form.addRow("Usuário", self.user); form.addRow("Role", self.role); form.addRow("Senha", password_row); form.addRow("Charset", self.charset); form.addRow("Caminho isql", self.isql_path); form.addRow("Caminho gbak", self.gbak_path); form.addRow("Comparar com", self.target_profile)
         box = QGroupBox("Perfil selecionado"); box.setLayout(form)
         self.profile_box = box
         self.profile_toggle = QPushButton("Ocultar dados do cadastro")
@@ -797,7 +799,7 @@ class MainWindow:
             root.setHidden(bool(query) and not (visible or any(not root.child(i).isHidden() for i in range(root.childCount()))))
 
     def new_profile(self):
-        self._show_profile_details(); self.profile_list.clearSelection(); self.name.clear(); self.database.clear(); self.password.clear(); self.save_password.setChecked(False); self.status.setText("Novo perfil.")
+        self._show_profile_details(); self.profile_list.clearSelection(); self.name.clear(); self.database.clear(); self.role.clear(); self.password.clear(); self.save_password.setChecked(False); self.status.setText("Novo perfil.")
 
     def delete_profile(self):
         selected = self._profile_index_for_item()
@@ -825,13 +827,13 @@ class MainWindow:
             pass
         self.profile_objects.pop(profile.name, None)
         self.refresh_profiles()
-        self.name.clear(); self.database.clear(); self.password.clear(); self.save_password.setChecked(False)
+        self.name.clear(); self.database.clear(); self.role.clear(); self.password.clear(); self.save_password.setChecked(False)
         self.status.setText("Cadastro excluído. O arquivo do banco foi mantido.")
 
     def select_profile(self, index: int):
         if index < 0 or index >= len(self.profiles): return
         p = self.profiles[index]
-        for widget, value in ((self.name, p.name), (self.host, p.host), (self.database, p.database), (self.user, p.user), (self.charset, p.charset), (self.isql_path, p.isql_path), (self.gbak_path, p.gbak_path)):
+        for widget, value in ((self.name, p.name), (self.host, p.host), (self.database, p.database), (self.user, p.user), (self.role, p.role), (self.charset, p.charset), (self.isql_path, p.isql_path), (self.gbak_path, p.gbak_path)):
             widget.setText(value)
         stored_password = self._stored_password(p.name)
         self.password.setText(stored_password or "")
@@ -839,7 +841,7 @@ class MainWindow:
         self.port.setValue(p.port); self.version.setCurrentText(p.version)
 
     def _profile_from_form(self):
-        return ConnectionProfile(self.name.text(), self.host.text(), self.port.value(), self.database.text(), self.version.currentText(), self.user.text(), charset=self.charset.text(), isql_path=self.isql_path.text(), gbak_path=self.gbak_path.text())
+        return ConnectionProfile(self.name.text(), self.host.text(), self.port.value(), self.database.text(), self.version.currentText(), self.user.text(), role=self.role.text(), charset=self.charset.text(), isql_path=self.isql_path.text(), gbak_path=self.gbak_path.text())
 
     def save_profile(self):
         profile = self._profile_from_form(); errors = profile.validate()

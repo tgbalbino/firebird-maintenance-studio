@@ -14,7 +14,7 @@ from firebird_studio.health import build_findings
 
 class ProfileTests(unittest.TestCase):
     def test_profile_validation_and_round_trip(self):
-        profile = ConnectionProfile("Local", database="sample.fdb", version="2.5")
+        profile = ConnectionProfile("Local", database="sample.fdb", version="2.5", role="RDB$ADMIN")
         self.assertEqual(profile.validate(), [])
         with tempfile.TemporaryDirectory() as directory:
             store = ProfileStore(Path(directory) / "profiles.json")
