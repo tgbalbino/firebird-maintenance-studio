@@ -127,6 +127,8 @@ class MainWindow:
         new_sql_button = QPushButton("Nova janela SQL"); new_sql_button.clicked.connect(self._new_sql_tab)
         execute_button = QPushButton("Executar SQL"); execute_button.clicked.connect(self.execute_selected)
         selection_button = QPushButton("Executar seleção"); selection_button.clicked.connect(self.execute_selection)
+        self.commit_changes = QCheckBox("Confirmar alterações")
+        self.commit_changes.setToolTip("Quando marcado, confirma DDL/DML. Desmarcado, alterações são desfeitas ao terminar a execução.")
         export_button = QPushButton("Exportar CSV"); export_button.clicked.connect(self.export_result_csv)
         script_button = QPushButton("Executar arquivo SQL"); script_button.clicked.connect(self.execute_script_file)
         backup_button = QPushButton("Backup"); backup_button.clicked.connect(self.execute_backup)
@@ -138,7 +140,7 @@ class MainWindow:
         self.open_data_action = QPushButton("Dados da tabela")
         self.open_data_action.setEnabled(False)
         self.open_data_action.clicked.connect(self.open_table_data)
-        action_row.addWidget(test_button); action_row.addWidget(new_sql_button); action_row.addWidget(execute_button); action_row.addWidget(selection_button); action_row.addWidget(export_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addWidget(health_button); action_row.addWidget(compare_button); action_row.addWidget(self.open_data_action); action_row.addStretch(); right_layout.addLayout(action_row)
+        action_row.addWidget(test_button); action_row.addWidget(new_sql_button); action_row.addWidget(execute_button); action_row.addWidget(selection_button); action_row.addWidget(self.commit_changes); action_row.addWidget(export_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addWidget(health_button); action_row.addWidget(compare_button); action_row.addWidget(self.open_data_action); action_row.addStretch(); right_layout.addLayout(action_row)
         pagination_row = QHBoxLayout()
         self.previous_data_button = QPushButton("Anterior")
         self.previous_data_button.setEnabled(False)
@@ -587,10 +589,26 @@ class MainWindow:
         from PySide6.QtWidgets import QTableWidgetItem
         from .sql import execute_sql
 
+        statement = sql_text.lstrip().upper()
+        changes_data = statement.startswith(("INSERT", "UPDATE", "DELETE", "MERGE", "EXECUTE", "ALTER", "CREATE", "DROP", "RECREATE", "GRANT", "REVOKE"))
+        commit = bool(self.commit_changes.isChecked())
+        if changes_data and commit:
+            from PySide6.QtWidgets import QMessageBox
+            answer = QMessageBox.question(
+                self._window,
+                "Confirmar alteração no banco",
+                "A instrução pode alterar a estrutura ou os dados. Deseja confirmar a transação?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if answer != QMessageBox.Yes:
+                self.status.setText("Execução cancelada; nenhuma alteração foi aplicada.")
+                return
         profile = self._profile_from_form()
-        result = execute_sql(profile, sql_text, self._password_for(profile))
+        result = execute_sql(profile, sql_text, self._password_for(profile), commit=commit)
         self._add_query_history(sql_text)
-        self.status.setText(result.message)
+        suffix = " Alterações confirmadas." if changes_data and commit and result.ok else (" Alterações desfeitas (modo seguro)." if changes_data and result.ok else "")
+        self.status.setText(result.message + suffix)
         self.result_table.clear()
         self.result_table.setColumnCount(len(result.columns)); self.result_table.setRowCount(len(result.rows))
         self.result_table.setHorizontalHeaderLabels(result.columns)

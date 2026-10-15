@@ -9,6 +9,7 @@ Data da revisão: 15/10/2026.
 - Abertura assíncrona e árvore inicial de tabelas, views, procedures, functions e triggers.
 - DDL e modelos de DML para tabelas.
 - Editor SQL com várias abas, execução de consulta, scripts e análise de plano.
+- Controle explícito de transação: alterações ficam desfeitas por padrão; a confirmação exige marcar a opção e confirmar o diálogo.
 - Backup/restore com `gbak`, leitura de saúde e comparação inicial de estruturas.
 - Executável portátil Windows x64 em uma pasta fixa para testes.
 
@@ -43,7 +44,7 @@ Data da revisão: 15/10/2026.
 1. Editor grande com destaque de sintaxe, indentação, números de linha, busca, substituir, comentários e atalhos.
 2. Autocomplete baseado no catálogo do banco, nomes de campos após selecionar a tabela e ajuda contextual de funções.
 3. Separar abas de consulta, resultados, mensagens e plano; manter histórico de consultas com duração e quantidade de linhas.
-4. Controles claros de **Iniciar transação**, **Commit**, **Rollback**, **Executar seleção** e **Cancelar**.
+4. Evoluir o controle atual de confirmação para transações mantidas entre comandos, com **Iniciar transação**, **Commit**, **Rollback** e **Cancelar**.
 5. Plano em árvore com custo/tempo quando disponível, SQL original, versão do Firebird e sugestões explicadas.
 
 ## Prioridade 3: comparação e migração
