@@ -484,23 +484,27 @@ class MainWindow:
         self._opening_profile_name = profile.name
         self._log_event("Conexão iniciada", profile=profile.name, host=profile.host, database=profile.database, version=profile.version, password_present=bool(password))
         self.status.setText("Conectando e carregando objetos do banco...")
-        self._open_thread = QThread()
-        if OpenConnectionWorker is None:
-            raise RuntimeError("PySide6 não está disponível para iniciar a conexão")
-        self._open_worker = OpenConnectionWorker(profile, password)
-        self._open_worker.moveToThread(self._open_thread)
-        self._open_thread.started.connect(self._open_worker.run)
-        self._open_worker.progress.connect(self.status.setText)
-        self._open_worker.finished.connect(self._on_profile_opened)
-        self._open_worker.finished.connect(self._open_thread.quit)
-        self._open_worker.finished.connect(self._open_worker.deleteLater)
-        self._open_thread.finished.connect(self._open_thread.deleteLater)
-        self._open_thread.finished.connect(self._clear_open_worker)
-        self._open_thread.start()
-        self._open_timeout_timer = QTimer(self._window)
-        self._open_timeout_timer.setSingleShot(True)
-        self._open_timeout_timer.timeout.connect(self._connection_timeout)
-        self._open_timeout_timer.start(20000)
+        # The Firebird client is reliable on the UI thread (the Testar
+        # conexão button uses this exact path), but can block when initialized
+        # inside a QThread in packaged Windows builds. Keep opening aligned
+        # with the proven direct path and load the lightweight catalog next.
+        from .connection import test_connection
+        from .catalog import load_schema
+        self._log_event("Teste de conexão direto iniciado", profile=profile.name)
+        result = test_connection(profile, password)
+        if not result.ok:
+            self._log_event("Falha na conexão direta", profile=profile.name, message=result.message)
+            self._on_profile_opened(result, [], "")
+            return
+        self._log_event("Conexão direta concluída", profile=profile.name)
+        self.status.setText("Conexão realizada. Lendo objetos do banco...")
+        try:
+            objects = load_schema(profile, password, detailed=False)
+            self._log_event("Objetos carregados", profile=profile.name, count=len(objects))
+            self._on_profile_opened(result, objects, "")
+        except Exception as exc:
+            self._log_event("Falha ao ler objetos", profile=profile.name, error=str(exc))
+            self._on_profile_opened(result, [], str(exc))
 
     def _connection_timeout(self):
         if self._open_thread is None:
