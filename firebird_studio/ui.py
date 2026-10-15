@@ -382,6 +382,7 @@ class MainWindow:
 
         class OpenWorker(QObject):
             finished = Signal(object, object, str)
+            progress = Signal(str)
 
             def __init__(self, profile, password):
                 super().__init__()
@@ -397,6 +398,7 @@ class MainWindow:
                 if not result.ok:
                     self.finished.emit(result, [], "")
                     return
+                self.progress.emit("Conexão realizada. Lendo objetos do banco...")
                 try:
                     objects = load_schema(self.profile, self.password)
                     self.finished.emit(result, objects, "")
@@ -425,6 +427,7 @@ class MainWindow:
         self._open_worker = OpenWorker(profile, password)
         self._open_worker.moveToThread(self._open_thread)
         self._open_thread.started.connect(self._open_worker.run)
+        self._open_worker.progress.connect(self.status.setText)
         self._open_worker.finished.connect(self._on_profile_opened)
         self._open_worker.finished.connect(self._open_thread.quit)
         self._open_worker.finished.connect(self._open_worker.deleteLater)
