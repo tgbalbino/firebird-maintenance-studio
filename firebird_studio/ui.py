@@ -336,7 +336,7 @@ class MainWindow:
         self.editor = editor
 
     def _on_profile_clicked(self, item):
-        """Select a database or preview one of its child objects."""
+        """Select a database/object; load object details only on double click."""
         now = time.monotonic()
         index = self._profile_index_for_item(item)
         obj = item.data(0, 32)
@@ -344,6 +344,10 @@ class MainWindow:
         is_object_item = item.parent() is not None
         self._log_event("Item da árvore clicado", index=index, item=item.text(0), object=getattr(obj, "name", ""), object_item=is_object_item, object_type=type(obj).__name__)
         is_double_click = item_key == self._last_tree_click_key and now - self._last_tree_click_time <= 0.75
+        # The pressed-event fallback may already have handled this double click
+        # in packaged Windows builds. Avoid loading/opening the same object twice.
+        if is_double_click and item_key == self._last_tree_activation_key and now - self._last_tree_activation_time < 0.4:
+            return
         self._last_tree_click_key = item_key
         self._last_tree_click_time = now
         typed_password = self.password.text()
@@ -354,11 +358,17 @@ class MainWindow:
             if typed_password and not self.password.text():
                 self.password.setText(typed_password)
         if is_object_item and obj is not None:
-            self.preview_object(item)
             if is_double_click:
                 self._last_tree_activation_key = item_key
                 self._last_tree_activation_time = now
+                self.preview_object(item)
                 self.open_object(item)
+            else:
+                self.selected_object = obj
+                self._set_table_data_enabled(str(getattr(obj, "kind", "")).upper() == "TABLE")
+                self.status.setText(
+                    f"{obj.kind.title()} selecionado: {obj.name}. Duplo clique para carregar DDL e dados."
+                )
             return
         if 0 <= index < len(self.profiles):
             self.status.setText(f"Perfil '{self.profiles[index].name}' selecionado. Duplo clique para conectar.")
@@ -378,6 +388,7 @@ class MainWindow:
             if 0 <= index < len(self.profiles):
                 self.select_profile(index)
             if is_object_item and obj is not None:
+                self.preview_object(item)
                 self.open_object(item)
             elif 0 <= index < len(self.profiles):
                 self.open_profile(index)
@@ -401,6 +412,7 @@ class MainWindow:
         if 0 <= index < len(self.profiles):
             self.select_profile(index)
         if is_object_item and obj is not None:
+            self.preview_object(item)
             self.open_object(item, _column)
             return
         if index >= 0:
@@ -602,7 +614,12 @@ class MainWindow:
         profile_item.takeChildren()
         groups = {}
         for obj in objects:
-            label = {"TABLE": "Tabelas", "VIEW": "Views", "PROCEDURE": "Procedures", "FUNCTION": "Functions", "TRIGGER": "Triggers", "DOMAIN": "Domínios", "INDEX": "Índices"}.get(obj.kind, obj.kind.title())
+            label = {
+                "TABLE": "Tabelas", "VIEW": "Views", "PROCEDURE": "Procedures",
+                "FUNCTION": "Functions", "TRIGGER": "Triggers", "DOMAIN": "Domínios",
+                "INDEX": "Índices", "CONSTRAINT": "Restrições", "SEQUENCE": "Sequências",
+                "GENERATOR": "Generators", "EXCEPTION": "Exceções", "PACKAGE": "Packages",
+            }.get(obj.kind, obj.kind.title())
             groups.setdefault(label, []).append(obj)
         for label in sorted(groups):
             parent = QTreeWidgetItem([f"{label} ({len(groups[label])})"])
