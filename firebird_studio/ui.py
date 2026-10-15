@@ -43,7 +43,7 @@ class MainWindow:
             QSizePolicy,
             QAbstractItemView,
         )
-        from PySide6.QtCore import QObject, QThread, Signal, Slot, QSettings, Qt
+        from PySide6.QtCore import QObject, QThread, Signal, Slot, QSettings, Qt, QTimer
 
         self._window = QMainWindow()
         self.show = self._window.show
@@ -55,6 +55,7 @@ class MainWindow:
         self._settings = QSettings("TGBalbino", "FirebirdMaintenanceStudio")
         self._open_thread = None
         self._open_worker = None
+        self._open_timeout_timer = None
         self._opening_profile_name = None
         self._last_tree_click_key = None
         self._last_tree_click_time = 0.0
@@ -409,6 +410,7 @@ class MainWindow:
     def open_profile(self):
         """Open the selected database, like opening a connection in IBExpert."""
         if self._open_thread is not None and self._open_thread.isRunning():
+            self._log_event("Conexão ignorada: já existe worker ativo", profile=self._opening_profile_name or "")
             self.status.setText("Já existe uma conexão em andamento.")
             return
 
@@ -472,6 +474,21 @@ class MainWindow:
         self._open_thread.finished.connect(self._open_thread.deleteLater)
         self._open_thread.finished.connect(self._clear_open_worker)
         self._open_thread.start()
+        self._open_timeout_timer = QTimer(self._window)
+        self._open_timeout_timer.setSingleShot(True)
+        self._open_timeout_timer.timeout.connect(self._connection_timeout)
+        self._open_timeout_timer.start(20000)
+
+    def _connection_timeout(self):
+        if self._open_thread is None or not self._open_thread.isRunning():
+            return
+        self._log_event("Conexão cancelada por timeout", profile=self._opening_profile_name or "")
+        self.status.setText("A conexão excedeu 20 segundos. Verifique o servidor, banco e senha.")
+        self._open_thread.requestInterruption()
+        self._open_thread.terminate()
+        self._open_thread.wait(2000)
+        self._open_thread = None
+        self._open_worker = None
 
     def _clear_open_worker(self):
         self._open_thread = None
@@ -488,6 +505,10 @@ class MainWindow:
         box.exec()
 
     def _on_profile_opened(self, result, objects, schema_error):
+        if self._open_timeout_timer is not None:
+            self._open_timeout_timer.stop()
+            self._open_timeout_timer.deleteLater()
+            self._open_timeout_timer = None
         self._log_event("Conexão finalizada", ok=result.ok, objects=len(objects), error=schema_error or result.message)
         if not result.ok:
             self.status.setText(result.message)
