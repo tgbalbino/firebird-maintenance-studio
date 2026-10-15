@@ -20,10 +20,21 @@ class BackupResult:
 def build_gbak_args(profile: ConnectionProfile, operation: str, source: Path, target: Path, gbak_path: Path) -> list[str]:
     host = profile.host.strip() or "localhost"
     service_dsn = f"{host}:service_mgr" if profile.port == 3050 else f"{host}/{profile.port}:service_mgr"
+    local_host = host.lower() in {"localhost", "127.0.0.1", "::1"} and source.exists()
+    # For a local database gbak can open the file directly. The service
+    # manager form is reserved for remote/server-side paths.
     if operation == "backup":
-        return [str(gbak_path), "-b", "-user", profile.user, "-service", service_dsn, str(source), str(target)]
+        args = [str(gbak_path), "-b", "-user", profile.user]
+        if not local_host:
+            args.extend(["-service", service_dsn])
+        args.extend([str(source), str(target)])
+        return args
     if operation == "restore":
-        return [str(gbak_path), "-c", "-user", profile.user, "-service", service_dsn, str(source), str(target)]
+        args = [str(gbak_path), "-c", "-user", profile.user]
+        if not local_host:
+            args.extend(["-service", service_dsn])
+        args.extend([str(source), str(target)])
+        return args
     raise ValueError(f"Operação desconhecida: {operation}")
 
 
@@ -41,6 +52,9 @@ def run_gbak(
         return BackupResult(False, -1, "", " ".join(errors), operation)
     if operation == "restore" and target.exists():
         return BackupResult(False, -1, "", "O destino já existe; escolha um novo arquivo para evitar substituição acidental.", operation)
+    gbak_path = Path(str(gbak_path).strip().strip('"')).expanduser()
+    if gbak_path.is_dir():
+        gbak_path = gbak_path / "gbak.exe"
     if not gbak_path.exists() or not gbak_path.is_file():
         return BackupResult(False, -1, "", f"Executável gbak não encontrado: {gbak_path}", operation)
     if operation == "backup" and not source.exists():
@@ -58,9 +72,12 @@ def run_gbak(
             errors="replace",
             timeout=timeout_seconds,
             check=False,
+            cwd=str(gbak_path.parent),
         )
     except subprocess.TimeoutExpired:
         return BackupResult(False, -1, "", f"{operation} excedeu o limite de {timeout_seconds} segundos.", operation)
     except OSError as exc:
+        if getattr(exc, "winerror", None) == 5 or getattr(exc, "errno", None) == 13:
+            return BackupResult(False, -1, "", f"Acesso negado ao gbak.exe: {gbak_path}. Verifique as permissões do arquivo e se o Windows não o bloqueou.", operation)
         return BackupResult(False, -1, "", f"Não foi possível iniciar o gbak: {exc}", operation)
     return BackupResult(completed.returncode == 0, completed.returncode, completed.stdout or "", completed.stderr or "", operation)

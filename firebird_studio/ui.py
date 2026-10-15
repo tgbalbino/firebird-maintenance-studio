@@ -484,7 +484,12 @@ class MainWindow:
         profile = self._profile_from_form()
         result = run_gbak(profile, "backup", source, Path(filename), self._password_for(profile), Path(self.gbak_path.text()))
         self.editor.setPlainText(result.output + ("\n" + result.error if result.error else ""))
-        self.status.setText("Backup concluído." if result.ok else f"Backup falhou: {result.error}")
+        if result.ok:
+            self.status.setText("Backup concluído.")
+        else:
+            message = result.error or result.output or "O gbak retornou uma falha sem detalhes."
+            self.status.setText(f"Backup falhou: {message}")
+            self._show_message("Falha no backup", message)
 
     def execute_restore(self):
         from .backup import run_gbak
@@ -497,7 +502,12 @@ class MainWindow:
         profile = self._profile_from_form()
         result = run_gbak(profile, "restore", Path(source), Path(target), self._password_for(profile), Path(self.gbak_path.text()))
         self.editor.setPlainText(result.output + ("\n" + result.error if result.error else ""))
-        self.status.setText("Restore concluído." if result.ok else f"Restore falhou: {result.error}")
+        if result.ok:
+            self.status.setText("Restore concluído.")
+        else:
+            message = result.error or result.output or "O gbak retornou uma falha sem detalhes."
+            self.status.setText(f"Restore falhou: {message}")
+            self._show_message("Falha no restore", message)
 
     def inspect_schema(self):
         from .catalog import load_schema
