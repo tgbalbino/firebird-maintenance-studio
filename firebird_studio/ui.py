@@ -145,6 +145,7 @@ class MainWindow:
         self._new_sql_tab()
         self.result_table = QTableWidget(); self.result_table.setMinimumHeight(180); self.result_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.result_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.result_table.setSortingEnabled(True)
         self.result_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.result_table.customContextMenuRequested.connect(self._table_context_menu)
         self.plan_output = QTextEdit(); self.plan_output.setReadOnly(True); self.plan_output.setPlaceholderText("O plano de acesso e as sugestões aparecerão aqui.")
@@ -213,10 +214,14 @@ class MainWindow:
         self.previous_data_button.setEnabled(False)
         self.previous_data_button.clicked.connect(lambda: self._load_table_page(self.table_page - 1))
         self.data_page_label = QLabel("Dados: nenhuma tabela selecionada")
+        self.data_filter = QLineEdit()
+        self.data_filter.setPlaceholderText("Filtrar linhas...")
+        self.data_filter.setToolTip("Filtra as linhas carregadas nesta página; não altera o banco.")
+        self.data_filter.textChanged.connect(self._filter_data_rows)
         self.next_data_button = QPushButton("Próximas 200")
         self.next_data_button.setEnabled(False)
         self.next_data_button.clicked.connect(lambda: self._load_table_page(self.table_page + 1))
-        pagination_row.addWidget(self.previous_data_button); pagination_row.addWidget(self.data_page_label, 1); pagination_row.addWidget(self.next_data_button)
+        pagination_row.addWidget(self.previous_data_button); pagination_row.addWidget(self.data_page_label, 1); pagination_row.addWidget(self.data_filter); pagination_row.addWidget(self.next_data_button)
         right_layout.addWidget(self.result_tabs); right_layout.addLayout(pagination_row); right_layout.addWidget(self.status)
         splitter = QSplitter(Qt.Horizontal); splitter.addWidget(left); splitter.addWidget(right)
         self.main_splitter = splitter
@@ -666,8 +671,10 @@ class MainWindow:
                     self._show_message("Falha ao ler estrutura da tabela", str(exc), warning=True)
                     return
             self.table_page = 0
+            self.data_filter.clear()
             self.data_page_label.setText("Dados: tabela selecionada; clique em Dados da tabela")
             self.result_table.clear()
+            self.result_table.setSortingEnabled(False)
             self.result_table.setColumnCount(5)
             self.result_table.setHorizontalHeaderLabels(["Campo", "Tipo", "Tamanho", "Escala", "Aceita nulo"])
             self.result_table.setRowCount(len(obj.columns))
@@ -675,7 +682,9 @@ class MainWindow:
                 for column, value in enumerate(values):
                     self.result_table.setItem(row, column, QTableWidgetItem(str(value)))
             self.result_table.resizeColumnsToContents()
+            self.result_table.setSortingEnabled(True)
         else:
+            self.data_filter.clear()
             self.result_table.clear()
             self.result_table.setColumnCount(2)
             self.result_table.setHorizontalHeaderLabels(["Objeto", "Tipo"])
@@ -708,6 +717,12 @@ class MainWindow:
         QApplication.clipboard().setText(text)
         self.status.setText(f"{len(rows)} linha(s) copiada(s).")
 
+    def _filter_data_rows(self, text: str):
+        query = (text or "").strip().casefold()
+        for row in range(self.result_table.rowCount()):
+            values = [self.result_table.item(row, column).text() if self.result_table.item(row, column) else "" for column in range(self.result_table.columnCount())]
+            self.result_table.setRowHidden(row, bool(query) and query not in " ".join(values).casefold())
+
     def _load_table_page(self, page: int):
         from .sql import execute_sql
         from PySide6.QtWidgets import QTableWidgetItem
@@ -728,6 +743,7 @@ class MainWindow:
             self._show_message("Falha ao abrir dados", result.message)
             return
         self.result_table.clear()
+        self.result_table.setSortingEnabled(False)
         self.result_table.setColumnCount(len(result.columns))
         self.result_table.setRowCount(len(result.rows))
         self.result_table.setHorizontalHeaderLabels(result.columns)
@@ -735,6 +751,8 @@ class MainWindow:
             for column_index, value in enumerate(row):
                 self.result_table.setItem(row_index, column_index, QTableWidgetItem("" if value is None else str(value)))
         self.result_table.resizeColumnsToContents()
+        self.result_table.setSortingEnabled(True)
+        self._filter_data_rows(self.data_filter.text())
         self.table_page = page
         self.previous_data_button.setEnabled(page > 0)
         self.next_data_button.setEnabled(len(result.rows) == 200)
