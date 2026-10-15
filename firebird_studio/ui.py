@@ -55,6 +55,8 @@ class MainWindow:
         self._opening_profile_name = None
         self._last_tree_click_key = None
         self._last_tree_click_time = 0.0
+        self._last_tree_activation_key = None
+        self._last_tree_activation_time = 0.0
         self.selected_object = None
         self.table_page = 0
         self.profiles = store.load()
@@ -172,6 +174,10 @@ class MainWindow:
         splitter.splitterMoved.connect(lambda _position, _index: self._save_splitter_state(splitter))
         self._window.setCentralWidget(splitter)
         self.profile_list.itemClicked.connect(self._on_profile_clicked)
+        # itemActivated is emitted by Qt for mouse double-click and keyboard
+        # activation; keep it alongside the repeated-click fallback used by
+        # some packaged Windows builds.
+        self.profile_list.itemActivated.connect(self._on_tree_activated)
         self.refresh_profiles()
         if self.profiles:
             self._hide_profile_details()
@@ -258,11 +264,15 @@ class MainWindow:
         if obj is not None:
             self.preview_object(item)
             if is_double_click:
+                self._last_tree_activation_key = item_key
+                self._last_tree_activation_time = now
                 self.open_object(item)
             return
         if 0 <= index < len(self.profiles):
             self.status.setText(f"Cadastro '{self.profiles[index].name}' selecionado. Use duplo clique para abrir.")
             if is_double_click:
+                self._last_tree_activation_key = item_key
+                self._last_tree_activation_time = now
                 self.open_profile()
 
     def _on_profile_activated(self, item=None):
@@ -271,9 +281,15 @@ class MainWindow:
 
     def _on_tree_activated(self, item, _column=0):
         index = self._profile_index_for_item(item)
+        obj = item.data(0, 32)
+        item_key = (index, getattr(obj, "kind", ""), getattr(obj, "name", "")) if obj is not None else (index, "PROFILE")
+        now = time.monotonic()
+        if item_key == self._last_tree_activation_key and now - self._last_tree_activation_time < 0.4:
+            return
+        self._last_tree_activation_key = item_key
+        self._last_tree_activation_time = now
         if 0 <= index < len(self.profiles):
             self.select_profile(index)
-        obj = item.data(0, 32)
         if obj is not None:
             self.open_object(item, _column)
             return
