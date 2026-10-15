@@ -2,7 +2,17 @@
 
 Projeto de uma aplicação desktop Windows, de código aberto, para administração e manutenção de bancos Firebird 2.5, 3, 4 e 5. A referência de experiência é o IBExpert, com foco inicial nas tarefas de manutenção mais frequentes.
 
-**Estado atual:** planejamento e validação técnica. Ainda não há aplicativo executável nem funções prontas para uso em produção. A compatibilidade descrita abaixo precisa ser comprovada com bancos de teste de cada versão.
+**Estado atual:** primeira base executável criada, ainda em validação técnica. A interface inicial oferece perfis de conexão sem senhas e diagnóstico de dependências; scripts, backup, restore, comparação e saúde ainda serão implementados. A compatibilidade precisa ser comprovada com bancos de teste de cada versão.
+
+Para preparar um ambiente de desenvolvimento:
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e .
+python -m firebird_studio --check
+python -m unittest discover -v
+```
 
 ## Objetivo da primeira versão
 

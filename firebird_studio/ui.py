@@ -1,0 +1,103 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from .models import ConnectionProfile, ProfileStore, SUPPORTED_VERSIONS
+
+
+def create_application():
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication([])
+    app.setApplicationName("Firebird Maintenance Studio")
+    return app
+
+
+class MainWindow:
+    """Initial shell; keeps Qt imports out of headless validation."""
+
+    def __init__(self, store: ProfileStore):
+        from PySide6.QtWidgets import (
+            QFormLayout,
+            QGroupBox,
+            QHBoxLayout,
+            QLabel,
+            QLineEdit,
+            QListWidget,
+            QMainWindow,
+            QPushButton,
+            QSpinBox,
+            QSplitter,
+            QTextEdit,
+            QVBoxLayout,
+            QWidget,
+            QComboBox,
+        )
+
+        self._window = QMainWindow()
+        self.show = self._window.show
+        self._window.setWindowTitle("Firebird Maintenance Studio")
+        self._window.resize(1100, 700)
+        self.store = store
+        self.profiles = store.load()
+        self.profile_list = QListWidget()
+        self.name = QLineEdit()
+        self.host = QLineEdit("localhost")
+        self.port = QSpinBox(); self.port.setRange(1, 65535); self.port.setValue(3050)
+        self.database = QLineEdit()
+        self.version = QComboBox(); self.version.addItems(SUPPORTED_VERSIONS)
+        self.user = QLineEdit("SYSDBA")
+        self.charset = QLineEdit("UTF8")
+        self.status = QLabel("Pronto. Nenhum banco conectado.")
+        self.editor = QTextEdit()
+        self.editor.setPlaceholderText("Cole um script SQL aqui para executar na próxima etapa.")
+
+        left = QWidget(); left_layout = QVBoxLayout(left)
+        left_layout.addWidget(QLabel("Bancos configurados")); left_layout.addWidget(self.profile_list)
+        new_button = QPushButton("Novo perfil"); new_button.clicked.connect(self.new_profile); left_layout.addWidget(new_button)
+        save_button = QPushButton("Salvar perfil"); save_button.clicked.connect(self.save_profile); left_layout.addWidget(save_button)
+        left_layout.addStretch()
+
+        form = QFormLayout(); form.addRow("Nome", self.name); form.addRow("Host", self.host)
+        form.addRow("Porta", self.port); form.addRow("Caminho ou alias", self.database)
+        form.addRow("Firebird", self.version); form.addRow("Usuário", self.user); form.addRow("Charset", self.charset)
+        box = QGroupBox("Perfil selecionado"); box.setLayout(form)
+        right = QWidget(); right_layout = QVBoxLayout(right); right_layout.addWidget(box)
+        right_layout.addWidget(QLabel("Editor SQL")); right_layout.addWidget(self.editor)
+        action_row = QHBoxLayout(); test_button = QPushButton("Testar conexão"); test_button.clicked.connect(self.test_selected)
+        action_row.addWidget(test_button); action_row.addStretch(); right_layout.addLayout(action_row); right_layout.addWidget(self.status)
+        splitter = QSplitter(); splitter.addWidget(left); splitter.addWidget(right); splitter.setSizes([260, 840])
+        self._window.setCentralWidget(splitter)
+        self.profile_list.currentRowChanged.connect(self.select_profile)
+        self.refresh_profiles()
+
+    def refresh_profiles(self):
+        self.profile_list.clear()
+        self.profile_list.addItems([f"{p.name} · FB {p.version}" for p in self.profiles])
+
+    def new_profile(self):
+        self.profile_list.clearSelection(); self.name.clear(); self.database.clear(); self.status.setText("Novo perfil.")
+
+    def select_profile(self, index: int):
+        if index < 0 or index >= len(self.profiles): return
+        p = self.profiles[index]
+        for widget, value in ((self.name, p.name), (self.host, p.host), (self.database, p.database), (self.user, p.user), (self.charset, p.charset)):
+            widget.setText(value)
+        self.port.setValue(p.port); self.version.setCurrentText(p.version)
+
+    def _profile_from_form(self):
+        return ConnectionProfile(self.name.text(), self.host.text(), self.port.value(), self.database.text(), self.version.currentText(), self.user.text(), charset=self.charset.text())
+
+    def save_profile(self):
+        profile = self._profile_from_form(); errors = profile.validate()
+        if errors: self.status.setText(" ".join(errors)); return
+        selected = self.profile_list.currentRow()
+        if 0 <= selected < len(self.profiles): self.profiles[selected] = profile
+        else: self.profiles.append(profile)
+        self.store.save(self.profiles); self.refresh_profiles(); self.status.setText("Perfil salvo sem senha.")
+
+    def test_selected(self):
+        from .connection import test_connection
+
+        result = test_connection(self._profile_from_form())
+        self.status.setText(result.message)
