@@ -96,7 +96,8 @@ class MainWindow:
         form.addRow("Porta", self.port); form.addRow("Caminho ou alias", self.database)
         form.addRow("Firebird", self.version); form.addRow("Usuário", self.user); form.addRow("Senha", self.password); form.addRow("Charset", self.charset); form.addRow("Caminho isql", self.isql_path); form.addRow("Caminho gbak", self.gbak_path); form.addRow("Comparar com", self.target_profile)
         box = QGroupBox("Perfil selecionado"); box.setLayout(form)
-        right = QWidget(); right_layout = QVBoxLayout(right); right_layout.addWidget(box)
+        right = QWidget(); right.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
+        right_layout = QVBoxLayout(right); right_layout.addWidget(box)
         right_layout.addWidget(QLabel("Janelas SQL")); right_layout.addWidget(self.sql_tabs, 1)
         action_row = QHBoxLayout(); test_button = QPushButton("Testar conexão"); test_button.clicked.connect(self.test_selected)
         new_sql_button = QPushButton("Nova janela SQL"); new_sql_button.clicked.connect(self._new_sql_tab)
@@ -121,7 +122,7 @@ class MainWindow:
         self._window.setCentralWidget(splitter)
         self.profile_list.currentRowChanged.connect(self.select_profile)
         self.profile_list.itemDoubleClicked.connect(lambda _item: self.open_profile())
-        self.profile_list.itemActivated.connect(lambda _item, _column: self.open_profile())
+        self.profile_list.itemActivated.connect(lambda _item: self.open_profile())
         self.refresh_profiles()
         saved_splitter = self._settings.value("main_splitter_state")
         if saved_splitter and splitter.restoreState(saved_splitter):
