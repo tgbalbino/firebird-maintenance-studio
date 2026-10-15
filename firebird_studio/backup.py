@@ -81,4 +81,11 @@ def run_gbak(
         if getattr(exc, "winerror", None) == 5 or getattr(exc, "errno", None) == 13:
             return BackupResult(False, -1, "", f"Acesso negado ao gbak.exe: {gbak_path}. Verifique as permissões do arquivo e se o Windows não o bloqueou.", operation)
         return BackupResult(False, -1, "", f"Não foi possível iniciar o gbak: {exc}", operation)
-    return BackupResult(completed.returncode == 0, completed.returncode, completed.stdout or "", completed.stderr or "", operation)
+    output = completed.stdout or ""
+    error = completed.stderr or ""
+    ok = completed.returncode == 0
+    if ok and operation == "backup":
+        if not target.exists() or target.stat().st_size == 0:
+            ok = False
+            error = "O gbak terminou sem erro, mas o arquivo de backup não foi criado ou está vazio."
+    return BackupResult(ok, completed.returncode, output, error, operation)
