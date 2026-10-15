@@ -97,6 +97,8 @@ class MainWindow:
         self._last_tree_activation_key = None
         self._last_tree_activation_time = 0.0
         self.selected_object = None
+        self.edit_data_mode = False
+        self._table_original_rows = []
         self.table_page = 0
         self.profiles = store.load()
         self.profile_objects = {}
@@ -211,9 +213,25 @@ class MainWindow:
         self.open_data_action = QAction("Dados da tabela", self._window)
         self.open_data_action.setEnabled(False)
         self.open_data_action.triggered.connect(self.open_table_data)
+        self.edit_data_action = QAction("Ativar edição segura (prévia)", self._window)
+        self.edit_data_action.setCheckable(True)
+        self.edit_data_action.setEnabled(False)
+        self.edit_data_action.setToolTip("Permite editar a grade localmente. Nenhuma alteração é gravada automaticamente.")
+        self.edit_data_action.toggled.connect(self._toggle_data_edit_mode)
+        self.generate_update_action = QAction("Gerar UPDATE da linha", self._window)
+        self.generate_update_action.setEnabled(False)
+        self.generate_update_action.setToolTip("Gera uma prévia SQL usando os valores originais da linha.")
+        self.generate_update_action.triggered.connect(self._generate_row_update_preview)
+        self.apply_update_action = QAction("Aplicar UPDATE com confirmação", self._window)
+        self.apply_update_action.setEnabled(False)
+        self.apply_update_action.setToolTip("Executa somente o UPDATE que está no editor após confirmação explícita.")
+        self.apply_update_action.triggered.connect(self._apply_update_preview)
         sql_button = menu_button("SQL", [("Nova janela SQL", self._new_sql_tab), ("Executar SQL", self.execute_selected), ("Executar seleção", self.execute_selection), ("Executar arquivo SQL", self.execute_script_file), ("Salvar SQL", self.save_sql_file)], "Executar comandos e gerenciar janelas SQL")
         data_button = menu_button("Dados", [("Exportar CSV", self.export_result_csv), ("Exportar JSON", self.export_result_json)], "Exportar resultados e abrir dados de tabelas")
         data_button.menu().addAction(self.open_data_action)
+        data_button.menu().addAction(self.edit_data_action)
+        data_button.menu().addAction(self.generate_update_action)
+        data_button.menu().addAction(self.apply_update_action)
         database_button = menu_button("Banco", [("Backup", self.execute_backup), ("Restore", self.execute_restore)], "Operações de backup e restore")
         analysis_button = menu_button("Análise", [("Ler estrutura", self.inspect_schema), ("Ver plano", self.inspect_plan), ("Saúde", self.inspect_health), ("Salvar relatório de saúde", self.save_health_report), ("Sessões", self.inspect_sessions), ("Validar integridade", self.validate_database), ("Comparar estruturas", self.compare_selected), ("Salvar comparação", self.save_compare_report)], "Estrutura, plano, saúde e comparação")
         action_row.addWidget(sql_button); action_row.addWidget(data_button); action_row.addWidget(database_button); action_row.addWidget(analysis_button); action_row.addWidget(self.commit_changes); action_row.addStretch(); right_layout.addLayout(action_row)
@@ -297,9 +315,18 @@ class MainWindow:
         self.open_data_button.setEnabled(enabled)
         if hasattr(self, "open_data_action"):
             self.open_data_action.setEnabled(enabled)
+        if hasattr(self, "edit_data_action"):
+            self.edit_data_action.setEnabled(enabled)
+            if not enabled and self.edit_data_action.isChecked():
+                self.edit_data_action.setChecked(False)
+        if hasattr(self, "generate_update_action"):
+            self.generate_update_action.setEnabled(enabled)
+        if hasattr(self, "apply_update_action") and not enabled:
+            self.apply_update_action.setEnabled(False)
         self.previous_data_button.setEnabled(False)
         self.next_data_button.setEnabled(enabled)
         if not enabled:
+            self._table_original_rows = []
             self.data_page_label.setText("Dados: nenhuma tabela selecionada")
 
     def _resize_sidebar(self, delta: int):
@@ -493,7 +520,7 @@ class MainWindow:
         self._log_event("Teste de conexão direto iniciado", profile=profile.name)
         result = test_connection(profile, password)
         if not result.ok:
-            self._log_event("Falha na conexão direta", profile=profile.name, message=result.message)
+            self._log_event("Falha na conexão direta", profile=profile.name, detail=result.message)
             self._on_profile_opened(result, [], "")
             return
         self._log_event("Conexão direta concluída", profile=profile.name)
@@ -697,7 +724,120 @@ class MainWindow:
         copy_action = menu.addAction("Copiar seleção")
         copy_action.setEnabled(bool(self.result_table.selectedItems()))
         copy_action.triggered.connect(self._copy_table_selection)
+        menu.addSeparator()
+        menu.addAction(self.edit_data_action)
+        menu.addAction(self.generate_update_action)
+        menu.addAction(self.apply_update_action)
         menu.exec(self.result_table.viewport().mapToGlobal(position))
+
+    def _toggle_data_edit_mode(self, enabled: bool):
+        """Enable local grid editing without opening a write transaction."""
+        from PySide6.QtWidgets import QAbstractItemView
+
+        self.edit_data_mode = bool(enabled)
+        triggers = (QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed) if enabled else QAbstractItemView.NoEditTriggers
+        self.result_table.setEditTriggers(triggers)
+        if enabled:
+            self.status.setText("Edição local ativada. Revise a linha e use 'Gerar UPDATE' para criar uma prévia.")
+        else:
+            self.status.setText("Edição local desativada; a grade voltou a ficar protegida.")
+
+    @staticmethod
+    def _sql_identifier(value: str) -> str:
+        return '"' + str(value).replace('"', '""') + '"'
+
+    @staticmethod
+    def _sql_literal(value, original=None) -> str:
+        """Render a conservative Firebird literal for a generated preview."""
+        import re
+
+        if value is None:
+            return "NULL"
+        text = str(value)
+        if original is None and text == "":
+            return "NULL"
+        if isinstance(original, bool):
+            return "TRUE" if text.strip().casefold() in {"1", "true", "t", "sim", "s"} else "FALSE"
+        if isinstance(original, (int, float)) and re.fullmatch(r"-?(?:\d+(?:\.\d*)?|\.\d+)", text.strip()):
+            return text.strip()
+        return "'" + text.replace("'", "''") + "'"
+
+    def _generate_row_update_preview(self):
+        """Put a safe, non-executing UPDATE preview in the SQL editor."""
+        from PySide6.QtWidgets import QMessageBox
+        from PySide6.QtCore import Qt
+
+        obj = self.selected_object
+        selected = self.result_table.selectedItems()
+        if obj is None or str(getattr(obj, "kind", "")).upper() != "TABLE":
+            self._show_message("Gerar UPDATE", "Selecione uma tabela.", warning=True)
+            return
+        if not selected:
+            self._show_message("Gerar UPDATE", "Selecione uma linha da grade.", warning=True)
+            return
+        row_index = selected[0].row()
+        columns = [self.result_table.horizontalHeaderItem(column).text() if self.result_table.horizontalHeaderItem(column) else f"COL_{column + 1}" for column in range(self.result_table.columnCount())]
+        current = []
+        original = []
+        for column in range(self.result_table.columnCount()):
+            item = self.result_table.item(row_index, column)
+            current.append(item.text() if item is not None else "")
+            raw = item.data(Qt.UserRole) if item is not None else None
+            if raw is None and row_index < len(self._table_original_rows) and column < len(self._table_original_rows[row_index]):
+                raw = self._table_original_rows[row_index][column]
+            original.append(raw)
+        changes = [(column, current[column], original[column]) for column in range(len(columns)) if current[column] != ("" if original[column] is None else str(original[column]))]
+        if not changes:
+            self.status.setText("Nenhuma alteração local foi encontrada na linha selecionada.")
+            return
+        assignments = ",\n    ".join(f"{self._sql_identifier(columns[column])} = {self._sql_literal(value, original[column])}" for column, value, _old in changes)
+        predicates = []
+        for column, value in enumerate(original):
+            identifier = self._sql_identifier(columns[column])
+            predicates.append(f"{identifier} IS NULL" if value is None else f"{identifier} = {self._sql_literal(value, value)}")
+        sql = (
+            "-- Prévia segura: nenhuma alteração foi aplicada.\n"
+            "-- A cláusula WHERE usa os valores originais da linha para evitar atualizar outra versão.\n"
+            f"UPDATE {self._sql_identifier(obj.name)}\n"
+            f"SET {assignments}\n"
+            f"WHERE {' AND '.join(predicates)};"
+        )
+        if self.editor is not None:
+            self.editor.setPlainText(sql)
+            self.sql_tabs.setCurrentWidget(self.editor)
+        self.status.setText("Prévia UPDATE gerada. Revise o SQL antes de executar; nada foi gravado.")
+        self._log_event("Prévia UPDATE gerada", table=obj.name, row=row_index, changes=len(changes))
+        if hasattr(self, "apply_update_action"):
+            self.apply_update_action.setEnabled(True)
+
+    def _apply_update_preview(self):
+        """Execute the reviewed UPDATE only after an explicit confirmation."""
+        from PySide6.QtWidgets import QMessageBox
+        from .sql import execute_sql
+
+        sql_text = self.editor.toPlainText().strip() if self.editor is not None else ""
+        if not sql_text or "UPDATE" not in sql_text.upper():
+            self._show_message("Aplicar UPDATE", "Gere ou revise uma prévia UPDATE antes de aplicar.", warning=True)
+            return
+        answer = QMessageBox.question(
+            self._window,
+            "Confirmar alteração no banco",
+            "A instrução UPDATE será executada e confirmada no banco. Deseja continuar?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            self.status.setText("UPDATE cancelado; nenhuma alteração foi aplicada.")
+            return
+        profile = self._query_profile()
+        result = execute_sql(profile, sql_text, self._password_for(profile), commit=True)
+        self._log_event("UPDATE de grade aplicado", profile=profile.name, ok=result.ok, detail=result.message)
+        if result.ok:
+            self.status.setText("UPDATE aplicado e confirmado. Recarregue os dados para conferir a linha.")
+            self.apply_update_action.setEnabled(False)
+        else:
+            self.status.setText(f"Falha ao aplicar UPDATE: {result.message}")
+            self._show_message("Falha ao aplicar UPDATE", result.message, warning=True)
 
     def _copy_table_selection(self):
         items = self.result_table.selectedItems()
@@ -720,6 +860,7 @@ class MainWindow:
     def _load_table_page(self, page: int):
         from .sql import execute_sql
         from PySide6.QtWidgets import QTableWidgetItem
+        from PySide6.QtCore import Qt
 
         obj = self.selected_object
         if obj is None or obj.kind.upper() != "TABLE":
@@ -737,13 +878,16 @@ class MainWindow:
             self._show_message("Falha ao abrir dados", result.message)
             return False
         self.result_table.clear()
+        self._table_original_rows = [tuple(row) for row in result.rows]
         self.result_table.setSortingEnabled(False)
         self.result_table.setColumnCount(len(result.columns))
         self.result_table.setRowCount(len(result.rows))
         self.result_table.setHorizontalHeaderLabels(result.columns)
         for row_index, row in enumerate(result.rows):
             for column_index, value in enumerate(row):
-                self.result_table.setItem(row_index, column_index, QTableWidgetItem("" if value is None else str(value)))
+                item = QTableWidgetItem("" if value is None else str(value))
+                item.setData(Qt.UserRole, value)
+                self.result_table.setItem(row_index, column_index, item)
         self.result_table.resizeColumnsToContents()
         self.result_table.setSortingEnabled(True)
         self._filter_data_rows(self.data_filter.text())
@@ -920,7 +1064,7 @@ class MainWindow:
 
         profile = self._profile_from_form()
         result = test_connection(profile, self._password_for(profile))
-        self._log_event("Teste de conexão", profile=profile.name, ok=result.ok, message=result.message)
+        self._log_event("Teste de conexão", profile=profile.name, ok=result.ok, detail=result.message)
         self.status.setText(result.message)
         if not result.ok:
             self._show_message("Falha ao testar conexão", result.message)
@@ -963,11 +1107,19 @@ class MainWindow:
                 return
         profile = self._query_profile()
         result = execute_sql(profile, sql_text, self._password_for(profile), commit=commit)
-        self._log_event("SQL executado", profile=profile.name, statement=statement.split(None, 1)[0] if statement else "", commit=commit, ok=result.ok, rows=len(result.rows), message=result.message)
+        self._log_event("SQL executado", profile=profile.name, statement=statement.split(None, 1)[0] if statement else "", commit=commit, ok=result.ok, rows=len(result.rows), detail=result.message)
         self._add_query_history(sql_text)
         suffix = " Alterações confirmadas." if changes_data and commit and result.ok else (" Alterações desfeitas (modo seguro)." if changes_data and result.ok else "")
         self.status.setText(result.message + suffix)
         self.result_tabs.setCurrentWidget(self.result_table)
+        self._table_original_rows = []
+        if hasattr(self, "edit_data_action"):
+            self.edit_data_action.setChecked(False)
+            self.edit_data_action.setEnabled(False)
+        if hasattr(self, "generate_update_action"):
+            self.generate_update_action.setEnabled(False)
+        if hasattr(self, "apply_update_action"):
+            self.apply_update_action.setEnabled(False)
         self.result_table.clear()
         self.result_table.setColumnCount(len(result.columns)); self.result_table.setRowCount(len(result.rows))
         self.result_table.setHorizontalHeaderLabels(result.columns)
