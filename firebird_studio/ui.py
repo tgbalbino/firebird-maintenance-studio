@@ -75,8 +75,11 @@ class MainWindow:
             QTreeWidgetItem,
             QSizePolicy,
             QAbstractItemView,
+            QToolButton,
+            QMenu,
         )
         from PySide6.QtCore import QObject, QThread, Signal, Slot, QSettings, Qt, QTimer
+        from PySide6.QtGui import QAction
 
         self._window = QMainWindow()
         self.show = self._window.show
@@ -179,27 +182,30 @@ class MainWindow:
         right_layout.addLayout(connection_row)
         right_layout.addWidget(QLabel("Janelas SQL")); right_layout.addWidget(self.sql_tabs, 1)
         action_row = QHBoxLayout()
-        new_sql_button = QPushButton("Nova janela SQL"); new_sql_button.clicked.connect(self._new_sql_tab)
-        execute_button = QPushButton("Executar SQL"); execute_button.clicked.connect(self.execute_selected)
-        selection_button = QPushButton("Executar seleção"); selection_button.clicked.connect(self.execute_selection)
+        action_row.setSpacing(6)
+        def menu_button(label, entries, tooltip):
+            button = QToolButton()
+            button.setText(label)
+            button.setToolTip(tooltip)
+            button.setPopupMode(QToolButton.InstantPopup)
+            menu = QMenu(button)
+            for text, callback in entries:
+                action = menu.addAction(text)
+                action.triggered.connect(callback)
+            button.setMenu(menu)
+            return button
+
         self.commit_changes = QCheckBox("Confirmar alterações")
         self.commit_changes.setToolTip("Quando marcado, confirma DDL/DML. Desmarcado, alterações são desfeitas ao terminar a execução.")
-        export_button = QPushButton("Exportar CSV"); export_button.clicked.connect(self.export_result_csv)
-        json_button = QPushButton("Exportar JSON"); json_button.clicked.connect(self.export_result_json)
-        save_sql_button = QPushButton("Salvar SQL"); save_sql_button.clicked.connect(self.save_sql_file)
-        script_button = QPushButton("Executar arquivo SQL"); script_button.clicked.connect(self.execute_script_file)
-        backup_button = QPushButton("Backup"); backup_button.clicked.connect(self.execute_backup)
-        restore_button = QPushButton("Restore"); restore_button.clicked.connect(self.execute_restore)
-        schema_button = QPushButton("Ler estrutura"); schema_button.clicked.connect(self.inspect_schema)
-        plan_button = QPushButton("Ver plano"); plan_button.clicked.connect(self.inspect_plan)
-        health_button = QPushButton("Saúde"); health_button.clicked.connect(self.inspect_health)
-        sessions_button = QPushButton("Sessões"); sessions_button.clicked.connect(self.inspect_sessions)
-        validate_button = QPushButton("Validar"); validate_button.clicked.connect(self.validate_database)
-        compare_button = QPushButton("Comparar"); compare_button.clicked.connect(self.compare_selected)
-        self.open_data_action = QPushButton("Dados da tabela")
+        self.open_data_action = QAction("Dados da tabela", self._window)
         self.open_data_action.setEnabled(False)
-        self.open_data_action.clicked.connect(self.open_table_data)
-        action_row.addWidget(new_sql_button); action_row.addWidget(execute_button); action_row.addWidget(selection_button); action_row.addWidget(self.commit_changes); action_row.addWidget(export_button); action_row.addWidget(json_button); action_row.addWidget(save_sql_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addWidget(health_button); action_row.addWidget(sessions_button); action_row.addWidget(validate_button); action_row.addWidget(compare_button); action_row.addWidget(self.open_data_action); action_row.addStretch(); right_layout.addLayout(action_row)
+        self.open_data_action.triggered.connect(self.open_table_data)
+        sql_button = menu_button("SQL", [("Nova janela SQL", self._new_sql_tab), ("Executar SQL", self.execute_selected), ("Executar seleção", self.execute_selection), ("Executar arquivo SQL", self.execute_script_file), ("Salvar SQL", self.save_sql_file)], "Executar comandos e gerenciar janelas SQL")
+        data_button = menu_button("Dados", [("Exportar CSV", self.export_result_csv), ("Exportar JSON", self.export_result_json)], "Exportar resultados e abrir dados de tabelas")
+        data_button.menu().addAction(self.open_data_action)
+        database_button = menu_button("Banco", [("Backup", self.execute_backup), ("Restore", self.execute_restore)], "Operações de backup e restore")
+        analysis_button = menu_button("Análise", [("Ler estrutura", self.inspect_schema), ("Ver plano", self.inspect_plan), ("Saúde", self.inspect_health), ("Sessões", self.inspect_sessions), ("Validar integridade", self.validate_database), ("Comparar estruturas", self.compare_selected)], "Estrutura, plano, saúde e comparação")
+        action_row.addWidget(sql_button); action_row.addWidget(data_button); action_row.addWidget(database_button); action_row.addWidget(analysis_button); action_row.addWidget(self.commit_changes); action_row.addStretch(); right_layout.addLayout(action_row)
         pagination_row = QHBoxLayout()
         self.previous_data_button = QPushButton("Anterior")
         self.previous_data_button.setEnabled(False)
