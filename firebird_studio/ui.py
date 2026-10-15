@@ -587,7 +587,7 @@ class MainWindow:
         profile_item.takeChildren()
         groups = {}
         for obj in objects:
-            label = {"TABLE": "Tabelas", "VIEW": "Views", "PROCEDURE": "Procedures", "FUNCTION": "Functions", "TRIGGER": "Triggers"}.get(obj.kind, obj.kind.title())
+            label = {"TABLE": "Tabelas", "VIEW": "Views", "PROCEDURE": "Procedures", "FUNCTION": "Functions", "TRIGGER": "Triggers", "DOMAIN": "Domínios", "INDEX": "Índices"}.get(obj.kind, obj.kind.title())
             groups.setdefault(label, []).append(obj)
         for label in sorted(groups):
             parent = QTreeWidgetItem([f"{label} ({len(groups[label])})"])
@@ -733,7 +733,7 @@ class MainWindow:
             objects = self.profile_objects.get(profile.name, [])
             groups = {}
             for obj in objects:
-                label = {"TABLE": "Tabelas", "VIEW": "Views", "PROCEDURE": "Procedures", "FUNCTION": "Functions", "TRIGGER": "Triggers"}.get(obj.kind, obj.kind.title())
+                label = {"TABLE": "Tabelas", "VIEW": "Views", "PROCEDURE": "Procedures", "FUNCTION": "Functions", "TRIGGER": "Triggers", "DOMAIN": "Domínios", "INDEX": "Índices"}.get(obj.kind, obj.kind.title())
                 groups.setdefault(label, []).append(obj)
             for label in sorted(groups):
                 parent = QTreeWidgetItem([f"{label} ({len(groups[label])})"])
