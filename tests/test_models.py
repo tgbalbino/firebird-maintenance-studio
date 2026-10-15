@@ -8,6 +8,7 @@ from firebird_studio.script_runner import build_isql_args, run_script
 from firebird_studio.backup import build_gbak_args, run_gbak
 from firebird_studio.schema import SchemaObject, compare_schema, generate_migration
 from firebird_studio.catalog import _field_type
+from firebird_studio.plan import build_plan_script, parse_plan, suggest_improvements
 
 
 class ProfileTests(unittest.TestCase):
@@ -76,3 +77,11 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(_field_type(8, 4, 0, None), "INTEGER")
         self.assertEqual(_field_type(14, 20, 0, None), "CHAR(20)")
         self.assertEqual(_field_type(261, 0, 0, None), "BLOB")
+
+    def test_plan_is_plan_only_and_tree_has_nodes(self):
+        script = build_plan_script("select * from CUSTOMER where ID = 1", "5")
+        self.assertIn("SET PLANONLY ON", script)
+        self.assertIn("SET EXPLAIN ON", script)
+        tree = parse_plan("PLAN (CUSTOMER INDEX (PK_CUSTOMER))")
+        self.assertEqual(tree.children[0].label, "CUSTOMER INDEX (PK_CUSTOMER")
+        self.assertTrue(suggest_improvements("PLAN (CUSTOMER NATURAL)", "select * from CUSTOMER"))

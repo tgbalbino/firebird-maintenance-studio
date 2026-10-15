@@ -77,7 +77,8 @@ class MainWindow:
         backup_button = QPushButton("Backup"); backup_button.clicked.connect(self.execute_backup)
         restore_button = QPushButton("Restore"); restore_button.clicked.connect(self.execute_restore)
         schema_button = QPushButton("Ler estrutura"); schema_button.clicked.connect(self.inspect_schema)
-        action_row.addWidget(test_button); action_row.addWidget(execute_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addStretch(); right_layout.addLayout(action_row)
+        plan_button = QPushButton("Ver plano"); plan_button.clicked.connect(self.inspect_plan)
+        action_row.addWidget(test_button); action_row.addWidget(execute_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addStretch(); right_layout.addLayout(action_row)
         right_layout.addWidget(self.result_table); right_layout.addWidget(self.status)
         splitter = QSplitter(); splitter.addWidget(left); splitter.addWidget(right); splitter.setSizes([260, 840])
         self._window.setCentralWidget(splitter)
@@ -183,3 +184,25 @@ class MainWindow:
             return
         self.editor.setPlainText("\n".join(f"{obj.kind}: {obj.name}\n{obj.ddl}" for obj in objects))
         self.status.setText(f"Estrutura lida: {len(objects)} objeto(s).")
+
+    def inspect_plan(self):
+        from .credentials import CredentialStore
+        from .plan import explain_query
+
+        profile = self._profile_from_form()
+        if not profile.isql_path:
+            self.status.setText("Configure o caminho do isql no perfil antes de analisar o plano.")
+            return
+        result = explain_query(profile, self.editor.toPlainText(), self.password.text() or CredentialStore().get(self.name.text()), Path(profile.isql_path))
+        if not result.ok:
+            self.status.setText(result.error)
+            return
+        lines = ["ÁRVORE DO PLANO", ""]
+        def visit(node, depth=0):
+            if node.label != "Plano de acesso": lines.append("  " * depth + "• " + node.label)
+            for child in node.children: visit(child, depth + (0 if node.label == "Plano de acesso" else 1))
+        visit(result.tree)
+        lines.extend(["", "SUGESTÕES", ""])
+        lines.extend(f"- {item}" for item in result.suggestions)
+        self.editor.setPlainText("\n".join(lines) + "\n\nSAÍDA ISQL\n" + result.raw)
+        self.status.setText("Plano analisado sem executar a consulta.")

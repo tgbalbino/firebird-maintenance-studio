@@ -2,7 +2,7 @@
 
 Projeto de uma aplicação desktop Windows, de código aberto, para administração e manutenção de bancos Firebird 2.5, 3, 4 e 5. A referência de experiência é o IBExpert, com foco inicial nas tarefas de manutenção mais frequentes.
 
-**Estado atual:** primeira base executável criada, ainda em validação técnica. A interface oferece perfis de conexão sem senhas, teste de conexão, execução de uma instrução SQL com resultado tabular, execução de arquivos SQL pelo `isql`, backup/restore pelo `gbak` e leitura inicial da estrutura do banco. O núcleo de comparação identifica adições, remoções e alterações e gera prévia de migração. Saúde ainda será implementada. A compatibilidade precisa ser comprovada com bancos de teste de cada versão.
+**Estado atual:** primeira base executável criada, ainda em validação técnica. A interface oferece perfis de conexão sem senhas, teste de conexão, execução de uma instrução SQL com resultado tabular, execução de arquivos SQL pelo `isql`, backup/restore pelo `gbak`, leitura inicial da estrutura do banco e análise de plano com `SET PLANONLY`/`SET EXPLAIN`. O núcleo de comparação identifica adições, remoções e alterações e gera prévia de migração. Saúde ainda será implementada. A compatibilidade precisa ser comprovada com bancos de teste de cada versão.
 
 Para preparar um ambiente de desenvolvimento:
 
