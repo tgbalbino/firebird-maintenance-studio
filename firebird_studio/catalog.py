@@ -78,8 +78,18 @@ def load_schema(profile: ConnectionProfile, password: str | None = None) -> list
             objects.append(SchemaObject("VIEW", _text(name), f'CREATE VIEW "{_text(name)}" AS\n{_text(source)}'))
         for name, source in _rows(connection, "SELECT TRIM(RDB$PROCEDURE_NAME), RDB$PROCEDURE_SOURCE FROM RDB$PROCEDURES WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0"):
             objects.append(SchemaObject("PROCEDURE", _text(name), f'CREATE PROCEDURE "{_text(name)}"\n{_text(source)}'))
-        for name, source in _rows(connection, "SELECT TRIM(RDB$FUNCTION_NAME), RDB$FUNCTION_SOURCE FROM RDB$FUNCTIONS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0"):
-            objects.append(SchemaObject("FUNCTION", _text(name), f'CREATE FUNCTION "{_text(name)}"\n{_text(source)}'))
+        # Firebird 2.5 does not expose RDB$FUNCTION_SOURCE. Keep the
+        # connection usable and list functions only when their source column
+        # exists (Firebird 3+). External/UDF functions on 2.5 remain usable
+        # through SQL, but their source cannot be reconstructed from the
+        # system tables.
+        if profile.version != "2.5":
+            try:
+                function_rows = _rows(connection, "SELECT TRIM(RDB$FUNCTION_NAME), RDB$FUNCTION_SOURCE FROM RDB$FUNCTIONS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0")
+            except Exception:
+                function_rows = []
+            for name, source in function_rows:
+                objects.append(SchemaObject("FUNCTION", _text(name), f'CREATE FUNCTION "{_text(name)}"\n{_text(source)}'))
         for name, source in _rows(connection, "SELECT TRIM(RDB$TRIGGER_NAME), RDB$TRIGGER_SOURCE FROM RDB$TRIGGERS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0"):
             objects.append(SchemaObject("TRIGGER", _text(name), f'CREATE TRIGGER "{_text(name)}"\n{_text(source)}'))
     return objects
