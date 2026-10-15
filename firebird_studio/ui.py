@@ -198,11 +198,12 @@ class MainWindow:
         schema_button = QPushButton("Ler estrutura"); schema_button.clicked.connect(self.inspect_schema)
         plan_button = QPushButton("Ver plano"); plan_button.clicked.connect(self.inspect_plan)
         health_button = QPushButton("Saúde"); health_button.clicked.connect(self.inspect_health)
+        validate_button = QPushButton("Validar"); validate_button.clicked.connect(self.validate_database)
         compare_button = QPushButton("Comparar"); compare_button.clicked.connect(self.compare_selected)
         self.open_data_action = QPushButton("Dados da tabela")
         self.open_data_action.setEnabled(False)
         self.open_data_action.clicked.connect(self.open_table_data)
-        action_row.addWidget(new_sql_button); action_row.addWidget(execute_button); action_row.addWidget(selection_button); action_row.addWidget(self.commit_changes); action_row.addWidget(export_button); action_row.addWidget(json_button); action_row.addWidget(save_sql_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addWidget(health_button); action_row.addWidget(compare_button); action_row.addWidget(self.open_data_action); action_row.addStretch(); right_layout.addLayout(action_row)
+        action_row.addWidget(new_sql_button); action_row.addWidget(execute_button); action_row.addWidget(selection_button); action_row.addWidget(self.commit_changes); action_row.addWidget(export_button); action_row.addWidget(json_button); action_row.addWidget(save_sql_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addWidget(health_button); action_row.addWidget(validate_button); action_row.addWidget(compare_button); action_row.addWidget(self.open_data_action); action_row.addStretch(); right_layout.addLayout(action_row)
         pagination_row = QHBoxLayout()
         self.previous_data_button = QPushButton("Anterior")
         self.previous_data_button.setEnabled(False)
@@ -1090,6 +1091,25 @@ class MainWindow:
             lines.extend([f"[{finding.severity.upper()}] {finding.title}", f"Evidência: {finding.evidence}", f"Ação sugerida: {finding.recommendation}", ""])
         self.editor.setPlainText("\n".join(lines))
         self.status.setText(f"Saúde analisada: {len(report.findings)} recomendação(ões).")
+
+    def validate_database(self):
+        from .maintenance import validate_database
+        try:
+            profile = self._profile_from_form()
+            gfix_path = Path(self.gbak_path.text()).with_name("gfix.exe")
+            self.status.setText("Validando integridade com gfix...")
+            result = validate_database(profile, self._password_for(profile), gfix_path)
+        except Exception as exc:
+            self.status.setText(f"Falha ao validar banco: {exc}")
+            self._show_message("Falha ao validar banco", str(exc))
+            return
+        self.editor.setPlainText(result.output + ("\n" + result.error if result.error else ""))
+        self._log_event("Validação gfix concluída", ok=result.ok, error=result.error)
+        if result.ok:
+            self.status.setText("Validação concluída. Nenhum erro foi reportado pelo gfix.")
+        else:
+            self.status.setText("Validação encontrou problemas ou não pôde ser executada.")
+            self._show_message("Resultado da validação", result.error or result.output or "gfix retornou falha.", warning=True)
 
     def compare_selected(self):
         from .catalog import load_schema
