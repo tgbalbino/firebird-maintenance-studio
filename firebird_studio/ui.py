@@ -53,6 +53,7 @@ class MainWindow:
         self._open_thread = None
         self._open_worker = None
         self.selected_object = None
+        self.table_page = 0
         self.profiles = store.load()
         self.profile_list = QListWidget()
         self.profile_list.setMinimumHeight(120)
@@ -129,7 +130,16 @@ class MainWindow:
         self.open_data_action.setEnabled(False)
         self.open_data_action.clicked.connect(self.open_table_data)
         action_row.addWidget(test_button); action_row.addWidget(new_sql_button); action_row.addWidget(execute_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addWidget(health_button); action_row.addWidget(compare_button); action_row.addWidget(self.open_data_action); action_row.addStretch(); right_layout.addLayout(action_row)
-        right_layout.addWidget(self.result_table); right_layout.addWidget(self.status)
+        pagination_row = QHBoxLayout()
+        self.previous_data_button = QPushButton("Anterior")
+        self.previous_data_button.setEnabled(False)
+        self.previous_data_button.clicked.connect(lambda: self._load_table_page(self.table_page - 1))
+        self.data_page_label = QLabel("Dados: nenhuma tabela selecionada")
+        self.next_data_button = QPushButton("Próximas 200")
+        self.next_data_button.setEnabled(False)
+        self.next_data_button.clicked.connect(lambda: self._load_table_page(self.table_page + 1))
+        pagination_row.addWidget(self.previous_data_button); pagination_row.addWidget(self.data_page_label, 1); pagination_row.addWidget(self.next_data_button)
+        right_layout.addWidget(self.result_table); right_layout.addLayout(pagination_row); right_layout.addWidget(self.status)
         splitter = QSplitter(Qt.Horizontal); splitter.addWidget(left); splitter.addWidget(right)
         self.main_splitter = splitter
         splitter.setChildrenCollapsible(False)
@@ -178,6 +188,10 @@ class MainWindow:
         self.open_data_button.setEnabled(enabled)
         if hasattr(self, "open_data_action"):
             self.open_data_action.setEnabled(enabled)
+        self.previous_data_button.setEnabled(False)
+        self.next_data_button.setEnabled(enabled)
+        if not enabled:
+            self.data_page_label.setText("Dados: nenhuma tabela selecionada")
 
     def _resize_sidebar(self, delta: int):
         sizes = self.main_splitter.sizes()
@@ -357,6 +371,8 @@ class MainWindow:
         self.selected_object = obj
         self._set_table_data_enabled(obj.kind.upper() == "TABLE")
         if obj.kind.upper() == "TABLE":
+            self.table_page = 0
+            self.data_page_label.setText("Dados: tabela selecionada; clique em Dados da tabela")
             self.result_table.clear()
             self.result_table.setColumnCount(5)
             self.result_table.setHorizontalHeaderLabels(["Campo", "Tipo", "Tamanho", "Escala", "Aceita nulo"])
@@ -376,6 +392,9 @@ class MainWindow:
         self.status.setText(f"{obj.kind.title()} selecionado: {obj.name}. DDL carregado na janela SQL.")
 
     def open_table_data(self):
+        self._load_table_page(self.table_page)
+
+    def _load_table_page(self, page: int):
         from .sql import execute_sql
         from PySide6.QtWidgets import QTableWidgetItem
 
@@ -383,10 +402,13 @@ class MainWindow:
         if obj is None or obj.kind.upper() != "TABLE":
             self._show_message("Abrir dados", "Selecione uma tabela na árvore de objetos.", warning=True)
             return
+        page = max(0, page)
         profile = self._profile_from_form()
         table_name = obj.name.replace('"', '""')
-        self.status.setText(f"Carregando até 200 linhas de {obj.name}...")
-        result = execute_sql(profile, f'SELECT FIRST 200 * FROM "{table_name}"', self._password_for(profile))
+        start = page * 200 + 1
+        end = start + 199
+        self.status.setText(f"Carregando linhas {start} a {end} de {obj.name}...")
+        result = execute_sql(profile, f'SELECT * FROM "{table_name}" ROWS {start} TO {end}', self._password_for(profile))
         if not result.ok:
             self.status.setText(result.message)
             self._show_message("Falha ao abrir dados", result.message)
@@ -399,7 +421,11 @@ class MainWindow:
             for column_index, value in enumerate(row):
                 self.result_table.setItem(row_index, column_index, QTableWidgetItem("" if value is None else str(value)))
         self.result_table.resizeColumnsToContents()
-        self.status.setText(f"Dados carregados: {len(result.rows)} linha(s), limite de 200.")
+        self.table_page = page
+        self.previous_data_button.setEnabled(page > 0)
+        self.next_data_button.setEnabled(len(result.rows) == 200)
+        self.data_page_label.setText(f"Página {page + 1} · linhas {start}-{start + max(0, len(result.rows) - 1)}")
+        self.status.setText(f"Dados carregados: {len(result.rows)} linha(s).")
 
     def open_object(self, item, _column=0):
         obj = item.data(0, 32)
