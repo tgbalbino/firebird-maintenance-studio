@@ -116,6 +116,54 @@ def load_schema(profile: ConnectionProfile, password: str | None = None, detaile
                 objects.append(SchemaObject("FUNCTION", _text(name), f'CREATE FUNCTION "{_text(name)}"\n{_text(source)}'))
         for name, source in _rows(connection, "SELECT TRIM(RDB$TRIGGER_NAME), RDB$TRIGGER_SOURCE FROM RDB$TRIGGERS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0"):
             objects.append(SchemaObject("TRIGGER", _text(name), f'CREATE TRIGGER "{_text(name)}"\n{_text(source)}'))
+        # Domains are included in the full snapshot so schema comparison does
+        # not silently ignore reusable field definitions.
+        try:
+            domain_rows = _rows(connection, """
+                SELECT TRIM(RDB$FIELD_NAME), RDB$FIELD_TYPE, RDB$FIELD_LENGTH,
+                       RDB$FIELD_SCALE, RDB$FIELD_PRECISION, RDB$NULL_FLAG
+                FROM RDB$FIELDS
+                WHERE COALESCE(RDB$SYSTEM_FLAG, 0)=0 AND RDB$FIELD_NAME NOT LIKE 'RDB$%'
+                ORDER BY RDB$FIELD_NAME
+            """)
+        except Exception:
+            domain_rows = []
+        for name, field_type, length, scale, precision, null_flag in domain_rows:
+            domain_name = _text(name)
+            type_name = _field_type(int(field_type), int(length), int(scale), int(precision) if precision is not None else None)
+            suffix = " NOT NULL" if null_flag else ""
+            objects.append(SchemaObject("DOMAIN", domain_name, f'CREATE DOMAIN "{domain_name}" AS {type_name}{suffix}'))
+
+        # Indexes need their segments grouped before generating a reviewable
+        # CREATE INDEX statement. Expression indexes without segments remain
+        # visible with a catalog note instead of being dropped silently.
+        try:
+            index_rows = _rows(connection, """
+                SELECT TRIM(i.RDB$INDEX_NAME), TRIM(i.RDB$RELATION_NAME),
+                       COALESCE(i.RDB$UNIQUE_FLAG, 0), TRIM(s.RDB$FIELD_NAME),
+                       s.RDB$FIELD_POSITION
+                FROM RDB$INDICES i
+                LEFT JOIN RDB$INDEX_SEGMENTS s ON s.RDB$INDEX_NAME = i.RDB$INDEX_NAME
+                WHERE COALESCE(i.RDB$SYSTEM_FLAG, 0)=0
+                ORDER BY i.RDB$INDEX_NAME, s.RDB$FIELD_POSITION
+            """)
+        except Exception:
+            index_rows = []
+        grouped_indexes: dict[str, dict[str, Any]] = {}
+        for index_name, relation_name, unique_flag, field_name, _position in index_rows:
+            clean_index = _text(index_name)
+            entry = grouped_indexes.setdefault(clean_index, {"relation": _text(relation_name), "unique": bool(unique_flag), "fields": []})
+            if field_name:
+                entry["fields"].append(_text(field_name))
+        for index_name, entry in grouped_indexes.items():
+            fields = entry["fields"]
+            if fields:
+                unique = "UNIQUE " if entry["unique"] else ""
+                quoted_fields = ", ".join(f'"{field}"' for field in fields)
+                ddl = f'CREATE {unique}INDEX "{index_name}" ON "{entry["relation"]}" ({quoted_fields})'
+            else:
+                ddl = f'-- INDEX {index_name}\n-- Expression index; review its expression in the source database.'
+            objects.append(SchemaObject("INDEX", index_name, ddl))
     return objects
 
 

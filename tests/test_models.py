@@ -74,6 +74,17 @@ class ProfileTests(unittest.TestCase):
         self.assertIn("NOT GENERATED", migration)
         self.assertNotIn("DROP TABLE", migration)
 
+    def test_schema_diff_includes_domains_and_indexes(self):
+        source = [
+            SchemaObject("DOMAIN", "DM_CODE", 'CREATE DOMAIN "DM_CODE" AS INTEGER'),
+            SchemaObject("INDEX", "IX_CUSTOMER_CODE", 'CREATE INDEX "IX_CUSTOMER_CODE" ON "CUSTOMER" ("CODE")'),
+        ]
+        changes = compare_schema(source, [])
+        migration = generate_migration(changes)
+        self.assertEqual({change.object.kind for change in changes}, {"DOMAIN", "INDEX"})
+        self.assertIn('CREATE DOMAIN "DM_CODE"', migration)
+        self.assertIn('CREATE INDEX "IX_CUSTOMER_CODE"', migration)
+
     def test_catalog_type_mapping_is_conservative(self):
         self.assertEqual(_field_type(8, 4, 0, None), "INTEGER")
         self.assertEqual(_field_type(14, 20, 0, None), "CHAR(20)")
