@@ -49,6 +49,8 @@ O produto será independente de IDE comercial. **IBExpert é apenas referência 
 
 O build portátil x64 fica em `outputs/FirebirdMaintenanceStudio/FirebirdMaintenanceStudio.exe` no ambiente de desenvolvimento. Para usar o aplicativo, mantenha a pasta `_internal` ao lado do executável. Configure no perfil os caminhos do `isql.exe` e `gbak.exe` correspondentes à versão do Firebird do banco.
 
+O pacote publicado nesta fase é **Windows x64**. Um build x86 exige um ambiente Python, PySide6 e clientes Firebird de 32 bits; ele não é gerado misturando componentes x64 e x86.
+
 ## Próxima validação prática
 
 Montar quatro bancos descartáveis (2.5, 3, 4 e 5) e executar a matriz de testes do roteiro. Não publicar senhas, arquivos `.fdb`, backups ou dados reais.
