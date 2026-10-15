@@ -13,6 +13,8 @@ class SchemaObject:
     # TABLE objects carry catalog column metadata for the object inspector.
     # Other object types leave this tuple empty.
     columns: tuple[tuple[str, str, str, str, str], ...] = ()
+    # TABLE objects may expose their primary-key fields for safe row edits.
+    primary_key: tuple[str, ...] = ()
 
     @property
     def key(self) -> tuple[str, str]:

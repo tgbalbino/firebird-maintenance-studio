@@ -247,6 +247,18 @@ def load_table_metadata(profile: ConnectionProfile, password: str | None, table_
             WHERE rf.RDB$RELATION_NAME = '{safe_name}'
             ORDER BY rf.RDB$FIELD_POSITION
         """)
+        try:
+            primary_key_rows = _rows(connection, f"""
+                SELECT TRIM(seg.RDB$FIELD_NAME)
+                FROM RDB$RELATION_CONSTRAINTS rc
+                JOIN RDB$INDEX_SEGMENTS seg ON seg.RDB$INDEX_NAME = rc.RDB$INDEX_NAME
+                WHERE rc.RDB$RELATION_NAME = '{safe_name}'
+                  AND rc.RDB$CONSTRAINT_TYPE = 'PRIMARY KEY'
+                ORDER BY seg.RDB$FIELD_POSITION
+            """)
+        except Exception:
+            # Keep table browsing available for restricted users/catalogs.
+            primary_key_rows = []
     columns = []
     definitions = []
     for name, field_type, length, scale, precision, null_flag in rows:
@@ -254,7 +266,8 @@ def load_table_metadata(profile: ConnectionProfile, password: str | None, table_
         columns.append((_text(name), type_name, str(length or ""), str(abs(scale or 0)), "NÃO" if null_flag else "SIM"))
         definitions.append(f'  "{_text(name)}" {type_name}')
     ddl = f'CREATE TABLE "{_text(table_name)}" (\n' + ",\n".join(definitions) + "\n)"
-    return SchemaObject("TABLE", _text(table_name), ddl, columns=tuple(columns))
+    primary_key = tuple(_text(row[0]) for row in primary_key_rows if row and _text(row[0]))
+    return SchemaObject("TABLE", _text(table_name), ddl, columns=tuple(columns), primary_key=primary_key)
 
 
 def load_object_definition(profile: ConnectionProfile, password: str | None, kind: str, object_name: str) -> SchemaObject:

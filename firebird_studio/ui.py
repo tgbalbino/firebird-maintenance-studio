@@ -654,7 +654,7 @@ class MainWindow:
             return
         self.selected_object = obj
         self._set_table_data_enabled(obj.kind.upper() == "TABLE")
-        if not obj.columns or "Use 'Ler estrutura'" in obj.ddl:
+        if not obj.columns or (obj.kind.upper() == "TABLE" and not getattr(obj, "primary_key", ()) ) or "Use 'Ler estrutura'" in obj.ddl:
             from .catalog import load_object_definition
             try:
                 profile = self._profile_from_form()
@@ -791,16 +791,25 @@ class MainWindow:
             self.status.setText("Nenhuma alteração local foi encontrada na linha selecionada.")
             return
         assignments = ",\n    ".join(f"{self._sql_identifier(columns[column])} = {self._sql_literal(value, original[column])}" for column, value, _old in changes)
+        primary_key = tuple(getattr(obj, "primary_key", ()) or ())
+        key_indexes = [column for column, name in enumerate(columns) if any(name.casefold() == key.casefold() for key in primary_key)]
+        predicate_indexes = key_indexes or list(range(len(columns)))
         predicates = []
-        for column, value in enumerate(original):
+        for column in predicate_indexes:
+            value = original[column]
             identifier = self._sql_identifier(columns[column])
             predicates.append(f"{identifier} IS NULL" if value is None else f"{identifier} = {self._sql_literal(value, value)}")
+        where_note = (
+            "-- A chave primária foi usada na cláusula WHERE.\n"
+            if key_indexes else
+            "-- Esta tabela não informou chave primária; todos os valores originais foram usados na cláusula WHERE.\n"
+        )
         sql = (
             "-- Prévia segura: nenhuma alteração foi aplicada.\n"
-            "-- A cláusula WHERE usa os valores originais da linha para evitar atualizar outra versão.\n"
-            f"UPDATE {self._sql_identifier(obj.name)}\n"
-            f"SET {assignments}\n"
-            f"WHERE {' AND '.join(predicates)};"
+            + where_note
+            + f"UPDATE {self._sql_identifier(obj.name)}\n"
+            + f"SET {assignments}\n"
+            + f"WHERE {' AND '.join(predicates)};"
         )
         if self.editor is not None:
             self.editor.setPlainText(sql)
