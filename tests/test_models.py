@@ -7,6 +7,7 @@ from firebird_studio.sql import execute_sql
 from firebird_studio.script_runner import build_isql_args, run_script
 from firebird_studio.backup import build_gbak_args, run_gbak
 from firebird_studio.schema import SchemaObject, compare_schema, generate_migration
+from firebird_studio.catalog import _field_type
 
 
 class ProfileTests(unittest.TestCase):
@@ -70,3 +71,8 @@ class ProfileTests(unittest.TestCase):
         migration = generate_migration(changes)
         self.assertIn("NOT GENERATED", migration)
         self.assertNotIn("DROP TABLE", migration)
+
+    def test_catalog_type_mapping_is_conservative(self):
+        self.assertEqual(_field_type(8, 4, 0, None), "INTEGER")
+        self.assertEqual(_field_type(14, 20, 0, None), "CHAR(20)")
+        self.assertEqual(_field_type(261, 0, 0, None), "BLOB")

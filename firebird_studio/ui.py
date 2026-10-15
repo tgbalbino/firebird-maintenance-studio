@@ -76,7 +76,8 @@ class MainWindow:
         script_button = QPushButton("Executar arquivo SQL"); script_button.clicked.connect(self.execute_script_file)
         backup_button = QPushButton("Backup"); backup_button.clicked.connect(self.execute_backup)
         restore_button = QPushButton("Restore"); restore_button.clicked.connect(self.execute_restore)
-        action_row.addWidget(test_button); action_row.addWidget(execute_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addStretch(); right_layout.addLayout(action_row)
+        schema_button = QPushButton("Ler estrutura"); schema_button.clicked.connect(self.inspect_schema)
+        action_row.addWidget(test_button); action_row.addWidget(execute_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addStretch(); right_layout.addLayout(action_row)
         right_layout.addWidget(self.result_table); right_layout.addWidget(self.status)
         splitter = QSplitter(); splitter.addWidget(left); splitter.addWidget(right); splitter.setSizes([260, 840])
         self._window.setCentralWidget(splitter)
@@ -170,3 +171,15 @@ class MainWindow:
         result = run_gbak(self._profile_from_form(), "restore", Path(source), Path(target), self.password.text() or CredentialStore().get(self.name.text()), Path(self.gbak_path.text()))
         self.editor.setPlainText(result.output + ("\n" + result.error if result.error else ""))
         self.status.setText("Restore concluído." if result.ok else f"Restore falhou: {result.error}")
+
+    def inspect_schema(self):
+        from .catalog import load_schema
+        from .credentials import CredentialStore
+
+        try:
+            objects = load_schema(self._profile_from_form(), self.password.text() or CredentialStore().get(self.name.text()))
+        except Exception as exc:
+            self.status.setText(f"Falha ao ler estrutura: {exc}")
+            return
+        self.editor.setPlainText("\n".join(f"{obj.kind}: {obj.name}\n{obj.ddl}" for obj in objects))
+        self.status.setText(f"Estrutura lida: {len(objects)} objeto(s).")
