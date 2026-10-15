@@ -503,7 +503,7 @@ class MainWindow:
         self._open_timeout_timer.start(20000)
 
     def _connection_timeout(self):
-        if self._open_thread is None or not self._open_thread.isRunning():
+        if self._open_thread is None:
             return
         self._log_event("Conexão cancelada por timeout", profile=self._opening_profile_name or "")
         self.status.setText("A conexão excedeu 20 segundos. Verifique o servidor, banco e senha.")
