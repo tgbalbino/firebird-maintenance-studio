@@ -198,12 +198,13 @@ class MainWindow:
         schema_button = QPushButton("Ler estrutura"); schema_button.clicked.connect(self.inspect_schema)
         plan_button = QPushButton("Ver plano"); plan_button.clicked.connect(self.inspect_plan)
         health_button = QPushButton("Saúde"); health_button.clicked.connect(self.inspect_health)
+        sessions_button = QPushButton("Sessões"); sessions_button.clicked.connect(self.inspect_sessions)
         validate_button = QPushButton("Validar"); validate_button.clicked.connect(self.validate_database)
         compare_button = QPushButton("Comparar"); compare_button.clicked.connect(self.compare_selected)
         self.open_data_action = QPushButton("Dados da tabela")
         self.open_data_action.setEnabled(False)
         self.open_data_action.clicked.connect(self.open_table_data)
-        action_row.addWidget(new_sql_button); action_row.addWidget(execute_button); action_row.addWidget(selection_button); action_row.addWidget(self.commit_changes); action_row.addWidget(export_button); action_row.addWidget(json_button); action_row.addWidget(save_sql_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addWidget(health_button); action_row.addWidget(validate_button); action_row.addWidget(compare_button); action_row.addWidget(self.open_data_action); action_row.addStretch(); right_layout.addLayout(action_row)
+        action_row.addWidget(new_sql_button); action_row.addWidget(execute_button); action_row.addWidget(selection_button); action_row.addWidget(self.commit_changes); action_row.addWidget(export_button); action_row.addWidget(json_button); action_row.addWidget(save_sql_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addWidget(health_button); action_row.addWidget(sessions_button); action_row.addWidget(validate_button); action_row.addWidget(compare_button); action_row.addWidget(self.open_data_action); action_row.addStretch(); right_layout.addLayout(action_row)
         pagination_row = QHBoxLayout()
         self.previous_data_button = QPushButton("Anterior")
         self.previous_data_button.setEnabled(False)
@@ -1091,6 +1092,21 @@ class MainWindow:
             lines.extend([f"[{finding.severity.upper()}] {finding.title}", f"Evidência: {finding.evidence}", f"Ação sugerida: {finding.recommendation}", ""])
         self.editor.setPlainText("\n".join(lines))
         self.status.setText(f"Saúde analisada: {len(report.findings)} recomendação(ões).")
+
+    def inspect_sessions(self):
+        from .health import list_sessions
+        try:
+            profile = self._profile_from_form()
+            sessions = list_sessions(profile, self._password_for(profile))
+        except Exception as exc:
+            self.status.setText(f"Falha ao ler sessões: {exc}")
+            self._show_message("Falha ao ler sessões", str(exc))
+            return
+        lines = ["SESSÕES ATIVAS", ""]
+        for session in sessions:
+            lines.append(f"ID: {session['id']} | Usuário: {session['user']} | Endereço: {session['address']} | Processo: {session['process']} | Estado: {session['state'] or 'N/D'}")
+        self.editor.setPlainText("\n".join(lines))
+        self.status.setText(f"Sessões lidas: {len(sessions)}.")
 
     def validate_database(self):
         from .maintenance import validate_database

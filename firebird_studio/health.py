@@ -27,6 +27,12 @@ def _fetch_one(connection: Any, query: str) -> tuple:
     return tuple(cursor.fetchone() or ())
 
 
+def _rows(connection: Any, query: str) -> list[tuple]:
+    cursor = connection.cursor()
+    cursor.execute(query)
+    return list(cursor.fetchall())
+
+
 def build_findings(metrics: dict[str, Any]) -> list[HealthFinding]:
     findings: list[HealthFinding] = []
     oldest_active = metrics.get("oldest_active")
@@ -63,3 +69,16 @@ def inspect_health(profile: ConnectionProfile, password: str | None = None) -> H
         "attachments": attachment[0] if attachment else 0,
     }
     return HealthReport(metrics, build_findings(metrics))
+
+
+def list_sessions(profile: ConnectionProfile, password: str | None = None) -> list[dict[str, Any]]:
+    """Return a read-only snapshot of active attachments."""
+    with open_database(profile, password) as connection:
+        try:
+            rows = _rows(connection, "SELECT MON$ATTACHMENT_ID, MON$USER, MON$REMOTE_ADDRESS, MON$REMOTE_PROCESS, MON$STATE FROM MON$ATTACHMENTS ORDER BY MON$ATTACHMENT_ID")
+        except Exception:
+            rows = _rows(connection, "SELECT MON$ATTACHMENT_ID, MON$USER, MON$REMOTE_ADDRESS, MON$REMOTE_PROCESS FROM MON$ATTACHMENTS ORDER BY MON$ATTACHMENT_ID")
+    sessions = []
+    for row in rows:
+        sessions.append({"id": row[0] if len(row) > 0 else None, "user": row[1] if len(row) > 1 else "", "address": row[2] if len(row) > 2 else "", "process": row[3] if len(row) > 3 else "", "state": row[4] if len(row) > 4 else None})
+    return sessions
