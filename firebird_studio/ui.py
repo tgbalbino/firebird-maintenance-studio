@@ -414,14 +414,11 @@ class MainWindow:
         """Open the selected database, like opening a connection in IBExpert."""
         self._log_event("open_profile chamado", current_item=self.profile_list.currentItem().text(0) if self.profile_list.currentItem() else "", form_name=self.name.text(), form_database=self.database.text())
         self._log_event("Verificando worker de conexão")
-        if self._open_thread is not None:
-            # Do not call isRunning() here. In packaged Windows builds a
-            # stale QThread wrapper can block in that method. The previous
-            # operation is already cancelled/cleaned up by its timeout and
-            # finished handlers, so discard stale Python references safely.
-            self._log_event("Referência de worker anterior descartada")
-            self._open_thread = None
-            self._open_worker = None
+        # Replace any stale worker references without querying the Qt object.
+        # Calling methods on a deleted QThread wrapper can block packaged
+        # Windows builds before the new connection starts.
+        self._open_thread = None
+        self._open_worker = None
 
         class OpenWorker(QObject):
             finished = Signal(object, object, str)
