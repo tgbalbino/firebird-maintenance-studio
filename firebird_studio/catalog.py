@@ -138,3 +138,40 @@ def load_table_metadata(profile: ConnectionProfile, password: str | None, table_
         definitions.append(f'  "{_text(name)}" {type_name}')
     ddl = f'CREATE TABLE "{_text(table_name)}" (\n' + ",\n".join(definitions) + "\n)"
     return SchemaObject("TABLE", _text(table_name), ddl, columns=tuple(columns))
+
+
+def load_object_definition(profile: ConnectionProfile, password: str | None, kind: str, object_name: str) -> SchemaObject:
+    """Read one object's source/definition when it is selected in the tree.
+
+    The initial catalog scan intentionally returns names only so a database
+    with many objects opens quickly.  This function keeps the expensive DDL
+    lookup lazy and works with the catalog columns available in Firebird 2.5+
+    (functions on 2.5 do not expose source text).
+    """
+    clean_kind = kind.upper().strip()
+    name = _text(object_name)
+    safe_name = name.replace("'", "''")
+    queries = {
+        "VIEW": ("SELECT RDB$VIEW_SOURCE FROM RDB$RELATIONS WHERE RDB$RELATION_NAME = ?", f'CREATE VIEW "{name}" AS\n'),
+        "PROCEDURE": ("SELECT RDB$PROCEDURE_SOURCE FROM RDB$PROCEDURES WHERE RDB$PROCEDURE_NAME = ?", f'CREATE PROCEDURE "{name}"\n'),
+        "FUNCTION": ("SELECT RDB$FUNCTION_SOURCE FROM RDB$FUNCTIONS WHERE RDB$FUNCTION_NAME = ?", f'CREATE FUNCTION "{name}"\n'),
+        "TRIGGER": ("SELECT RDB$TRIGGER_SOURCE FROM RDB$TRIGGERS WHERE RDB$TRIGGER_NAME = ?", f'CREATE TRIGGER "{name}"\n'),
+    }
+    if clean_kind == "TABLE":
+        return load_table_metadata(profile, password, name)
+    if clean_kind not in queries:
+        return SchemaObject(clean_kind, name, f"-- {clean_kind} {name}\n-- DDL detalhado ainda não está disponível para este tipo.")
+    query, prefix = queries[clean_kind]
+    with open_database(profile, password) as connection:
+        try:
+            rows = _rows(connection, query.replace("?", f"'{safe_name}'"))
+        except Exception:
+            rows = []
+    source = _text(rows[0][0]) if rows else ""
+    if source:
+        return SchemaObject(clean_kind, name, prefix + source)
+    if clean_kind == "FUNCTION" and profile.version == "2.5":
+        detail = "-- Firebird 2.5 não armazena o código-fonte de funções externas no catálogo."
+    else:
+        detail = "-- Não foi possível obter o código-fonte deste objeto no catálogo."
+    return SchemaObject(clean_kind, name, f"-- {clean_kind} {name}\n{detail}")

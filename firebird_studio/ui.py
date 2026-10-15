@@ -626,6 +626,21 @@ class MainWindow:
             return
         self.selected_object = obj
         self._set_table_data_enabled(obj.kind.upper() == "TABLE")
+        if not obj.columns or "Use 'Ler estrutura'" in obj.ddl:
+            from .catalog import load_object_definition
+            try:
+                profile = self._profile_from_form()
+                self.status.setText(f"Lendo DDL de {obj.kind.lower()} {obj.name}...")
+                from PySide6.QtWidgets import QApplication
+                QApplication.processEvents()
+                obj = load_object_definition(profile, self._password_for(profile), obj.kind, obj.name)
+                self.selected_object = obj
+                self._log_event("DDL de objeto carregado", kind=obj.kind, name=obj.name)
+            except Exception as exc:
+                self._log_event("Falha ao ler DDL de objeto", kind=obj.kind, name=obj.name, error=str(exc))
+                self.status.setText(f"Falha ao ler DDL: {exc}")
+                self._show_message("Falha ao ler DDL", str(exc), warning=True)
+                return
         if obj.kind.upper() == "TABLE":
             if not obj.columns:
                 from .catalog import load_table_metadata
@@ -722,6 +737,8 @@ class MainWindow:
         obj = item.data(0, 32)
         if obj is None:
             return
+        if self.selected_object is not None and self.selected_object.key == obj.key:
+            obj = self.selected_object
         self._show_object_sql(obj, new_tab=True)
         self.status.setText(f"Nova janela SQL aberta para {obj.kind.lower()} {obj.name}.")
 
