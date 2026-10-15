@@ -104,8 +104,11 @@ class MainWindow:
         form.addRow("Porta", self.port); form.addRow("Caminho ou alias", self.database)
         form.addRow("Firebird", self.version); form.addRow("Usuário", self.user); form.addRow("Senha", password_row); form.addRow("Charset", self.charset); form.addRow("Caminho isql", self.isql_path); form.addRow("Caminho gbak", self.gbak_path); form.addRow("Comparar com", self.target_profile)
         box = QGroupBox("Perfil selecionado"); box.setLayout(form)
+        self.profile_box = box
+        self.profile_toggle = QPushButton("Ocultar dados do cadastro")
+        self.profile_toggle.clicked.connect(self._toggle_profile_details)
         right = QWidget(); right.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
-        right_layout = QVBoxLayout(right); right_layout.addWidget(box)
+        right_layout = QVBoxLayout(right); right_layout.addWidget(self.profile_toggle); right_layout.addWidget(box)
         right_layout.addWidget(QLabel("Janelas SQL")); right_layout.addWidget(self.sql_tabs, 1)
         action_row = QHBoxLayout(); test_button = QPushButton("Testar conexão"); test_button.clicked.connect(self.test_selected)
         new_sql_button = QPushButton("Nova janela SQL"); new_sql_button.clicked.connect(self._new_sql_tab)
@@ -145,6 +148,19 @@ class MainWindow:
     def _save_splitter_state(self, splitter):
         self._settings.setValue("main_splitter_state", splitter.saveState())
         self._settings.sync()
+
+    def _toggle_profile_details(self):
+        visible = not self.profile_box.isVisible()
+        self.profile_box.setVisible(visible)
+        self.profile_toggle.setText("Ocultar dados do cadastro" if visible else "Mostrar dados do cadastro")
+
+    def _hide_profile_details(self):
+        self.profile_box.setVisible(False)
+        self.profile_toggle.setText("Mostrar dados do cadastro")
+
+    def _show_profile_details(self):
+        self.profile_box.setVisible(True)
+        self.profile_toggle.setText("Ocultar dados do cadastro")
 
     def _resize_sidebar(self, delta: int):
         sizes = self.main_splitter.sizes()
@@ -282,6 +298,7 @@ class MainWindow:
             self._show_message("Banco conectado com aviso", message, warning=True)
         else:
             self.status.setText(f"{result.message} Objetos carregados: {len(objects)}.")
+        self._hide_profile_details()
 
     def _populate_object_tree(self, objects):
         from PySide6.QtWidgets import QTreeWidgetItem
@@ -349,7 +366,7 @@ class MainWindow:
         self.target_profile.addItems([p.name for p in self.profiles])
 
     def new_profile(self):
-        self.profile_list.clearSelection(); self.name.clear(); self.database.clear(); self.password.clear(); self.save_password.setChecked(False); self.status.setText("Novo perfil.")
+        self._show_profile_details(); self.profile_list.clearSelection(); self.name.clear(); self.database.clear(); self.password.clear(); self.save_password.setChecked(False); self.status.setText("Novo perfil.")
 
     def delete_profile(self):
         selected = self.profile_list.currentRow()
@@ -445,6 +462,7 @@ class MainWindow:
                 message = f"{result.message}\n\nConectado, mas não foi possível ler os objetos:\n{exc}"
                 self.status.setText(message.replace("\n", " "))
                 self._show_message("Banco conectado com aviso", message, warning=True)
+            self._hide_profile_details()
 
     def execute_selected(self):
         from PySide6.QtWidgets import QTableWidgetItem
