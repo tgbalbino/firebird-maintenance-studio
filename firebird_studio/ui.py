@@ -38,6 +38,7 @@ class MainWindow:
             QTabWidget,
             QTreeWidget,
             QTreeWidgetItem,
+            QSizePolicy,
         )
 
         self._window = QMainWindow()
@@ -61,14 +62,16 @@ class MainWindow:
         self.status = QLabel("Pronto. Nenhum banco conectado.")
         self.object_tree = QTreeWidget(); self.object_tree.setHeaderLabels(["Objetos do banco"])
         self.object_tree.itemDoubleClicked.connect(self.open_object)
+        self.object_tree.setMinimumWidth(240)
+        self.object_tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.sql_tabs = QTabWidget(); self.sql_tabs.setTabsClosable(True); self.sql_tabs.tabCloseRequested.connect(self.close_sql_tab)
         self.sql_tabs.currentChanged.connect(self._sync_editor)
         self.editor = None
         self._new_sql_tab()
         self.result_table = QTableWidget(); self.result_table.setEditTriggers(QTableWidget.NoEditTriggers)
 
-        left = QWidget(); left_layout = QVBoxLayout(left)
-        left_layout.addWidget(QLabel("Bancos configurados")); left_layout.addWidget(self.profile_list)
+        left = QWidget(); left_layout = QVBoxLayout(left); left.setMinimumWidth(280)
+        left_layout.addWidget(QLabel("Bancos configurados (duplo clique para abrir)")); left_layout.addWidget(self.profile_list, 1)
         left_layout.addWidget(QLabel("Objetos do banco")); left_layout.addWidget(self.object_tree, 1)
         new_button = QPushButton("Novo perfil"); new_button.clicked.connect(self.new_profile); left_layout.addWidget(new_button)
         save_button = QPushButton("Salvar perfil"); save_button.clicked.connect(self.save_profile); left_layout.addWidget(save_button)
@@ -95,7 +98,9 @@ class MainWindow:
         splitter = QSplitter(); splitter.addWidget(left); splitter.addWidget(right); splitter.setSizes([260, 840])
         self._window.setCentralWidget(splitter)
         self.profile_list.currentRowChanged.connect(self.select_profile)
+        self.profile_list.itemDoubleClicked.connect(lambda _item: self.open_profile())
         self.refresh_profiles()
+        splitter.setSizes([360, 1040])
 
     def _sync_editor(self, index: int):
         self.editor = self.sql_tabs.widget(index) if index >= 0 else None
@@ -114,6 +119,13 @@ class MainWindow:
         widget = self.sql_tabs.widget(index)
         self.sql_tabs.removeTab(index)
         widget.deleteLater()
+
+    def open_profile(self):
+        """Open the selected database, like opening a connection in IBExpert."""
+        if self.profile_list.currentRow() < 0:
+            self.status.setText("Selecione um banco configurado.")
+            return
+        self.test_selected()
 
     def _populate_object_tree(self, objects):
         from PySide6.QtWidgets import QTreeWidgetItem
