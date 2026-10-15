@@ -122,8 +122,12 @@ class MainWindow:
         splitter.splitterMoved.connect(lambda _position, _index: self._save_splitter_state(splitter))
         self._window.setCentralWidget(splitter)
         self.profile_list.currentRowChanged.connect(self.select_profile)
-        self.profile_list.itemDoubleClicked.connect(lambda _item: self.open_profile())
-        self.profile_list.itemActivated.connect(lambda _item: self.open_profile())
+        # Use a named handler for both mouse and keyboard activation.  Keeping
+        # the item argument in the slot avoids the overloaded Qt signal/lambda
+        # mismatch that can make a double click appear to do nothing in a
+        # frozen executable.
+        self.profile_list.itemDoubleClicked.connect(self._on_profile_activated)
+        self.profile_list.itemActivated.connect(self._on_profile_activated)
         self.refresh_profiles()
         saved_splitter = self._settings.value("main_splitter_state")
         if saved_splitter and splitter.restoreState(saved_splitter):
@@ -153,6 +157,9 @@ class MainWindow:
         index = self.sql_tabs.addTab(editor, f"SQL {self.sql_tabs.count() + 1}")
         self.sql_tabs.setCurrentIndex(index)
         self.editor = editor
+
+    def _on_profile_activated(self, _item=None):
+        self.open_profile()
 
     def close_sql_tab(self, index: int):
         if self.sql_tabs.count() == 1:
@@ -192,14 +199,20 @@ class MainWindow:
 
         from .credentials import CredentialStore
 
-        profile = self._profile_from_form()
+        selected = self.profile_list.currentRow()
+        # When activation comes from the list, use the saved object directly.
+        # This avoids relying on the form repaint completing before the worker
+        # starts, which was the reason the button appeared to have no effect.
+        profile = self.profiles[selected] if 0 <= selected < len(self.profiles) else self._profile_from_form()
+        if 0 <= selected < len(self.profiles):
+            self.select_profile(selected)
         errors = profile.validate()
         if errors:
             message = " ".join(errors)
             self.status.setText(message)
             self._show_message("Não foi possível abrir o banco", message, warning=True)
             return
-        password = self.password.text() or CredentialStore().get(self.name.text())
+        password = self.password.text() or CredentialStore().get(profile.name)
         self.status.setText("Conectando e carregando objetos do banco...")
         self._open_thread = QThread()
         self._open_worker = OpenWorker(profile, password)
