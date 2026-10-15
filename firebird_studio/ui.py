@@ -78,6 +78,7 @@ class MainWindow:
         left_layout.addWidget(QLabel("Objetos do banco")); left_layout.addWidget(self.object_tree, 1)
         new_button = QPushButton("Novo perfil"); new_button.clicked.connect(self.new_profile); left_layout.addWidget(new_button)
         save_button = QPushButton("Salvar perfil"); save_button.clicked.connect(self.save_profile); left_layout.addWidget(save_button)
+        open_button = QPushButton("Abrir banco"); open_button.clicked.connect(self.open_profile); left_layout.addWidget(open_button)
         left_layout.addStretch()
 
         form = QFormLayout(); form.addRow("Nome", self.name); form.addRow("Host", self.host)
@@ -102,6 +103,7 @@ class MainWindow:
         self._window.setCentralWidget(splitter)
         self.profile_list.currentRowChanged.connect(self.select_profile)
         self.profile_list.itemDoubleClicked.connect(lambda _item: self.open_profile())
+        self.profile_list.itemActivated.connect(lambda _item, _column: self.open_profile())
         self.refresh_profiles()
         splitter.setSizes([360, 1040])
 
@@ -175,13 +177,26 @@ class MainWindow:
         self._open_thread = None
         self._open_worker = None
 
+    def _show_message(self, title: str, message: str, warning: bool = False):
+        from PySide6.QtWidgets import QMessageBox
+
+        box = QMessageBox(self._window)
+        box.setWindowTitle(title)
+        box.setText(message)
+        box.setIcon(QMessageBox.Warning if warning else QMessageBox.Critical)
+        box.setStandardButtons(QMessageBox.Ok)
+        box.exec()
+
     def _on_profile_opened(self, result, objects, schema_error):
         if not result.ok:
             self.status.setText(result.message)
+            self._show_message("Falha ao abrir banco", result.message)
             return
         self._populate_object_tree(objects)
         if schema_error:
-            self.status.setText(f"{result.message} Conectado, mas não foi possível ler objetos: {schema_error}")
+            message = f"{result.message}\n\nConectado, mas não foi possível ler os objetos:\n{schema_error}"
+            self.status.setText(message.replace("\n", " "))
+            self._show_message("Banco conectado com aviso", message, warning=True)
         else:
             self.status.setText(f"{result.message} Objetos carregados: {len(objects)}.")
 
@@ -232,8 +247,18 @@ class MainWindow:
 
     def save_profile(self):
         profile = self._profile_from_form(); errors = profile.validate()
-        if errors: self.status.setText(" ".join(errors)); return
+        if errors:
+            message = " ".join(errors)
+            self.status.setText(message)
+            self._show_message("Perfil inválido", message, warning=True)
+            return
         selected = self.profile_list.currentRow()
+        duplicate = next((item for index, item in enumerate(self.profiles) if index != selected and item.name.casefold() == profile.name.casefold()), None)
+        if duplicate is not None:
+            message = f"Já existe um banco configurado com o nome '{duplicate.name}'. Escolha outro nome."
+            self.status.setText(message)
+            self._show_message("Nome duplicado", message, warning=True)
+            return
         if 0 <= selected < len(self.profiles): self.profiles[selected] = profile
         else: self.profiles.append(profile)
         self.store.save(self.profiles); self.refresh_profiles(); self.status.setText("Perfil salvo sem senha.")
@@ -244,6 +269,9 @@ class MainWindow:
         from .credentials import CredentialStore
         result = test_connection(self._profile_from_form(), self.password.text() or CredentialStore().get(self.name.text()))
         self.status.setText(result.message)
+        if not result.ok:
+            self._show_message("Falha ao testar conexão", result.message)
+            return
         if result.ok:
             try:
                 from .catalog import load_schema
@@ -251,7 +279,9 @@ class MainWindow:
                 self._populate_object_tree(objects)
                 self.status.setText(f"{result.message} Objetos carregados: {len(objects)}.")
             except Exception as exc:
-                self.status.setText(f"{result.message} Conectado, mas não foi possível ler objetos: {exc}")
+                message = f"{result.message}\n\nConectado, mas não foi possível ler os objetos:\n{exc}"
+                self.status.setText(message.replace("\n", " "))
+                self._show_message("Banco conectado com aviso", message, warning=True)
 
     def execute_selected(self):
         from .credentials import CredentialStore
