@@ -39,7 +39,7 @@ def _text(value: Any) -> str:
 
 
 def _field_type(field_type: int, length: int, scale: int, precision: int | None) -> str:
-    names = {7: "SMALLINT", 8: "INTEGER", 10: "FLOAT", 12: "DATE", 13: "TIME", 14: "CHAR", 16: "BIGINT", 23: "BOOLEAN", 24: "DECFLOAT(16)", 25: "DECFLOAT(34)", 26: "INT128", 27: "DOUBLE PRECISION", 28: "TIME WITH TIME ZONE", 29: "TIMESTAMP WITH TIME ZONE", 35: "TIMESTAMP", 261: "BLOB"}
+    names = {7: "SMALLINT", 8: "INTEGER", 10: "FLOAT", 12: "DATE", 13: "TIME", 14: "CHAR", 16: "BIGINT", 23: "BOOLEAN", 24: "DECFLOAT(16)", 25: "DECFLOAT(34)", 26: "INT128", 27: "DOUBLE PRECISION", 28: "TIME WITH TIME ZONE", 29: "TIMESTAMP WITH TIME ZONE", 35: "TIMESTAMP", 37: "VARCHAR", 261: "BLOB"}
     name = names.get(field_type, "BLOB")
     if name in {"CHAR", "VARCHAR"}:
         return f"{name}({length})"
@@ -60,21 +60,26 @@ def load_schema(profile: ConnectionProfile, password: str | None = None) -> list
         for (table_name,) in table_rows:
             columns = _rows(connection, f"""
                 SELECT TRIM(rf.RDB$FIELD_NAME), f.RDB$FIELD_TYPE, f.RDB$FIELD_LENGTH,
-                       f.RDB$FIELD_SCALE, f.RDB$FIELD_PRECISION
+                       f.RDB$FIELD_SCALE, f.RDB$FIELD_PRECISION, rf.RDB$NULL_FLAG
                 FROM RDB$RELATION_FIELDS rf JOIN RDB$FIELDS f ON f.RDB$FIELD_NAME = rf.RDB$FIELD_SOURCE
                 WHERE rf.RDB$RELATION_NAME = '{_text(table_name).replace("'", "''")}'
                 ORDER BY rf.RDB$FIELD_POSITION
             """)
             definitions = []
-            for name, field_type, length, scale, precision in columns:
-                definitions.append(f'  "{_text(name)}" {_field_type(int(field_type), int(length), int(scale), int(precision) if precision is not None else None)}')
+            column_details = []
+            for name, field_type, length, scale, precision, null_flag in columns:
+                type_name = _field_type(int(field_type), int(length), int(scale), int(precision) if precision is not None else None)
+                column_details.append((_text(name), type_name, str(length or ""), str(abs(scale or 0)), "NÃO" if null_flag else "SIM"))
+                definitions.append(f'  "{_text(name)}" {type_name}')
             ddl = f'CREATE TABLE "{_text(table_name)}" (\n' + ",\n".join(definitions) + "\n)"
-            objects.append(SchemaObject("TABLE", _text(table_name), ddl))
+            objects.append(SchemaObject("TABLE", _text(table_name), ddl, columns=tuple(column_details)))
 
         for name, source in _rows(connection, "SELECT TRIM(RDB$RELATION_NAME), RDB$VIEW_SOURCE FROM RDB$RELATIONS WHERE RDB$VIEW_BLR IS NOT NULL AND COALESCE(RDB$SYSTEM_FLAG,0)=0"):
             objects.append(SchemaObject("VIEW", _text(name), f'CREATE VIEW "{_text(name)}" AS\n{_text(source)}'))
         for name, source in _rows(connection, "SELECT TRIM(RDB$PROCEDURE_NAME), RDB$PROCEDURE_SOURCE FROM RDB$PROCEDURES WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0"):
             objects.append(SchemaObject("PROCEDURE", _text(name), f'CREATE PROCEDURE "{_text(name)}"\n{_text(source)}'))
+        for name, source in _rows(connection, "SELECT TRIM(RDB$FUNCTION_NAME), RDB$FUNCTION_SOURCE FROM RDB$FUNCTIONS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0"):
+            objects.append(SchemaObject("FUNCTION", _text(name), f'CREATE FUNCTION "{_text(name)}"\n{_text(source)}'))
         for name, source in _rows(connection, "SELECT TRIM(RDB$TRIGGER_NAME), RDB$TRIGGER_SOURCE FROM RDB$TRIGGERS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0"):
             objects.append(SchemaObject("TRIGGER", _text(name), f'CREATE TRIGGER "{_text(name)}"\n{_text(source)}'))
     return objects

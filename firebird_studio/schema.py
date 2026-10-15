@@ -10,6 +10,9 @@ class SchemaObject:
     name: str
     ddl: str
     dependencies: tuple[str, ...] = ()
+    # TABLE objects carry catalog column metadata for the object inspector.
+    # Other object types leave this tuple empty.
+    columns: tuple[tuple[str, str, str, str, str], ...] = ()
 
     @property
     def key(self) -> tuple[str, str]:

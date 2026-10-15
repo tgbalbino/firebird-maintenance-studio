@@ -76,14 +76,15 @@ class MainWindow:
         self.gbak_path = QLineEdit(); self.gbak_path.setPlaceholderText("C:\\Firebird\\Firebird_5_0\\gbak.exe")
         self.status = QLabel("Pronto. Nenhum banco conectado.")
         self.object_tree = QTreeWidget(); self.object_tree.setHeaderLabels(["Objetos do banco"])
+        self.object_tree.itemClicked.connect(self.preview_object)
         self.object_tree.itemDoubleClicked.connect(self.open_object)
         self.object_tree.setMinimumWidth(240)
         self.object_tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.sql_tabs = QTabWidget(); self.sql_tabs.setTabsClosable(True); self.sql_tabs.tabCloseRequested.connect(self.close_sql_tab)
+        self.sql_tabs = QTabWidget(); self.sql_tabs.setMinimumHeight(320); self.sql_tabs.setTabsClosable(True); self.sql_tabs.tabCloseRequested.connect(self.close_sql_tab)
         self.sql_tabs.currentChanged.connect(self._sync_editor)
         self.editor = None
         self._new_sql_tab()
-        self.result_table = QTableWidget(); self.result_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.result_table = QTableWidget(); self.result_table.setMinimumHeight(180); self.result_table.setEditTriggers(QTableWidget.NoEditTriggers)
 
         left = QWidget(); left_layout = QVBoxLayout(left); left.setMinimumWidth(280)
         left_layout.addWidget(QLabel("Bancos configurados (duplo clique para abrir)")); left_layout.addWidget(self.profile_list, 1)
@@ -288,7 +289,7 @@ class MainWindow:
         self.object_tree.clear()
         groups = {}
         for obj in objects:
-            label = {"TABLE": "Tabelas", "VIEW": "Views", "PROCEDURE": "Procedures", "TRIGGER": "Triggers"}.get(obj.kind, obj.kind.title())
+            label = {"TABLE": "Tabelas", "VIEW": "Views", "PROCEDURE": "Procedures", "FUNCTION": "Functions", "TRIGGER": "Triggers"}.get(obj.kind, obj.kind.title())
             groups.setdefault(label, []).append(obj)
         for label in sorted(groups):
             parent = QTreeWidgetItem([f"{label} ({len(groups[label])})"])
@@ -299,13 +300,47 @@ class MainWindow:
                 parent.addChild(item)
             parent.setExpanded(True)
 
+    def _show_object_sql(self, obj, new_tab=False):
+        if new_tab:
+            self._new_sql_tab()
+        dml = ""
+        if obj.kind.upper() == "TABLE":
+            dml = f'\n\n-- DML de consulta\nSELECT * FROM "{obj.name}";\n\n-- DML de inserção (modelo)\n-- INSERT INTO "{obj.name}" (...) VALUES (...);\n\n-- DML de alteração (modelo)\n-- UPDATE "{obj.name}" SET ... WHERE ...;\n'
+        self.editor.setPlainText(obj.ddl + dml)
+        self.sql_tabs.setTabText(self.sql_tabs.currentIndex(), obj.name)
+
+    def preview_object(self, item, _column=0):
+        """Show metadata for tables and DDL for every selected object."""
+        from PySide6.QtWidgets import QTableWidgetItem
+
+        obj = item.data(0, 32)
+        if obj is None:
+            return
+        if obj.kind.upper() == "TABLE":
+            self.result_table.clear()
+            self.result_table.setColumnCount(5)
+            self.result_table.setHorizontalHeaderLabels(["Campo", "Tipo", "Tamanho", "Escala", "Aceita nulo"])
+            self.result_table.setRowCount(len(obj.columns))
+            for row, values in enumerate(obj.columns):
+                for column, value in enumerate(values):
+                    self.result_table.setItem(row, column, QTableWidgetItem(str(value)))
+            self.result_table.resizeColumnsToContents()
+        else:
+            self.result_table.clear()
+            self.result_table.setColumnCount(2)
+            self.result_table.setHorizontalHeaderLabels(["Objeto", "Tipo"])
+            self.result_table.setRowCount(1)
+            self.result_table.setItem(0, 0, QTableWidgetItem(obj.name))
+            self.result_table.setItem(0, 1, QTableWidgetItem(obj.kind))
+        self._show_object_sql(obj, new_tab=False)
+        self.status.setText(f"{obj.kind.title()} selecionado: {obj.name}. DDL carregado na janela SQL.")
+
     def open_object(self, item, _column=0):
         obj = item.data(0, 32)
         if obj is None:
             return
-        self._new_sql_tab()
-        self.editor.setPlainText(obj.ddl)
-        self.sql_tabs.setTabText(self.sql_tabs.currentIndex(), obj.name)
+        self._show_object_sql(obj, new_tab=True)
+        self.status.setText(f"Nova janela SQL aberta para {obj.kind.lower()} {obj.name}.")
 
     def refresh_profiles(self):
         self.profile_list.clear()
@@ -412,6 +447,7 @@ class MainWindow:
                 self._show_message("Banco conectado com aviso", message, warning=True)
 
     def execute_selected(self):
+        from PySide6.QtWidgets import QTableWidgetItem
         from .sql import execute_sql
 
         profile = self._profile_from_form()
