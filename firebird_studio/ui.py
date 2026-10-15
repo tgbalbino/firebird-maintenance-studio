@@ -453,7 +453,10 @@ class MainWindow:
                     self.progress.emit(f"Falha ao ler objetos: {exc}")
                     self.finished.emit(result, [], str(exc))
 
-        selected = selected_index if selected_index is not None else self._profile_index_for_item()
+        # Click handlers pass the already resolved index. Avoid querying the
+        # tree again here because currentItem()/parent() can re-enter Qt while
+        # a packaged Windows activation event is still being dispatched.
+        selected = int(selected_index) if selected_index is not None else -1
         self._log_event("Perfil identificado para abrir", selected=selected, profiles=len(self.profiles))
         # When activation comes from the list, use the saved object directly.
         # This avoids relying on the form repaint completing before the worker
