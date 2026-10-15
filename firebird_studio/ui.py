@@ -84,6 +84,11 @@ class MainWindow:
         self.object_tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.sql_tabs = QTabWidget(); self.sql_tabs.setMinimumHeight(320); self.sql_tabs.setTabsClosable(True); self.sql_tabs.tabCloseRequested.connect(self.close_sql_tab)
         self.sql_tabs.currentChanged.connect(self._sync_editor)
+        self.query_history = []
+        self.history_combo = QComboBox()
+        self.history_combo.setMinimumWidth(260)
+        self.history_combo.setPlaceholderText("Histórico SQL")
+        self.history_combo.activated.connect(self._load_history_query)
         self.editor = None
         self._new_sql_tab()
         self.result_table = QTableWidget(); self.result_table.setMinimumHeight(180); self.result_table.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -115,10 +120,13 @@ class MainWindow:
         self.profile_toggle.clicked.connect(self._toggle_profile_details)
         right = QWidget(); right.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
         right_layout = QVBoxLayout(right); right_layout.addWidget(self.profile_toggle); right_layout.addWidget(box)
+        history_row = QHBoxLayout(); history_row.addWidget(QLabel("Histórico SQL:")); history_row.addWidget(self.history_combo, 1)
+        right_layout.addLayout(history_row)
         right_layout.addWidget(QLabel("Janelas SQL")); right_layout.addWidget(self.sql_tabs, 1)
         action_row = QHBoxLayout(); test_button = QPushButton("Testar conexão"); test_button.clicked.connect(self.test_selected)
         new_sql_button = QPushButton("Nova janela SQL"); new_sql_button.clicked.connect(self._new_sql_tab)
         execute_button = QPushButton("Executar SQL"); execute_button.clicked.connect(self.execute_selected)
+        selection_button = QPushButton("Executar seleção"); selection_button.clicked.connect(self.execute_selection)
         script_button = QPushButton("Executar arquivo SQL"); script_button.clicked.connect(self.execute_script_file)
         backup_button = QPushButton("Backup"); backup_button.clicked.connect(self.execute_backup)
         restore_button = QPushButton("Restore"); restore_button.clicked.connect(self.execute_restore)
@@ -129,7 +137,7 @@ class MainWindow:
         self.open_data_action = QPushButton("Dados da tabela")
         self.open_data_action.setEnabled(False)
         self.open_data_action.clicked.connect(self.open_table_data)
-        action_row.addWidget(test_button); action_row.addWidget(new_sql_button); action_row.addWidget(execute_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addWidget(health_button); action_row.addWidget(compare_button); action_row.addWidget(self.open_data_action); action_row.addStretch(); right_layout.addLayout(action_row)
+        action_row.addWidget(test_button); action_row.addWidget(new_sql_button); action_row.addWidget(execute_button); action_row.addWidget(selection_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addWidget(health_button); action_row.addWidget(compare_button); action_row.addWidget(self.open_data_action); action_row.addStretch(); right_layout.addLayout(action_row)
         pagination_row = QHBoxLayout()
         self.previous_data_button = QPushButton("Anterior")
         self.previous_data_button.setEnabled(False)
@@ -245,6 +253,36 @@ class MainWindow:
         widget = self.sql_tabs.widget(index)
         self.sql_tabs.removeTab(index)
         widget.deleteLater()
+
+    def _add_query_history(self, sql: str):
+        text = sql.strip()
+        if not text:
+            return
+        self.query_history = [item for item in self.query_history if item != text]
+        self.query_history.insert(0, text)
+        self.query_history = self.query_history[:50]
+        self.history_combo.blockSignals(True)
+        self.history_combo.clear()
+        for item in self.query_history:
+            label = " ".join(item.split())
+            self.history_combo.addItem(label[:120], item)
+        self.history_combo.blockSignals(False)
+
+    def _load_history_query(self, index: int):
+        if index < 0:
+            return
+        query = self.history_combo.itemData(index)
+        if query is not None and self.editor is not None:
+            self.editor.setPlainText(str(query))
+
+    def execute_selection(self):
+        if self.editor is None:
+            return
+        selected = self.editor.textCursor().selectedText().replace("\u2029", "\n").strip()
+        if not selected:
+            self._show_message("Executar seleção", "Selecione uma instrução SQL no editor.", warning=True)
+            return
+        self._execute_sql_text(selected)
 
     def open_profile(self):
         """Open the selected database, like opening a connection in IBExpert."""
@@ -540,11 +578,17 @@ class MainWindow:
             self._hide_profile_details()
 
     def execute_selected(self):
+        if self.editor is None:
+            return
+        self._execute_sql_text(self.editor.toPlainText())
+
+    def _execute_sql_text(self, sql_text: str):
         from PySide6.QtWidgets import QTableWidgetItem
         from .sql import execute_sql
 
         profile = self._profile_from_form()
-        result = execute_sql(profile, self.editor.toPlainText(), self._password_for(profile))
+        result = execute_sql(profile, sql_text, self._password_for(profile))
+        self._add_query_history(sql_text)
         self.status.setText(result.message)
         self.result_table.clear()
         self.result_table.setColumnCount(len(result.columns)); self.result_table.setRowCount(len(result.rows))
