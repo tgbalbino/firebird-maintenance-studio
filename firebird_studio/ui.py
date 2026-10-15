@@ -39,6 +39,7 @@ class MainWindow:
             QTreeWidget,
             QTreeWidgetItem,
             QSizePolicy,
+            QAbstractItemView,
         )
         from PySide6.QtCore import QObject, QThread, Signal, Slot, QSettings, Qt
 
@@ -52,6 +53,10 @@ class MainWindow:
         self._open_worker = None
         self.profiles = store.load()
         self.profile_list = QListWidget()
+        self.profile_list.setMinimumHeight(120)
+        self.profile_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.profile_list.setTextElideMode(Qt.ElideNone)
+        self.profile_list.setSelectionMode(QAbstractItemView.SingleSelection)
         self.name = QLineEdit()
         self.host = QLineEdit("localhost")
         self.port = QSpinBox(); self.port.setRange(1, 65535); self.port.setValue(3050)
@@ -80,6 +85,11 @@ class MainWindow:
         new_button = QPushButton("Novo perfil"); new_button.clicked.connect(self.new_profile); left_layout.addWidget(new_button)
         save_button = QPushButton("Salvar perfil"); save_button.clicked.connect(self.save_profile); left_layout.addWidget(save_button)
         open_button = QPushButton("Abrir banco"); open_button.clicked.connect(self.open_profile); left_layout.addWidget(open_button)
+        resize_row = QHBoxLayout()
+        wider_button = QPushButton("Lateral +"); wider_button.clicked.connect(lambda: self._resize_sidebar(80))
+        narrower_button = QPushButton("Lateral -"); narrower_button.clicked.connect(lambda: self._resize_sidebar(-80))
+        resize_row.addWidget(wider_button); resize_row.addWidget(narrower_button)
+        left_layout.addLayout(resize_row)
         left_layout.addStretch()
 
         form = QFormLayout(); form.addRow("Nome", self.name); form.addRow("Host", self.host)
@@ -104,6 +114,7 @@ class MainWindow:
         self.main_splitter = splitter
         splitter.setChildrenCollapsible(False)
         splitter.setHandleWidth(10)
+        splitter.setStyleSheet("QSplitter::handle:horizontal { background-color: #9aa3ad; border-left: 1px solid #606872; border-right: 1px solid #606872; }")
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
         splitter.splitterMoved.connect(lambda _position, _index: self._save_splitter_state(splitter))
@@ -121,6 +132,14 @@ class MainWindow:
     def _save_splitter_state(self, splitter):
         self._settings.setValue("main_splitter_state", splitter.saveState())
         self._settings.sync()
+
+    def _resize_sidebar(self, delta: int):
+        sizes = self.main_splitter.sizes()
+        if len(sizes) != 2:
+            return
+        sidebar = max(280, min(sizes[0] + delta, max(400, sum(sizes) - 360)))
+        self.main_splitter.setSizes([sidebar, sum(sizes) - sidebar])
+        self._save_splitter_state(self.main_splitter)
 
     def _sync_editor(self, index: int):
         self.editor = self.sql_tabs.widget(index) if index >= 0 else None
@@ -142,9 +161,6 @@ class MainWindow:
 
     def open_profile(self):
         """Open the selected database, like opening a connection in IBExpert."""
-        if self.profile_list.currentRow() < 0:
-            self.status.setText("Selecione um banco configurado.")
-            return
         if self._open_thread is not None and self._open_thread.isRunning():
             self.status.setText("Já existe uma conexão em andamento.")
             return
@@ -175,6 +191,12 @@ class MainWindow:
         from .credentials import CredentialStore
 
         profile = self._profile_from_form()
+        errors = profile.validate()
+        if errors:
+            message = " ".join(errors)
+            self.status.setText(message)
+            self._show_message("Não foi possível abrir o banco", message, warning=True)
+            return
         password = self.password.text() or CredentialStore().get(self.name.text())
         self.status.setText("Conectando e carregando objetos do banco...")
         self._open_thread = QThread()
