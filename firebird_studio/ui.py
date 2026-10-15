@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import time
 
 from .models import ConnectionProfile, ProfileStore, SUPPORTED_VERSIONS
 
@@ -52,6 +53,8 @@ class MainWindow:
         self._open_thread = None
         self._open_worker = None
         self._opening_profile_name = None
+        self._last_tree_click_item = None
+        self._last_tree_click_time = 0.0
         self.selected_object = None
         self.table_page = 0
         self.profiles = store.load()
@@ -169,7 +172,6 @@ class MainWindow:
         splitter.splitterMoved.connect(lambda _position, _index: self._save_splitter_state(splitter))
         self._window.setCentralWidget(splitter)
         self.profile_list.itemClicked.connect(self._on_profile_clicked)
-        self.profile_list.itemDoubleClicked.connect(self._on_tree_activated)
         self.refresh_profiles()
         if self.profiles:
             self._hide_profile_details()
@@ -244,15 +246,23 @@ class MainWindow:
 
     def _on_profile_clicked(self, item):
         """Select a database or preview one of its child objects."""
+        now = time.monotonic()
+        is_double_click = item is self._last_tree_click_item and now - self._last_tree_click_time <= 0.55
+        self._last_tree_click_item = item
+        self._last_tree_click_time = now
         index = self._profile_index_for_item(item)
         if 0 <= index < len(self.profiles):
             self.select_profile(index)
         obj = item.data(0, 32)
         if obj is not None:
             self.preview_object(item)
+            if is_double_click:
+                self.open_object(item)
             return
         if 0 <= index < len(self.profiles):
             self.status.setText(f"Cadastro '{self.profiles[index].name}' selecionado. Use duplo clique para abrir.")
+            if is_double_click:
+                self.open_profile()
 
     def _on_profile_activated(self, item=None):
         """Open exactly the profile represented by the activated list item."""
