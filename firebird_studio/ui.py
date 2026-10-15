@@ -987,7 +987,13 @@ class MainWindow:
         if not filename:
             return
         profile = self._profile_from_form()
-        result = run_gbak(profile, "backup", source, Path(filename), self._password_for(profile), Path(self.gbak_path.text()))
+        from PySide6.QtWidgets import QApplication
+        from PySide6.QtCore import Qt
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            result = run_gbak(profile, "backup", source, Path(filename), self._password_for(profile), Path(self.gbak_path.text()))
+        finally:
+            QApplication.restoreOverrideCursor()
         self.editor.setPlainText(result.output + ("\n" + result.error if result.error else ""))
         if result.ok:
             self.status.setText("Backup concluído.")
@@ -1008,7 +1014,13 @@ class MainWindow:
         if not target:
             return
         profile = self._profile_from_form()
-        result = run_gbak(profile, "restore", Path(source), Path(target), self._password_for(profile), Path(self.gbak_path.text()))
+        from PySide6.QtWidgets import QApplication
+        from PySide6.QtCore import Qt
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            result = run_gbak(profile, "restore", Path(source), Path(target), self._password_for(profile), Path(self.gbak_path.text()))
+        finally:
+            QApplication.restoreOverrideCursor()
         self.editor.setPlainText(result.output + ("\n" + result.error if result.error else ""))
         if result.ok:
             from dataclasses import replace
