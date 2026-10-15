@@ -136,6 +136,9 @@ class MainWindow:
         self.editor = None
         self._new_sql_tab()
         self.result_table = QTableWidget(); self.result_table.setMinimumHeight(180); self.result_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.result_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.result_table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.result_table.customContextMenuRequested.connect(self._table_context_menu)
         self.plan_output = QTextEdit(); self.plan_output.setReadOnly(True); self.plan_output.setPlaceholderText("O plano de acesso e as sugestões aparecerão aqui.")
         self.result_tabs = QTabWidget(); self.result_tabs.addTab(self.result_table, "Resultado"); self.result_tabs.addTab(self.plan_output, "Plano e sugestões")
 
@@ -652,6 +655,26 @@ class MainWindow:
 
     def open_table_data(self):
         self._load_table_page(self.table_page)
+
+    def _table_context_menu(self, position):
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(self._window)
+        copy_action = menu.addAction("Copiar seleção")
+        copy_action.setEnabled(bool(self.result_table.selectedItems()))
+        copy_action.triggered.connect(self._copy_table_selection)
+        menu.exec(self.result_table.viewport().mapToGlobal(position))
+
+    def _copy_table_selection(self):
+        items = self.result_table.selectedItems()
+        if not items:
+            return
+        rows = {}
+        for item in items:
+            rows.setdefault(item.row(), {})[item.column()] = item.text()
+        text = "\n".join("\t".join(values.get(column, "") for column in range(self.result_table.columnCount())) for _, values in sorted(rows.items()))
+        from PySide6.QtWidgets import QApplication
+        QApplication.clipboard().setText(text)
+        self.status.setText(f"{len(rows)} linha(s) copiada(s).")
 
     def _load_table_page(self, page: int):
         from .sql import execute_sql
