@@ -4,6 +4,8 @@ import os
 import sys
 from pathlib import Path
 
+_QT_DLL_HANDLES = []
+
 
 def _prepare_qt_runtime() -> None:
     """Prioritize the Qt DLLs bundled with the frozen application.
@@ -23,9 +25,12 @@ def _prepare_qt_runtime() -> None:
         if hasattr(os, "add_dll_directory"):
             for path in existing:
                 try:
-                    os.add_dll_directory(path)
+                    # Keep the handle alive; closing it removes the directory
+                    # from the DLL search path on Windows.
+                    _QT_DLL_HANDLES.append(os.add_dll_directory(path))
                 except OSError:
                     pass
+
 
 
 _prepare_qt_runtime()
