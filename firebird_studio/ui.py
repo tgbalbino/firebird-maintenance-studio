@@ -53,6 +53,7 @@ class MainWindow:
 
     def __init__(self, store: ProfileStore):
         from PySide6.QtWidgets import (
+            QApplication,
             QFormLayout,
             QGroupBox,
             QHBoxLayout,
@@ -141,6 +142,8 @@ class MainWindow:
         self.query_profile_combo.setMinimumWidth(240)
         self.query_profile_combo.currentTextChanged.connect(self._set_current_query_profile)
         self.query_history = []
+        self._transaction_session = None
+        self._transaction_profile_name = ""
         self.last_compare_report = ""
         self.last_health_report = ""
         self.history_combo = QComboBox()
@@ -227,6 +230,18 @@ class MainWindow:
         self.apply_update_action.setToolTip("Executa somente o UPDATE que está no editor após confirmação explícita.")
         self.apply_update_action.triggered.connect(self._apply_update_preview)
         sql_button = menu_button("SQL", [("Nova janela SQL", self._new_sql_tab), ("Executar SQL", self.execute_selected), ("Executar seleção", self.execute_selection), ("Executar arquivo SQL", self.execute_script_file), ("Salvar SQL", self.save_sql_file)], "Executar comandos e gerenciar janelas SQL")
+        sql_button.menu().addSeparator()
+        self.begin_transaction_action = QAction("Iniciar transação", self._window)
+        self.begin_transaction_action.triggered.connect(self._start_transaction)
+        self.commit_transaction_action = QAction("Commit", self._window)
+        self.commit_transaction_action.setEnabled(False)
+        self.commit_transaction_action.triggered.connect(self._commit_transaction)
+        self.rollback_transaction_action = QAction("Rollback", self._window)
+        self.rollback_transaction_action.setEnabled(False)
+        self.rollback_transaction_action.triggered.connect(self._rollback_transaction)
+        sql_button.menu().addAction(self.begin_transaction_action)
+        sql_button.menu().addAction(self.commit_transaction_action)
+        sql_button.menu().addAction(self.rollback_transaction_action)
         data_button = menu_button("Dados", [("Exportar CSV", self.export_result_csv), ("Exportar JSON", self.export_result_json)], "Exportar resultados e abrir dados de tabelas")
         data_button.menu().addAction(self.open_data_action)
         data_button.menu().addAction(self.edit_data_action)
@@ -258,6 +273,9 @@ class MainWindow:
         splitter.setStretchFactor(1, 1)
         splitter.splitterMoved.connect(lambda _position, _index: self._save_splitter_state(splitter))
         self._window.setCentralWidget(splitter)
+        app_instance = QApplication.instance()
+        if app_instance is not None:
+            app_instance.aboutToQuit.connect(self._close_transaction)
         self.profile_list.itemClicked.connect(self._on_profile_clicked)
         # Use Qt's actual double-click signal. Inferring a double click from
         # itemPressed/itemClicked makes a fast single click open object data.
@@ -469,6 +487,89 @@ class MainWindow:
             self._show_message("Executar seleção", "Selecione uma instrução SQL no editor.", warning=True)
             return
         self._execute_sql_text(selected)
+
+    def _set_transaction_actions(self, active: bool):
+        if hasattr(self, "begin_transaction_action"):
+            self.begin_transaction_action.setEnabled(not active)
+            self.commit_transaction_action.setEnabled(active)
+            self.rollback_transaction_action.setEnabled(active)
+
+    def _start_transaction(self):
+        from .transaction import TransactionSession
+
+        if self._transaction_session is not None and self._transaction_session.active:
+            self.status.setText("Já existe uma transação aberta.")
+            return
+        profile = self._query_profile()
+        errors = profile.validate()
+        if errors:
+            self._show_message("Iniciar transação", " ".join(errors), warning=True)
+            return
+        try:
+            self._transaction_session = TransactionSession(profile, self._password_for(profile))
+            self._transaction_profile_name = profile.name
+            self._set_transaction_actions(True)
+            self.status.setText(f"Transação iniciada para '{profile.name}'. Execute comandos e escolha Commit ou Rollback.")
+            self._log_event("Transação iniciada", profile=profile.name)
+        except Exception as exc:
+            self._transaction_session = None
+            self._transaction_profile_name = ""
+            self._set_transaction_actions(False)
+            self._log_event("Falha ao iniciar transação", profile=profile.name, detail=str(exc))
+            self._show_message("Falha ao iniciar transação", str(exc), warning=True)
+
+    def _commit_transaction(self):
+        if self._transaction_session is None or not self._transaction_session.active:
+            return
+        from PySide6.QtWidgets import QMessageBox
+
+        answer = QMessageBox.question(
+            self._window,
+            "Confirmar commit",
+            f"Confirmar todas as alterações da transação em '{self._transaction_profile_name}'?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            self.status.setText("Commit cancelado; a transação continua aberta.")
+            return
+        try:
+            self._transaction_session.commit()
+            self._log_event("Commit confirmado", profile=self._transaction_profile_name)
+            self.status.setText("Commit confirmado. A transação foi encerrada.")
+        except Exception as exc:
+            self._log_event("Falha no commit", profile=self._transaction_profile_name, detail=str(exc))
+            self._show_message("Falha no commit", str(exc), warning=True)
+            return
+        self._close_transaction(rollback=False)
+
+    def _rollback_transaction(self):
+        if self._transaction_session is None or not self._transaction_session.active:
+            return
+        try:
+            profile_name = self._transaction_profile_name
+            self._transaction_session.rollback()
+            self._log_event("Rollback confirmado", profile=profile_name)
+            self.status.setText("Rollback concluído. Nenhuma alteração da transação foi mantida.")
+        except Exception as exc:
+            self._log_event("Falha no rollback", profile=self._transaction_profile_name, detail=str(exc))
+            self._show_message("Falha no rollback", str(exc), warning=True)
+            return
+        self._close_transaction(rollback=False)
+
+    def _close_transaction(self, rollback: bool = True):
+        session = self._transaction_session
+        if session is None:
+            self._set_transaction_actions(False)
+            return
+        profile_name = self._transaction_profile_name
+        try:
+            session.close(rollback=rollback)
+        except Exception as exc:
+            self._log_event("Falha ao encerrar transação", profile=profile_name, detail=str(exc))
+        self._transaction_session = None
+        self._transaction_profile_name = ""
+        self._set_transaction_actions(False)
 
     def open_profile(self, selected_index: int | None = None):
         """Open the selected database, like opening a connection in IBExpert."""
@@ -1102,7 +1203,12 @@ class MainWindow:
         statement = sql_text.lstrip().upper()
         changes_data = statement.startswith(("INSERT", "UPDATE", "DELETE", "MERGE", "EXECUTE", "ALTER", "CREATE", "DROP", "RECREATE", "GRANT", "REVOKE"))
         commit = bool(self.commit_changes.isChecked())
-        if changes_data and commit:
+        profile = self._query_profile()
+        explicit_transaction = self._transaction_session is not None and self._transaction_session.active
+        if explicit_transaction and self._transaction_profile_name != profile.name:
+            self.status.setText(f"A transação aberta pertence ao perfil '{self._transaction_profile_name}'. Faça Commit/Rollback antes de trocar de banco.")
+            return
+        if changes_data and commit and not explicit_transaction:
             from PySide6.QtWidgets import QMessageBox
             answer = QMessageBox.question(
                 self._window,
@@ -1114,11 +1220,10 @@ class MainWindow:
             if answer != QMessageBox.Yes:
                 self.status.setText("Execução cancelada; nenhuma alteração foi aplicada.")
                 return
-        profile = self._query_profile()
-        result = execute_sql(profile, sql_text, self._password_for(profile), commit=commit)
+        result = self._transaction_session.execute(sql_text) if explicit_transaction else execute_sql(profile, sql_text, self._password_for(profile), commit=commit)
         self._log_event("SQL executado", profile=profile.name, statement=statement.split(None, 1)[0] if statement else "", commit=commit, ok=result.ok, rows=len(result.rows), detail=result.message)
         self._add_query_history(sql_text)
-        suffix = " Alterações confirmadas." if changes_data and commit and result.ok else (" Alterações desfeitas (modo seguro)." if changes_data and result.ok else "")
+        suffix = " Transação aberta; escolha Commit ou Rollback." if explicit_transaction and result.ok else (" Alterações confirmadas." if changes_data and commit and result.ok else (" Alterações desfeitas (modo seguro)." if changes_data and result.ok else ""))
         self.status.setText(result.message + suffix)
         self.result_tabs.setCurrentWidget(self.result_table)
         self._table_original_rows = []
