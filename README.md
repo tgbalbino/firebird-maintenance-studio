@@ -1,0 +1,53 @@
+# Firebird Maintenance Studio
+
+Projeto de uma aplicação desktop Windows, de código aberto, para administração e manutenção de bancos Firebird 2.5, 3, 4 e 5. A referência de experiência é o IBExpert, com foco inicial nas tarefas de manutenção mais frequentes.
+
+**Estado atual:** planejamento e validação técnica. Ainda não há aplicativo executável nem funções prontas para uso em produção. A compatibilidade descrita abaixo precisa ser comprovada com bancos de teste de cada versão.
+
+## Objetivo da primeira versão
+
+- Cadastrar várias conexões locais e remotas, com teste de conexão e senha guardada no cofre de credenciais do Windows.
+- Executar consultas e scripts SQL, incluindo `SET TERM`, com resultado, mensagens, duração e opção explícita de confirmar ou desfazer transações.
+- Comparar a **estrutura** de dois bancos, mostrar diferenças e gerar um script de atualização para revisão. Não inclui sincronização automática de registros.
+- Fazer backup lógico e restore com progresso e registro de execução. Restore começa em um **novo banco de destino**; substituir um banco existente é uma operação separada.
+- Mostrar indicadores de saúde e recomendações explicadas. Correções são ações manuais, com prévia e registro.
+
+## Decisão técnica
+
+| Parte | Escolha inicial | Motivo |
+|---|---|---|
+| Linguagem | Python 3.12 | Código aberto e bibliotecas disponíveis sem IDE paga; versão alvo estável para validar todas as dependências. |
+| Interface Windows | PySide6 / Qt Widgets | Interface desktop rica: árvore de bancos, editor, painéis e tabelas. Exige cumprimento da licença LGPLv3 ao distribuir binários. |
+| Firebird 2.5 | FDB + cliente Firebird compatível | Driver legado oficial para a API clássica. |
+| Firebird 3, 4 e 5 | `firebird-driver` e `firebird-lib` | Driver oficial atual e biblioteca de metadados/monitoramento. |
+| Isolamento de clientes | Processos auxiliares por família de versão | Evita conflito entre versões de `fbclient.dll` no Windows. |
+| Scripts | `isql` correspondente ao servidor | Preserva comandos próprios do `isql`, incluindo `SET TERM`, sem criar um analisador SQL parcial. |
+| Backup/restore | Serviços Firebird ou `gbak` correspondente ao servidor | Usa as ferramentas do próprio Firebird e registra saída e erros. |
+| Segredos | Windows Credential Manager | Senhas fora dos arquivos de configuração e do repositório. |
+| Distribuição | Empacotamento Windows após testes | O executável e as DLLs exigem revisão de licença e compatibilidade antes de publicação. |
+
+O produto será independente de IDE comercial. **IBExpert é apenas referência funcional; o projeto não reutilizará sua marca, interface ou código.**
+
+## Documentos
+
+- [Validação técnica e arquitetura](docs/validacao-tecnica.md)
+- [Escopo, etapas e critérios de aceite](docs/roteiro.md)
+- [Segurança e regras para operações sensíveis](docs/seguranca.md)
+
+## Próxima validação prática
+
+Montar quatro bancos descartáveis (2.5, 3, 4 e 5) e executar a matriz de testes do roteiro. Não publicar senhas, arquivos `.fdb`, backups ou dados reais.
+
+## Referências oficiais
+
+- [Drivers Python do Firebird](https://firebirdsql.org/en/python-driver/)
+- [Documentação do firebird-driver](https://firebird-driver.readthedocs.io/en/stable/)
+- [Documentação do firebird-lib](https://firebird-lib.readthedocs.io/en/stable/)
+- [Manual do isql](https://firebirdsql.org/file/documentation/html/en/firebirddocs/isql/firebird-isql.html)
+- [Manual do gbak](https://firebirdsql.org/file/documentation/html/en/firebirddocs/gbak/firebird-gbak.html)
+- [Manual do gfix](https://firebirdsql.org/file/documentation/html/en/firebirddocs/gfix/firebird-gfix.html)
+- [Qt for Python](https://doc.qt.io/qtforpython-6/)
+
+## Licença
+
+Código deste repositório: MIT. Dependências e binários de terceiros mantêm suas próprias licenças. Conferir avisos e obrigações de distribuição antes de publicar instaladores.

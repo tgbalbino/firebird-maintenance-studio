@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.fdb
+*.fbk
+*.gbk
+*.bkp
+*.log
+*.env
+*.pem
+*.key
+build/
+dist/
+*.spec
+profiles*.json
+settings.local.*
