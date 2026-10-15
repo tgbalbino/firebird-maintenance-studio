@@ -93,6 +93,7 @@ class MainWindow:
         self._open_worker = None
         self._open_timeout_timer = None
         self._opening_profile_name = None
+        self.connected_profiles = set()
         self._last_tree_activation_key = None
         self._last_tree_activation_time = 0.0
         self.selected_object = None
@@ -547,9 +548,14 @@ class MainWindow:
             self._open_timeout_timer = None
         self._log_event("Conexão finalizada", ok=result.ok, objects=len(objects), error=schema_error or result.message)
         if not result.ok:
+            if self._opening_profile_name:
+                self.connected_profiles.discard(self._opening_profile_name)
+                self.refresh_profiles()
             self.status.setText(result.message)
             self._show_message("Falha ao abrir banco", result.message)
             return
+        if self._opening_profile_name:
+            self.connected_profiles.add(self._opening_profile_name)
         selected = next((index for index, profile in enumerate(self.profiles) if profile.name == self._opening_profile_name), -1)
         if 0 <= selected < len(self.profiles):
             self.profile_objects[self.profiles[selected].name] = objects
@@ -761,7 +767,7 @@ class MainWindow:
         self.profile_list.clear()
         from PySide6.QtWidgets import QTreeWidgetItem
         for index, profile in enumerate(self.profiles):
-            marker = "★ " if profile.favorite else ""
+            marker = ("★ " if profile.favorite else "") + ("● " if profile.name in self.connected_profiles else "")
             item = QTreeWidgetItem([f"{marker}{profile.name} · FB {profile.version}"])
             item.setData(0, 33, index)
             self.profile_list.addTopLevelItem(item)
