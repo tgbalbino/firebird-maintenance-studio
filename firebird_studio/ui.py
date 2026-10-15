@@ -400,7 +400,10 @@ class MainWindow:
                     return
                 self.progress.emit("Conexão realizada. Lendo objetos do banco...")
                 try:
-                    objects = load_schema(self.profile, self.password)
+                    # The first catalog pass is intentionally lightweight so
+                    # opening a large database never waits on every column or
+                    # source BLOB. Full DDL remains available through Ler estrutura.
+                    objects = load_schema(self.profile, self.password, detailed=False)
                     self.finished.emit(result, objects, "")
                 except Exception as exc:
                     self.finished.emit(result, [], str(exc))
