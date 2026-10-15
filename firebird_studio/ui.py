@@ -465,7 +465,12 @@ class MainWindow:
             self.status.setText(message)
             self._show_message("Não foi possível abrir o banco", message, warning=True)
             return
-        password = self._password_for(profile)
+        # Selecting a tree profile already loads its stored password into the
+        # form. Avoid querying Windows Credential Manager a second time here:
+        # that lookup can block in packaged Windows builds before the worker
+        # starts. Only use the credential fallback when no profile item was
+        # selected (for example when opening directly from the form).
+        password = self.password.text() if 0 <= selected < len(self.profiles) else self._password_for(profile)
         self._opening_profile_name = profile.name
         self._log_event("Conexão iniciada", profile=profile.name, host=profile.host, database=profile.database, version=profile.version, password_present=bool(password))
         self.status.setText("Conectando e carregando objetos do banco...")
