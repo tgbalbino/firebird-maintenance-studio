@@ -979,7 +979,18 @@ class MainWindow:
         result = run_gbak(profile, "restore", Path(source), Path(target), self._password_for(profile), Path(self.gbak_path.text()))
         self.editor.setPlainText(result.output + ("\n" + result.error if result.error else ""))
         if result.ok:
-            self.status.setText("Restore concluído.")
+            from dataclasses import replace
+            from .connection import test_connection
+            restored_profile = replace(profile, database=str(target), host="localhost", port=3050)
+            validation = test_connection(restored_profile, self._password_for(profile))
+            if validation.ok:
+                self.status.setText("Restore concluído e banco restaurado validado.")
+                self._log_event("Restore validado", target=str(target))
+            else:
+                message = f"Restore concluído, mas a validação falhou: {validation.message}"
+                self.status.setText(message)
+                self._show_message("Restore com aviso", message, warning=True)
+                self._log_event("Restore com falha na validação", target=str(target), error=validation.message)
         else:
             message = result.error or result.output or "O gbak retornou uma falha sem detalhes."
             self.status.setText(f"Restore falhou: {message}")
