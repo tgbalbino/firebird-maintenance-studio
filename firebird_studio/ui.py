@@ -104,6 +104,8 @@ class MainWindow:
         self.profile_list.setMinimumHeight(120)
         self.profile_list.setColumnCount(1)
         self.profile_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.profile_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.profile_list.customContextMenuRequested.connect(self._tree_context_menu)
         self.tree_filter = QLineEdit()
         self.tree_filter.setPlaceholderText("Filtrar bancos e objetos...")
         self.tree_filter.textChanged.connect(self._filter_tree)
@@ -803,6 +805,30 @@ class MainWindow:
                     object_item.setHidden(bool(query) and not (child_visible or query in object_item.text(0).casefold()))
                 child.setHidden(bool(query) and not (child_visible or any(not child.child(i).isHidden() for i in range(child.childCount()))))
             root.setHidden(bool(query) and not (visible or any(not root.child(i).isHidden() for i in range(root.childCount()))))
+
+    def _tree_context_menu(self, position):
+        """Offer expansion controls without triggering selection or connection."""
+        from PySide6.QtWidgets import QMenu
+
+        item = self.profile_list.itemAt(position)
+        if item is None:
+            return
+        menu = QMenu(self._window)
+        if item.childCount():
+            if item.isExpanded():
+                action = menu.addAction("Recolher objetos")
+                action.triggered.connect(lambda _checked=False, target=item: target.setExpanded(False))
+            else:
+                action = menu.addAction("Expandir objetos")
+                action.triggered.connect(lambda _checked=False, target=item: target.setExpanded(True))
+        collapse_all = menu.addAction("Recolher todos os bancos")
+        collapse_all.triggered.connect(self._collapse_all_profiles)
+        menu.exec(self.profile_list.viewport().mapToGlobal(position))
+
+    def _collapse_all_profiles(self):
+        for index in range(self.profile_list.topLevelItemCount()):
+            self.profile_list.topLevelItem(index).setExpanded(False)
+        self.status.setText("Objetos dos bancos recolhidos.")
 
     def new_profile(self):
         self._show_profile_details(); self.profile_list.clearSelection(); self.name.clear(); self.database.clear(); self.role.clear(); self.password.clear(); self.save_password.setChecked(False); self.favorite.setChecked(False); self.status.setText("Novo perfil.")
