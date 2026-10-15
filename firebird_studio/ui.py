@@ -260,8 +260,13 @@ class MainWindow:
         is_double_click = item_key == self._last_tree_click_key and now - self._last_tree_click_time <= 0.75
         self._last_tree_click_key = item_key
         self._last_tree_click_time = now
+        typed_password = self.password.text()
         if 0 <= index < len(self.profiles):
             self.select_profile(index)
+            # Selecting the tree item must not erase a password just entered
+            # in the profile form before starting the connection.
+            if typed_password and not self.password.text():
+                self.password.setText(typed_password)
         if obj is not None:
             self.preview_object(item)
             if is_double_click:
