@@ -185,6 +185,7 @@ class MainWindow:
         self.commit_changes = QCheckBox("Confirmar alterações")
         self.commit_changes.setToolTip("Quando marcado, confirma DDL/DML. Desmarcado, alterações são desfeitas ao terminar a execução.")
         export_button = QPushButton("Exportar CSV"); export_button.clicked.connect(self.export_result_csv)
+        json_button = QPushButton("Exportar JSON"); json_button.clicked.connect(self.export_result_json)
         script_button = QPushButton("Executar arquivo SQL"); script_button.clicked.connect(self.execute_script_file)
         backup_button = QPushButton("Backup"); backup_button.clicked.connect(self.execute_backup)
         restore_button = QPushButton("Restore"); restore_button.clicked.connect(self.execute_restore)
@@ -195,7 +196,7 @@ class MainWindow:
         self.open_data_action = QPushButton("Dados da tabela")
         self.open_data_action.setEnabled(False)
         self.open_data_action.clicked.connect(self.open_table_data)
-        action_row.addWidget(new_sql_button); action_row.addWidget(execute_button); action_row.addWidget(selection_button); action_row.addWidget(self.commit_changes); action_row.addWidget(export_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addWidget(health_button); action_row.addWidget(compare_button); action_row.addWidget(self.open_data_action); action_row.addStretch(); right_layout.addLayout(action_row)
+        action_row.addWidget(new_sql_button); action_row.addWidget(execute_button); action_row.addWidget(selection_button); action_row.addWidget(self.commit_changes); action_row.addWidget(export_button); action_row.addWidget(json_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addWidget(health_button); action_row.addWidget(compare_button); action_row.addWidget(self.open_data_action); action_row.addStretch(); right_layout.addLayout(action_row)
         pagination_row = QHBoxLayout()
         self.previous_data_button = QPushButton("Anterior")
         self.previous_data_button.setEnabled(False)
@@ -906,6 +907,21 @@ class MainWindow:
             self._show_message("Falha ao exportar CSV", str(exc))
             return
         self.status.setText(f"CSV exportado: {filename}")
+
+    def export_result_json(self):
+        from PySide6.QtWidgets import QFileDialog
+        import json
+        filename, _ = QFileDialog.getSaveFileName(self._window, "Exportar resultado JSON", "", "JSON (*.json);;Todos (*.*)")
+        if not filename:
+            return
+        columns = [self.result_table.horizontalHeaderItem(column).text() if self.result_table.horizontalHeaderItem(column) else "" for column in range(self.result_table.columnCount())]
+        rows = [{columns[column]: (self.result_table.item(row, column).text() if self.result_table.item(row, column) else None) for column in range(self.result_table.columnCount())} for row in range(self.result_table.rowCount())]
+        try:
+            Path(filename).write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
+            self.status.setText(f"JSON exportado: {filename}")
+        except OSError as exc:
+            self.status.setText(f"Falha ao exportar JSON: {exc}")
+            self._show_message("Falha ao exportar JSON", str(exc))
 
     def execute_script_file(self):
         from .script_runner import run_script
