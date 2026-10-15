@@ -284,7 +284,8 @@ class MainWindow:
         index = self._profile_index_for_item(item)
         obj = item.data(0, 32)
         item_key = (index, getattr(obj, "kind", ""), getattr(obj, "name", "")) if obj is not None else (index, "PROFILE")
-        self._log_event("Item da árvore clicado", index=index, item=item.text(0), object=getattr(obj, "name", ""))
+        is_object_item = item.parent() is not None
+        self._log_event("Item da árvore clicado", index=index, item=item.text(0), object=getattr(obj, "name", ""), object_item=is_object_item, object_type=type(obj).__name__)
         is_double_click = item_key == self._last_tree_click_key and now - self._last_tree_click_time <= 0.75
         self._last_tree_click_key = item_key
         self._last_tree_click_time = now
@@ -295,7 +296,7 @@ class MainWindow:
             # in the profile form before starting the connection.
             if typed_password and not self.password.text():
                 self.password.setText(typed_password)
-        if obj is not None:
+        if is_object_item and obj is not None:
             self.preview_object(item)
             if is_double_click:
                 self._last_tree_activation_key = item_key
@@ -313,6 +314,7 @@ class MainWindow:
         now = time.monotonic()
         index = self._profile_index_for_item(item)
         obj = item.data(0, 32)
+        is_object_item = item.parent() is not None
         key = (index, getattr(obj, "kind", ""), getattr(obj, "name", "")) if obj is not None else (index, "PROFILE")
         if key == self._last_tree_click_key and now - self._last_tree_click_time <= 0.75:
             if key == self._last_tree_activation_key and now - self._last_tree_activation_time < 0.4:
@@ -321,7 +323,7 @@ class MainWindow:
             self._last_tree_activation_time = now
             if 0 <= index < len(self.profiles):
                 self.select_profile(index)
-            if obj is not None:
+            if is_object_item and obj is not None:
                 self.open_object(item)
             elif 0 <= index < len(self.profiles):
                 self.open_profile()
@@ -335,6 +337,7 @@ class MainWindow:
     def _on_tree_activated(self, item, _column=0):
         index = self._profile_index_for_item(item)
         obj = item.data(0, 32)
+        is_object_item = item.parent() is not None
         item_key = (index, getattr(obj, "kind", ""), getattr(obj, "name", "")) if obj is not None else (index, "PROFILE")
         now = time.monotonic()
         if item_key == self._last_tree_activation_key and now - self._last_tree_activation_time < 0.4:
@@ -343,7 +346,7 @@ class MainWindow:
         self._last_tree_activation_time = now
         if 0 <= index < len(self.profiles):
             self.select_profile(index)
-        if obj is not None:
+        if is_object_item and obj is not None:
             self.open_object(item, _column)
             return
         if index >= 0:
