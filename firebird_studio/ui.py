@@ -414,11 +414,9 @@ class MainWindow:
         """Open the selected database, like opening a connection in IBExpert."""
         self._log_event("open_profile chamado", current_item=self.profile_list.currentItem().text(0) if self.profile_list.currentItem() else "", form_name=self.name.text(), form_database=self.database.text())
         self._log_event("Verificando worker de conexão")
-        # Replace any stale worker references without querying the Qt object.
-        # Calling methods on a deleted QThread wrapper can block packaged
-        # Windows builds before the new connection starts.
-        self._open_thread = None
-        self._open_worker = None
+        # Do not assign None to a possibly active QThread here. Its Qt
+        # destructor can wait for the worker and block the packaged app.
+        # References are cleared only by the finished/timeout handlers.
 
         class OpenWorker(QObject):
             finished = Signal(object, object, str)
