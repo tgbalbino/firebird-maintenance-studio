@@ -91,3 +91,10 @@ class ProfileTests(unittest.TestCase):
         findings = build_findings({"oldest_active": 1, "next_transaction": 200_000, "attachments": 2, "backup_state": 0})
         self.assertEqual(findings[0].severity, "warning")
         self.assertIn("transações longas", findings[0].recommendation)
+
+    def test_health_flags_unsafe_database_modes(self):
+        findings = build_findings({"oldest_active": 10, "next_transaction": 10, "attachments": 2, "backup_state": 0, "read_only": 1, "forced_writes": 0, "sweep_interval": 0, "page_size": 8192, "pages": 128})
+        titles = {item.title for item in findings}
+        self.assertIn("Banco somente leitura", titles)
+        self.assertIn("Gravação forçada desativada", titles)
+        self.assertIn("Sweep automático desativado", titles)

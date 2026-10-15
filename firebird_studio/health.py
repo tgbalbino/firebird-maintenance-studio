@@ -33,6 +33,14 @@ def _rows(connection: Any, query: str) -> list[tuple]:
     return list(cursor.fetchall())
 
 
+def _optional_database_value(connection: Any, column: str) -> Any:
+    """Read a version-dependent MON$DATABASE column without breaking health."""
+    try:
+        return _fetch_one(connection, f"SELECT {column} FROM MON$DATABASE")[0]
+    except Exception:
+        return None
+
+
 def build_findings(metrics: dict[str, Any]) -> list[HealthFinding]:
     findings: list[HealthFinding] = []
     oldest_active = metrics.get("oldest_active")
@@ -44,6 +52,14 @@ def build_findings(metrics: dict[str, Any]) -> list[HealthFinding]:
         findings.append(HealthFinding("info", "Muitas conexões", f"{attachments} conexões ativas na fotografia", "Confirme o pool de conexões e encerre somente sessões identificadas como abandonadas."))
     if metrics.get("backup_state") not in (None, 0, "NORMAL"):
         findings.append(HealthFinding("warning", "Backup em andamento", f"Estado reportado: {metrics.get('backup_state')}", "Aguarde o backup terminar antes de iniciar manutenção concorrente."))
+    if metrics.get("read_only") in (True, 1, "1"):
+        findings.append(HealthFinding("warning", "Banco somente leitura", "MON$READ_ONLY indica que o banco não aceita alterações.", "Confirme se o modo somente leitura é intencional antes de executar scripts de atualização."))
+    if metrics.get("forced_writes") in (False, 0, "0"):
+        findings.append(HealthFinding("warning", "Gravação forçada desativada", "MON$FORCED_WRITES está desativado.", "Avalie ativar forced writes para reduzir o risco de perda de dados em falhas de energia."))
+    if isinstance(metrics.get("page_size"), int) and isinstance(metrics.get("pages"), int):
+        metrics["estimated_size_mb"] = round(metrics["page_size"] * metrics["pages"] / 1024 / 1024, 1)
+    if metrics.get("sweep_interval") == 0:
+        findings.append(HealthFinding("info", "Sweep automático desativado", "MON$SWEEP_INTERVAL está definido como zero.", "Monitore o crescimento do gap de transações e programe manutenção controlada se necessário."))
     if not findings:
         findings.append(HealthFinding("ok", "Sem alertas simples", "Os indicadores coletados não cruzaram os limites básicos.", "Continue acompanhando tendência, tempo de consulta e testes de restore."))
     return findings
@@ -68,6 +84,8 @@ def inspect_health(profile: ConnectionProfile, password: str | None = None) -> H
         "backup_state": database[4] if len(database) > 4 else None,
         "attachments": attachment[0] if attachment else 0,
     }
+    for column, key in (("MON$PAGE_SIZE", "page_size"), ("MON$PAGES", "pages"), ("MON$ODS_MAJOR", "ods_major"), ("MON$ODS_MINOR", "ods_minor"), ("MON$READ_ONLY", "read_only"), ("MON$FORCED_WRITES", "forced_writes"), ("MON$SWEEP_INTERVAL", "sweep_interval")):
+        metrics[key] = _optional_database_value(connection, column)
     return HealthReport(metrics, build_findings(metrics))
 
 
