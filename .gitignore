@@ -11,7 +11,11 @@ __pycache__/
 *.key
 build/
 dist/
+*.dist/
+*.build/
 *.egg-info/
 *.spec
+!FirebirdMaintenanceStudio.spec
+!pysidedeploy.spec
 profiles*.json
 settings.local.*

@@ -1,0 +1,23 @@
+# Distribuição Windows
+
+## x64
+
+O build atual é Windows x64, feito com Python 3.12 x64, PySide6 e PyInstaller. O executável é distribuído como pasta porque o Qt precisa carregar DLLs e plugins ao lado do programa:
+
+`dist/FirebirdMaintenanceStudio/FirebirdMaintenanceStudio.exe`
+
+O pacote não inclui um servidor Firebird nem os utilitários `isql.exe` e `gbak.exe`. Configure no perfil os caminhos correspondentes à versão do servidor. O cliente `fbclient.dll` também deve estar disponível para o driver usado.
+
+O primeiro início deve ser feito em uma máquina de teste, com um banco descartável. O build foi validado iniciando a janela por mais de três segundos; não foi possível validar conexão ou backup porque nenhum banco de teste foi fornecido.
+
+Para reconstruir:
+
+```powershell
+python -m pip install -e .
+python -m pip install pyinstaller
+pyinstaller --noconfirm --clean --windowed --name FirebirdMaintenanceStudio --paths . --collect-submodules firebird --collect-submodules fdb --collect-submodules keyring run_app.py
+```
+
+## x86 (32 bits)
+
+Não será gerado x86 nesta etapa. As rodas atuais do PySide6 usadas pelo projeto são Windows x64 (`win_amd64`), e o Python x86 exigiria uma cadeia de dependências separada. Manter uma versão 32 bits exigiria trocar a interface ou fixar versões antigas de Python/Qt, aumentando o risco e o custo de manutenção. Se houver um cliente legado que exija 32 bits, a alternativa é um worker separado compatível com ele, mantendo a interface principal x64.
