@@ -154,7 +154,7 @@ class MainWindow:
         self.result_tabs = QTabWidget(); self.result_tabs.addTab(self.result_table, "Resultado"); self.result_tabs.addTab(plan_panel, "Plano e sugestões")
 
         left = QWidget(); left_layout = QVBoxLayout(left); left.setMinimumWidth(280)
-        left_layout.addWidget(QLabel("Bancos e objetos (duplo clique para conectar)")); left_layout.addWidget(self.tree_filter); left_layout.addWidget(self.profile_list, 1)
+        left_layout.addWidget(QLabel("Bancos e objetos (duplo clique para conectar/abrir)")); left_layout.addWidget(self.tree_filter); left_layout.addWidget(self.profile_list, 1)
         self.open_data_button = QPushButton("Abrir dados da tabela")
         self.open_data_button.setEnabled(False)
         self.open_data_button.clicked.connect(self.open_table_data)
