@@ -85,6 +85,7 @@ class MainWindow:
         new_button = QPushButton("Novo perfil"); new_button.clicked.connect(self.new_profile); left_layout.addWidget(new_button)
         save_button = QPushButton("Salvar perfil"); save_button.clicked.connect(self.save_profile); left_layout.addWidget(save_button)
         open_button = QPushButton("Abrir banco"); open_button.clicked.connect(self.open_profile); left_layout.addWidget(open_button)
+        delete_button = QPushButton("Excluir cadastro"); delete_button.clicked.connect(self.delete_profile); left_layout.addWidget(delete_button)
         resize_row = QHBoxLayout()
         wider_button = QPushButton("Lateral +"); wider_button.clicked.connect(lambda: self._resize_sidebar(80))
         narrower_button = QPushButton("Lateral -"); narrower_button.clicked.connect(lambda: self._resize_sidebar(-80))
@@ -271,6 +272,30 @@ class MainWindow:
 
     def new_profile(self):
         self.profile_list.clearSelection(); self.name.clear(); self.database.clear(); self.status.setText("Novo perfil.")
+
+    def delete_profile(self):
+        selected = self.profile_list.currentRow()
+        if selected < 0 or selected >= len(self.profiles):
+            self._show_message("Excluir cadastro", "Selecione um cadastro na lista lateral.", warning=True)
+            return
+        from PySide6.QtWidgets import QMessageBox
+
+        profile = self.profiles[selected]
+        confirmation = QMessageBox(self._window)
+        confirmation.setWindowTitle("Confirmar exclusão do cadastro")
+        confirmation.setText(f"Excluir o cadastro '{profile.name}'?")
+        confirmation.setInformativeText("Somente o perfil salvo será removido. O arquivo do banco não será excluído.")
+        confirmation.setIcon(QMessageBox.Warning)
+        confirmation.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        confirmation.setDefaultButton(QMessageBox.No)
+        if confirmation.exec() != QMessageBox.Yes:
+            return
+        self.profiles.pop(selected)
+        self.store.save(self.profiles)
+        self.object_tree.clear()
+        self.refresh_profiles()
+        self.name.clear(); self.database.clear(); self.password.clear()
+        self.status.setText("Cadastro excluído. O arquivo do banco foi mantido.")
 
     def select_profile(self, index: int):
         if index < 0 or index >= len(self.profiles): return
