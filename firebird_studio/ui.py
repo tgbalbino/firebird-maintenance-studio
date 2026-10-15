@@ -977,10 +977,13 @@ class MainWindow:
     def execute_backup(self):
         from .backup import run_gbak
         from PySide6.QtWidgets import QFileDialog
+        from datetime import datetime
 
         self.status.setText("Selecionando arquivo para salvar o backup...")
         source = Path(self.database.text())
-        filename, _ = QFileDialog.getSaveFileName(self._window, "Salvar backup Firebird", "", "Backup Firebird (*.fbk);;Todos (*.*)")
+        stem = Path(self.database.text().strip().strip('"')).stem or self.name.text().strip() or "firebird_backup"
+        suggested = f"{stem}_{datetime.now():%Y%m%d_%H%M%S}.fbk"
+        filename, _ = QFileDialog.getSaveFileName(self._window, "Salvar backup Firebird", suggested, "Backup Firebird (*.fbk);;Todos (*.*)")
         if not filename:
             return
         profile = self._profile_from_form()
