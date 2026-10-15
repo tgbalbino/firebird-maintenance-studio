@@ -499,6 +499,8 @@ class MainWindow:
         # databases this makes it clear that authentication succeeded and
         # only metadata loading is still in progress.
         from PySide6.QtWidgets import QApplication
+        from PySide6.QtCore import Qt
+        QApplication.setOverrideCursor(Qt.WaitCursor)
         QApplication.processEvents()
         try:
             objects = load_schema(profile, password, detailed=False)
@@ -534,6 +536,9 @@ class MainWindow:
         box.exec()
 
     def _on_profile_opened(self, result, objects, schema_error):
+        from PySide6.QtWidgets import QApplication
+        while QApplication.overrideCursor() is not None:
+            QApplication.restoreOverrideCursor()
         if self._open_timeout_timer is not None:
             self._open_timeout_timer.stop()
             self._open_timeout_timer.deleteLater()
