@@ -1072,7 +1072,7 @@ class MainWindow:
         lines.extend(["", "SUGESTÕES", ""])
         lines.extend(f"- {item}" for item in result.suggestions)
         self.plan_output.setPlainText("\n".join(lines) + "\n\nSAÍDA ISQL\n" + result.raw)
-        self.result_tabs.setCurrentWidget(self.plan_output)
+        self.result_tabs.setCurrentIndex(1)
         self.status.setText("Plano analisado sem executar a consulta.")
 
     def inspect_health(self):
