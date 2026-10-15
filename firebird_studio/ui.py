@@ -39,11 +39,8 @@ class MainWindow:
             QTreeWidget,
             QTreeWidgetItem,
             QSizePolicy,
-            QThread,
-            QObject,
-            Signal,
-            Slot,
         )
+        from PySide6.QtCore import QObject, QThread, Signal, Slot
 
         self._window = QMainWindow()
         self.show = self._window.show
