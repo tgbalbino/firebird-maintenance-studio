@@ -412,6 +412,7 @@ class MainWindow:
 
     def open_profile(self):
         """Open the selected database, like opening a connection in IBExpert."""
+        self._log_event("open_profile chamado", current_item=self.profile_list.currentItem().text(0) if self.profile_list.currentItem() else "", form_name=self.name.text(), form_database=self.database.text())
         if self._open_thread is not None and self._open_thread.isRunning():
             self._log_event("Conexão ignorada: já existe worker ativo", profile=self._opening_profile_name or "")
             self.status.setText("Já existe uma conexão em andamento.")
@@ -459,6 +460,7 @@ class MainWindow:
         errors = profile.validate()
         if errors:
             message = " ".join(errors)
+            self._log_event("Perfil inválido ao abrir", errors=message)
             self.status.setText(message)
             self._show_message("Não foi possível abrir o banco", message, warning=True)
             return
