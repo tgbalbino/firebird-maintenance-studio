@@ -9,6 +9,7 @@ from firebird_studio.backup import build_gbak_args, run_gbak
 from firebird_studio.schema import SchemaObject, compare_schema, generate_migration
 from firebird_studio.catalog import _field_type
 from firebird_studio.plan import build_plan_script, parse_plan, suggest_improvements
+from firebird_studio.health import build_findings
 
 
 class ProfileTests(unittest.TestCase):
@@ -85,3 +86,8 @@ class ProfileTests(unittest.TestCase):
         tree = parse_plan("PLAN (CUSTOMER INDEX (PK_CUSTOMER))")
         self.assertEqual(tree.children[0].label, "CUSTOMER INDEX (PK_CUSTOMER")
         self.assertTrue(suggest_improvements("PLAN (CUSTOMER NATURAL)", "select * from CUSTOMER"))
+
+    def test_health_flags_old_transaction(self):
+        findings = build_findings({"oldest_active": 1, "next_transaction": 200_000, "attachments": 2, "backup_state": 0})
+        self.assertEqual(findings[0].severity, "warning")
+        self.assertIn("transações longas", findings[0].recommendation)

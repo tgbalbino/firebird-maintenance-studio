@@ -78,7 +78,8 @@ class MainWindow:
         restore_button = QPushButton("Restore"); restore_button.clicked.connect(self.execute_restore)
         schema_button = QPushButton("Ler estrutura"); schema_button.clicked.connect(self.inspect_schema)
         plan_button = QPushButton("Ver plano"); plan_button.clicked.connect(self.inspect_plan)
-        action_row.addWidget(test_button); action_row.addWidget(execute_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addStretch(); right_layout.addLayout(action_row)
+        health_button = QPushButton("Saúde"); health_button.clicked.connect(self.inspect_health)
+        action_row.addWidget(test_button); action_row.addWidget(execute_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addWidget(health_button); action_row.addStretch(); right_layout.addLayout(action_row)
         right_layout.addWidget(self.result_table); right_layout.addWidget(self.status)
         splitter = QSplitter(); splitter.addWidget(left); splitter.addWidget(right); splitter.setSizes([260, 840])
         self._window.setCentralWidget(splitter)
@@ -206,3 +207,19 @@ class MainWindow:
         lines.extend(f"- {item}" for item in result.suggestions)
         self.editor.setPlainText("\n".join(lines) + "\n\nSAÍDA ISQL\n" + result.raw)
         self.status.setText("Plano analisado sem executar a consulta.")
+
+    def inspect_health(self):
+        from .credentials import CredentialStore
+        from .health import inspect_health
+
+        try:
+            report = inspect_health(self._profile_from_form(), self.password.text() or CredentialStore().get(self.name.text()))
+        except Exception as exc:
+            self.status.setText(f"Falha ao ler saúde: {exc}")
+            return
+        lines = ["INDICADORES", ""] + [f"{key}: {value}" for key, value in report.metrics.items()]
+        lines.extend(["", "RECOMENDAÇÕES", ""])
+        for finding in report.findings:
+            lines.extend([f"[{finding.severity.upper()}] {finding.title}", f"Evidência: {finding.evidence}", f"Ação sugerida: {finding.recommendation}", ""])
+        self.editor.setPlainText("\n".join(lines))
+        self.status.setText(f"Saúde analisada: {len(report.findings)} recomendação(ões).")
