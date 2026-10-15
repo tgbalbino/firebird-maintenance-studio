@@ -39,6 +39,10 @@ class MainWindow:
             QTreeWidget,
             QTreeWidgetItem,
             QSizePolicy,
+            QThread,
+            QObject,
+            Signal,
+            Slot,
         )
 
         self._window = QMainWindow()
@@ -46,6 +50,8 @@ class MainWindow:
         self._window.setWindowTitle("Firebird Maintenance Studio")
         self._window.resize(1100, 700)
         self.store = store
+        self._open_thread = None
+        self._open_worker = None
         self.profiles = store.load()
         self.profile_list = QListWidget()
         self.name = QLineEdit()
@@ -125,7 +131,62 @@ class MainWindow:
         if self.profile_list.currentRow() < 0:
             self.status.setText("Selecione um banco configurado.")
             return
-        self.test_selected()
+        if self._open_thread is not None and self._open_thread.isRunning():
+            self.status.setText("Já existe uma conexão em andamento.")
+            return
+
+        class OpenWorker(QObject):
+            finished = Signal(object, object, str)
+
+            def __init__(self, profile, password):
+                super().__init__()
+                self.profile = profile
+                self.password = password
+
+            @Slot()
+            def run(self):
+                from .catalog import load_schema
+                from .connection import test_connection
+
+                result = test_connection(self.profile, self.password)
+                if not result.ok:
+                    self.finished.emit(result, [], "")
+                    return
+                try:
+                    objects = load_schema(self.profile, self.password)
+                    self.finished.emit(result, objects, "")
+                except Exception as exc:
+                    self.finished.emit(result, [], str(exc))
+
+        from .credentials import CredentialStore
+
+        profile = self._profile_from_form()
+        password = self.password.text() or CredentialStore().get(self.name.text())
+        self.status.setText("Conectando e carregando objetos do banco...")
+        self._open_thread = QThread()
+        self._open_worker = OpenWorker(profile, password)
+        self._open_worker.moveToThread(self._open_thread)
+        self._open_thread.started.connect(self._open_worker.run)
+        self._open_worker.finished.connect(self._on_profile_opened)
+        self._open_worker.finished.connect(self._open_thread.quit)
+        self._open_worker.finished.connect(self._open_worker.deleteLater)
+        self._open_thread.finished.connect(self._open_thread.deleteLater)
+        self._open_thread.finished.connect(self._clear_open_worker)
+        self._open_thread.start()
+
+    def _clear_open_worker(self):
+        self._open_thread = None
+        self._open_worker = None
+
+    def _on_profile_opened(self, result, objects, schema_error):
+        if not result.ok:
+            self.status.setText(result.message)
+            return
+        self._populate_object_tree(objects)
+        if schema_error:
+            self.status.setText(f"{result.message} Conectado, mas não foi possível ler objetos: {schema_error}")
+        else:
+            self.status.setText(f"{result.message} Objetos carregados: {len(objects)}.")
 
     def _populate_object_tree(self, objects):
         from PySide6.QtWidgets import QTreeWidgetItem
