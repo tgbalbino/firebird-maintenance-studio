@@ -32,6 +32,7 @@ class MainWindow:
             QVBoxLayout,
             QWidget,
             QComboBox,
+            QCheckBox,
             QTableWidget,
             QTableWidgetItem,
             QFileDialog,
@@ -65,6 +66,11 @@ class MainWindow:
         self.target_profile = QComboBox()
         self.user = QLineEdit("SYSDBA")
         self.password = QLineEdit(); self.password.setEchoMode(QLineEdit.Password); self.password.setPlaceholderText("Senha temporária; não é salva no perfil")
+        self.save_password = QCheckBox("Salvar senha criptografada neste computador")
+        self.show_password = QCheckBox("Mostrar senha")
+        self.show_password.toggled.connect(lambda visible: self.password.setEchoMode(QLineEdit.Normal if visible else QLineEdit.Password))
+        password_row = QWidget(); password_layout = QHBoxLayout(password_row); password_layout.setContentsMargins(0, 0, 0, 0)
+        password_layout.addWidget(self.password, 1); password_layout.addWidget(self.save_password); password_layout.addWidget(self.show_password)
         self.charset = QLineEdit("UTF8")
         self.isql_path = QLineEdit(); self.isql_path.setPlaceholderText("C:\\Firebird\\Firebird_5_0\\isql.exe")
         self.gbak_path = QLineEdit(); self.gbak_path.setPlaceholderText("C:\\Firebird\\Firebird_5_0\\gbak.exe")
@@ -95,7 +101,7 @@ class MainWindow:
 
         form = QFormLayout(); form.addRow("Nome", self.name); form.addRow("Host", self.host)
         form.addRow("Porta", self.port); form.addRow("Caminho ou alias", self.database)
-        form.addRow("Firebird", self.version); form.addRow("Usuário", self.user); form.addRow("Senha", self.password); form.addRow("Charset", self.charset); form.addRow("Caminho isql", self.isql_path); form.addRow("Caminho gbak", self.gbak_path); form.addRow("Comparar com", self.target_profile)
+        form.addRow("Firebird", self.version); form.addRow("Usuário", self.user); form.addRow("Senha", password_row); form.addRow("Charset", self.charset); form.addRow("Caminho isql", self.isql_path); form.addRow("Caminho gbak", self.gbak_path); form.addRow("Comparar com", self.target_profile)
         box = QGroupBox("Perfil selecionado"); box.setLayout(form)
         right = QWidget(); right.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
         right_layout = QVBoxLayout(right); right_layout.addWidget(box)
@@ -173,6 +179,18 @@ class MainWindow:
             self.select_profile(index)
         self.open_profile()
 
+    def _stored_password(self, profile_name: str) -> str | None:
+        from .credentials import CredentialStore
+
+        try:
+            return CredentialStore().get(profile_name)
+        except Exception:
+            return None
+
+    def _password_for(self, profile: ConnectionProfile | None = None) -> str:
+        profile_name = profile.name if profile is not None else self.name.text()
+        return self.password.text() or self._stored_password(profile_name) or ""
+
     def close_sql_tab(self, index: int):
         if self.sql_tabs.count() == 1:
             return
@@ -224,7 +242,7 @@ class MainWindow:
             self.status.setText(message)
             self._show_message("Não foi possível abrir o banco", message, warning=True)
             return
-        password = self.password.text() or CredentialStore().get(profile.name)
+        password = self._password_for(profile)
         self.status.setText("Conectando e carregando objetos do banco...")
         self._open_thread = QThread()
         self._open_worker = OpenWorker(profile, password)
@@ -296,7 +314,7 @@ class MainWindow:
         self.target_profile.addItems([p.name for p in self.profiles])
 
     def new_profile(self):
-        self.profile_list.clearSelection(); self.name.clear(); self.database.clear(); self.status.setText("Novo perfil.")
+        self.profile_list.clearSelection(); self.name.clear(); self.database.clear(); self.password.clear(); self.save_password.setChecked(False); self.status.setText("Novo perfil.")
 
     def delete_profile(self):
         selected = self.profile_list.currentRow()
@@ -317,9 +335,14 @@ class MainWindow:
             return
         self.profiles.pop(selected)
         self.store.save(self.profiles)
+        from .credentials import CredentialStore
+        try:
+            CredentialStore().delete(profile.name)
+        except Exception:
+            pass
         self.object_tree.clear()
         self.refresh_profiles()
-        self.name.clear(); self.database.clear(); self.password.clear()
+        self.name.clear(); self.database.clear(); self.password.clear(); self.save_password.setChecked(False)
         self.status.setText("Cadastro excluído. O arquivo do banco foi mantido.")
 
     def select_profile(self, index: int):
@@ -327,7 +350,9 @@ class MainWindow:
         p = self.profiles[index]
         for widget, value in ((self.name, p.name), (self.host, p.host), (self.database, p.database), (self.user, p.user), (self.charset, p.charset), (self.isql_path, p.isql_path), (self.gbak_path, p.gbak_path)):
             widget.setText(value)
-        self.password.clear()
+        stored_password = self._stored_password(p.name)
+        self.password.setText(stored_password or "")
+        self.save_password.setChecked(bool(stored_password))
         self.port.setValue(p.port); self.version.setCurrentText(p.version)
 
     def _profile_from_form(self):
@@ -347,15 +372,30 @@ class MainWindow:
             self.status.setText(message)
             self._show_message("Nome duplicado", message, warning=True)
             return
+        previous_name = self.profiles[selected].name if 0 <= selected < len(self.profiles) else None
         if 0 <= selected < len(self.profiles): self.profiles[selected] = profile
         else: self.profiles.append(profile)
-        self.store.save(self.profiles); self.refresh_profiles(); self.status.setText("Perfil salvo sem senha.")
+        self.store.save(self.profiles)
+        from .credentials import CredentialStore
+        try:
+            credentials = CredentialStore()
+            if self.save_password.isChecked() and self.password.text():
+                credentials.set(profile.name, self.password.text())
+                if previous_name and previous_name != profile.name:
+                    credentials.delete(previous_name)
+                message = "Perfil e senha criptografada salvos."
+            else:
+                credentials.delete(profile.name)
+                message = "Perfil salvo sem senha."
+        except Exception as exc:
+            message = f"Perfil salvo, mas não foi possível proteger a senha: {exc}"
+        self.refresh_profiles(); self.status.setText(message)
 
     def test_selected(self):
         from .connection import test_connection
 
-        from .credentials import CredentialStore
-        result = test_connection(self._profile_from_form(), self.password.text() or CredentialStore().get(self.name.text()))
+        profile = self._profile_from_form()
+        result = test_connection(profile, self._password_for(profile))
         self.status.setText(result.message)
         if not result.ok:
             self._show_message("Falha ao testar conexão", result.message)
@@ -363,7 +403,7 @@ class MainWindow:
         if result.ok:
             try:
                 from .catalog import load_schema
-                objects = load_schema(self._profile_from_form(), self.password.text() or CredentialStore().get(self.name.text()))
+                objects = load_schema(profile, self._password_for(profile))
                 self._populate_object_tree(objects)
                 self.status.setText(f"{result.message} Objetos carregados: {len(objects)}.")
             except Exception as exc:
@@ -372,10 +412,10 @@ class MainWindow:
                 self._show_message("Banco conectado com aviso", message, warning=True)
 
     def execute_selected(self):
-        from .credentials import CredentialStore
         from .sql import execute_sql
 
-        result = execute_sql(self._profile_from_form(), self.editor.toPlainText(), self.password.text() or CredentialStore().get(self.name.text()))
+        profile = self._profile_from_form()
+        result = execute_sql(profile, self.editor.toPlainText(), self._password_for(profile))
         self.status.setText(result.message)
         self.result_table.clear()
         self.result_table.setColumnCount(len(result.columns)); self.result_table.setRowCount(len(result.rows))
@@ -385,7 +425,6 @@ class MainWindow:
                 self.result_table.setItem(row_index, column_index, QTableWidgetItem("" if value is None else str(value)))
 
     def execute_script_file(self):
-        from .credentials import CredentialStore
         from .script_runner import run_script
         from PySide6.QtWidgets import QFileDialog
 
@@ -396,42 +435,39 @@ class MainWindow:
         if not profile.isql_path:
             self.status.setText("Configure o caminho do isql no perfil antes de executar um arquivo.")
             return
-        result = run_script(profile, Path(filename), self.password.text() or CredentialStore().get(self.name.text()), Path(profile.isql_path))
+        result = run_script(profile, Path(filename), self._password_for(profile), Path(profile.isql_path))
         self.editor.setPlainText(result.output + ("\n" + result.error if result.error else ""))
         self.status.setText(("Script concluído. " if result.ok else "Script falhou. ") + result.error)
 
     def execute_backup(self):
         from .backup import run_gbak
-        from .credentials import CredentialStore
-
         source = Path(self.database.text())
         filename, _ = QFileDialog.getSaveFileName(self._window, "Salvar backup Firebird", "", "Backup Firebird (*.fbk);;Todos (*.*)")
         if not filename:
             return
-        result = run_gbak(self._profile_from_form(), "backup", source, Path(filename), self.password.text() or CredentialStore().get(self.name.text()), Path(self.gbak_path.text()))
+        profile = self._profile_from_form()
+        result = run_gbak(profile, "backup", source, Path(filename), self._password_for(profile), Path(self.gbak_path.text()))
         self.editor.setPlainText(result.output + ("\n" + result.error if result.error else ""))
         self.status.setText("Backup concluído." if result.ok else f"Backup falhou: {result.error}")
 
     def execute_restore(self):
         from .backup import run_gbak
-        from .credentials import CredentialStore
-
         source, _ = QFileDialog.getOpenFileName(self._window, "Selecionar backup Firebird", "", "Backup Firebird (*.fbk *.gbk);;Todos (*.*)")
         if not source:
             return
         target, _ = QFileDialog.getSaveFileName(self._window, "Criar banco restaurado", "", "Banco Firebird (*.fdb *.gdb);;Todos (*.*)")
         if not target:
             return
-        result = run_gbak(self._profile_from_form(), "restore", Path(source), Path(target), self.password.text() or CredentialStore().get(self.name.text()), Path(self.gbak_path.text()))
+        profile = self._profile_from_form()
+        result = run_gbak(profile, "restore", Path(source), Path(target), self._password_for(profile), Path(self.gbak_path.text()))
         self.editor.setPlainText(result.output + ("\n" + result.error if result.error else ""))
         self.status.setText("Restore concluído." if result.ok else f"Restore falhou: {result.error}")
 
     def inspect_schema(self):
         from .catalog import load_schema
-        from .credentials import CredentialStore
-
         try:
-            objects = load_schema(self._profile_from_form(), self.password.text() or CredentialStore().get(self.name.text()))
+            profile = self._profile_from_form()
+            objects = load_schema(profile, self._password_for(profile))
         except Exception as exc:
             self.status.setText(f"Falha ao ler estrutura: {exc}")
             return
@@ -440,14 +476,13 @@ class MainWindow:
         self.status.setText(f"Estrutura lida: {len(objects)} objeto(s).")
 
     def inspect_plan(self):
-        from .credentials import CredentialStore
         from .plan import explain_query
 
         profile = self._profile_from_form()
         if not profile.isql_path:
             self.status.setText("Configure o caminho do isql no perfil antes de analisar o plano.")
             return
-        result = explain_query(profile, self.editor.toPlainText(), self.password.text() or CredentialStore().get(self.name.text()), Path(profile.isql_path))
+        result = explain_query(profile, self.editor.toPlainText(), self._password_for(profile), Path(profile.isql_path))
         if not result.ok:
             self.status.setText(result.error)
             return
@@ -462,11 +497,11 @@ class MainWindow:
         self.status.setText("Plano analisado sem executar a consulta.")
 
     def inspect_health(self):
-        from .credentials import CredentialStore
         from .health import inspect_health
 
         try:
-            report = inspect_health(self._profile_from_form(), self.password.text() or CredentialStore().get(self.name.text()))
+            profile = self._profile_from_form()
+            report = inspect_health(profile, self._password_for(profile))
         except Exception as exc:
             self.status.setText(f"Falha ao ler saúde: {exc}")
             return
@@ -479,7 +514,6 @@ class MainWindow:
 
     def compare_selected(self):
         from .catalog import load_schema
-        from .credentials import CredentialStore
         from .schema import compare_schema, generate_migration
 
         target_name = self.target_profile.currentText()
@@ -489,8 +523,8 @@ class MainWindow:
             self.status.setText("Cadastre e selecione um perfil de destino diferente da origem.")
             return
         try:
-            password = self.password.text() or CredentialStore().get(self.name.text())
-            target_password = CredentialStore().get(target.name) or password
+            password = self._password_for(source)
+            target_password = self._stored_password(target.name) or password
             source_objects = load_schema(source, password)
             target_objects = load_schema(target, target_password)
             changes = compare_schema(source_objects, target_objects)
