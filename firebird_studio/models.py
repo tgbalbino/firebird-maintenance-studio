@@ -18,6 +18,7 @@ class ConnectionProfile:
     user: str = "SYSDBA"
     role: str = ""
     charset: str = "UTF8"
+    favorite: bool = False
     trusted: bool = False
     isql_path: str = ""
     gbak_path: str = ""

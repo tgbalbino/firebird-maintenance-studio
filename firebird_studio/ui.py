@@ -108,6 +108,7 @@ class MainWindow:
         self.tree_filter.setPlaceholderText("Filtrar bancos e objetos...")
         self.tree_filter.textChanged.connect(self._filter_tree)
         self.name = QLineEdit()
+        self.favorite = QCheckBox("Favorito")
         self.host = QLineEdit("localhost")
         self.port = QSpinBox(); self.port.setRange(1, 65535); self.port.setValue(3050)
         self.database = QLineEdit()
@@ -168,7 +169,7 @@ class MainWindow:
         delete_button = QPushButton("Excluir cadastro"); delete_button.clicked.connect(self.delete_profile); left_layout.addWidget(delete_button)
         left_layout.addStretch()
 
-        form = QFormLayout(); form.addRow("Nome", self.name); form.addRow("Host", self.host)
+        form = QFormLayout(); form.addRow("Nome", self.name); form.addRow("", self.favorite); form.addRow("Host", self.host)
         form.addRow("Porta", self.port); form.addRow("Caminho ou alias", self.database)
         form.addRow("Firebird", self.version); form.addRow("Usuário", self.user); form.addRow("Role", self.role); form.addRow("Senha", password_row); form.addRow("Charset", self.charset); form.addRow("Caminho isql", self.isql_path); form.addRow("Caminho gbak", self.gbak_path); form.addRow("Comparar com", self.target_profile)
         box = QGroupBox("Perfil selecionado"); box.setLayout(form)
@@ -757,7 +758,8 @@ class MainWindow:
         self.profile_list.clear()
         from PySide6.QtWidgets import QTreeWidgetItem
         for index, profile in enumerate(self.profiles):
-            item = QTreeWidgetItem([f"{profile.name} · FB {profile.version}"])
+            marker = "★ " if profile.favorite else ""
+            item = QTreeWidgetItem([f"{marker}{profile.name} · FB {profile.version}"])
             item.setData(0, 33, index)
             self.profile_list.addTopLevelItem(item)
             objects = self.profile_objects.get(profile.name, [])
@@ -802,7 +804,7 @@ class MainWindow:
             root.setHidden(bool(query) and not (visible or any(not root.child(i).isHidden() for i in range(root.childCount()))))
 
     def new_profile(self):
-        self._show_profile_details(); self.profile_list.clearSelection(); self.name.clear(); self.database.clear(); self.role.clear(); self.password.clear(); self.save_password.setChecked(False); self.status.setText("Novo perfil.")
+        self._show_profile_details(); self.profile_list.clearSelection(); self.name.clear(); self.database.clear(); self.role.clear(); self.password.clear(); self.save_password.setChecked(False); self.favorite.setChecked(False); self.status.setText("Novo perfil.")
 
     def delete_profile(self):
         selected = self._profile_index_for_item()
@@ -830,7 +832,7 @@ class MainWindow:
             pass
         self.profile_objects.pop(profile.name, None)
         self.refresh_profiles()
-        self.name.clear(); self.database.clear(); self.role.clear(); self.password.clear(); self.save_password.setChecked(False)
+        self.name.clear(); self.database.clear(); self.role.clear(); self.password.clear(); self.save_password.setChecked(False); self.favorite.setChecked(False)
         self.status.setText("Cadastro excluído. O arquivo do banco foi mantido.")
 
     def select_profile(self, index: int):
@@ -841,10 +843,11 @@ class MainWindow:
         stored_password = self._stored_password(p.name)
         self.password.setText(stored_password or "")
         self.save_password.setChecked(bool(stored_password))
+        self.favorite.setChecked(bool(p.favorite))
         self.port.setValue(p.port); self.version.setCurrentText(p.version)
 
     def _profile_from_form(self):
-        return ConnectionProfile(self.name.text(), self.host.text(), self.port.value(), self.database.text(), self.version.currentText(), self.user.text(), role=self.role.text(), charset=self.charset.text(), isql_path=self.isql_path.text(), gbak_path=self.gbak_path.text())
+        return ConnectionProfile(self.name.text(), self.host.text(), self.port.value(), self.database.text(), self.version.currentText(), self.user.text(), role=self.role.text(), charset=self.charset.text(), favorite=self.favorite.isChecked(), isql_path=self.isql_path.text(), gbak_path=self.gbak_path.text())
 
     def save_profile(self):
         profile = self._profile_from_form(); errors = profile.validate()

@@ -14,12 +14,13 @@ from firebird_studio.health import build_findings
 
 class ProfileTests(unittest.TestCase):
     def test_profile_validation_and_round_trip(self):
-        profile = ConnectionProfile("Local", database="sample.fdb", version="2.5", role="RDB$ADMIN")
+        profile = ConnectionProfile("Local", database="sample.fdb", version="2.5", role="RDB$ADMIN", favorite=True)
         self.assertEqual(profile.validate(), [])
         with tempfile.TemporaryDirectory() as directory:
             store = ProfileStore(Path(directory) / "profiles.json")
             store.save([profile])
             self.assertEqual(store.load(), [profile])
+            self.assertTrue(store.load()[0].favorite)
 
     def test_invalid_profile_is_reported(self):
         errors = ConnectionProfile("", database="", version="6", port=0).validate()
