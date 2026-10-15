@@ -60,6 +60,7 @@ def load_schema(profile: ConnectionProfile, password: str | None = None, detaile
                 ("TRIGGER", "SELECT TRIM(RDB$TRIGGER_NAME) FROM RDB$TRIGGERS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 ORDER BY RDB$TRIGGER_NAME"),
                 ("DOMAIN", "SELECT TRIM(RDB$FIELD_NAME) FROM RDB$FIELDS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 AND RDB$FIELD_NAME NOT LIKE 'RDB$%' ORDER BY RDB$FIELD_NAME"),
                 ("INDEX", "SELECT TRIM(RDB$INDEX_NAME) FROM RDB$INDICES WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 ORDER BY RDB$INDEX_NAME"),
+                ("CONSTRAINT", "SELECT TRIM(RDB$CONSTRAINT_NAME) FROM RDB$RELATION_CONSTRAINTS ORDER BY RDB$CONSTRAINT_NAME"),
                 ("SEQUENCE", "SELECT TRIM(RDB$GENERATOR_NAME) FROM RDB$GENERATORS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 ORDER BY RDB$GENERATOR_NAME"),
                 ("EXCEPTION", "SELECT TRIM(RDB$EXCEPTION_NAME) FROM RDB$EXCEPTIONS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 ORDER BY RDB$EXCEPTION_NAME"),
             )
@@ -173,6 +174,42 @@ def load_schema(profile: ConnectionProfile, password: str | None = None, detaile
                 ddl = f'-- INDEX {index_name}\n-- Expression index; review its expression in the source database.'
             objects.append(SchemaObject("INDEX", index_name, ddl))
 
+        # Primary, unique and foreign-key constraints are reconstructed from
+        # their backing index segments.  Check constraints remain visible even
+        # when their trigger source cannot be recovered on an older catalog.
+        try:
+            constraint_rows = _rows(connection, """
+                SELECT TRIM(rc.RDB$CONSTRAINT_NAME), TRIM(rc.RDB$CONSTRAINT_TYPE),
+                       TRIM(rc.RDB$RELATION_NAME), TRIM(rc.RDB$INDEX_NAME),
+                       TRIM(ref.RDB$CONST_NAME_UQ), TRIM(parent.RDB$RELATION_NAME)
+                FROM RDB$RELATION_CONSTRAINTS rc
+                LEFT JOIN RDB$REF_CONSTRAINTS ref ON ref.RDB$CONSTRAINT_NAME = rc.RDB$CONSTRAINT_NAME
+                LEFT JOIN RDB$RELATION_CONSTRAINTS parent ON parent.RDB$CONSTRAINT_NAME = ref.RDB$CONST_NAME_UQ
+                ORDER BY rc.RDB$CONSTRAINT_NAME
+            """)
+        except Exception:
+            constraint_rows = []
+        for name, constraint_type, relation, index_name, referenced_name, referenced_relation in constraint_rows:
+            clean_name, clean_relation, clean_index = _text(name), _text(relation), _text(index_name)
+            try:
+                fields = [_text(row[0]) for row in _rows(connection, f"SELECT TRIM(RDB$FIELD_NAME) FROM RDB$INDEX_SEGMENTS WHERE RDB$INDEX_NAME = '{clean_index.replace(chr(39), chr(39) * 2)}' ORDER BY RDB$FIELD_POSITION")]
+            except Exception:
+                fields = []
+            quoted_fields = ", ".join(f'"{field}"' for field in fields)
+            kind = _text(constraint_type).upper()
+            if kind == "PRIMARY KEY":
+                ddl = f'ALTER TABLE "{clean_relation}" ADD CONSTRAINT "{clean_name}" PRIMARY KEY ({quoted_fields})'
+            elif kind == "UNIQUE":
+                ddl = f'ALTER TABLE "{clean_relation}" ADD CONSTRAINT "{clean_name}" UNIQUE ({quoted_fields})'
+            elif kind == "FOREIGN KEY":
+                target = _text(referenced_relation)
+                ddl = f'ALTER TABLE "{clean_relation}" ADD CONSTRAINT "{clean_name}" FOREIGN KEY ({quoted_fields}) REFERENCES "{target}"'
+                if referenced_name:
+                    ddl += f' /* references constraint { _text(referenced_name) } */'
+            else:
+                ddl = f'-- CONSTRAINT {clean_name} ({kind})\n-- Review the check/source expression in the source database.'
+            objects.append(SchemaObject("CONSTRAINT", clean_name, ddl))
+
         try:
             for (name,) in _rows(connection, "SELECT TRIM(RDB$GENERATOR_NAME) FROM RDB$GENERATORS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 ORDER BY RDB$GENERATOR_NAME"):
                 clean_name = _text(name)
@@ -263,6 +300,38 @@ def load_object_definition(profile: ConnectionProfile, password: str | None, kin
                 ddl += "\n\n" + body
             return SchemaObject(clean_kind, name, ddl)
         return SchemaObject(clean_kind, name, f"-- PACKAGE {name}\n-- Não foi possível obter o cabeçalho/corpo no catálogo.")
+    if clean_kind == "CONSTRAINT":
+        with open_database(profile, password) as connection:
+            safe = safe_name
+            try:
+                rows = _rows(connection, f"""
+                    SELECT TRIM(rc.RDB$CONSTRAINT_TYPE), TRIM(rc.RDB$RELATION_NAME), TRIM(rc.RDB$INDEX_NAME),
+                           TRIM(parent.RDB$RELATION_NAME)
+                    FROM RDB$RELATION_CONSTRAINTS rc
+                    LEFT JOIN RDB$REF_CONSTRAINTS ref ON ref.RDB$CONSTRAINT_NAME = rc.RDB$CONSTRAINT_NAME
+                    LEFT JOIN RDB$RELATION_CONSTRAINTS parent ON parent.RDB$CONSTRAINT_NAME = ref.RDB$CONST_NAME_UQ
+                    WHERE rc.RDB$CONSTRAINT_NAME = '{safe}'
+                """)
+            except Exception:
+                rows = []
+            if rows:
+                constraint_type, relation, index_name, referenced_relation = rows[0]
+                try:
+                    fields = [_text(row[0]) for row in _rows(connection, f"SELECT TRIM(RDB$FIELD_NAME) FROM RDB$INDEX_SEGMENTS WHERE RDB$INDEX_NAME = '{_text(index_name).replace(chr(39), chr(39) * 2)}' ORDER BY RDB$FIELD_POSITION")]
+                except Exception:
+                    fields = []
+                cols = ", ".join(f'"{field}"' for field in fields)
+                kind_text = _text(constraint_type).upper()
+                if kind_text == "PRIMARY KEY":
+                    ddl = f'ALTER TABLE "{_text(relation)}" ADD CONSTRAINT "{name}" PRIMARY KEY ({cols})'
+                elif kind_text == "UNIQUE":
+                    ddl = f'ALTER TABLE "{_text(relation)}" ADD CONSTRAINT "{name}" UNIQUE ({cols})'
+                elif kind_text == "FOREIGN KEY":
+                    ddl = f'ALTER TABLE "{_text(relation)}" ADD CONSTRAINT "{name}" FOREIGN KEY ({cols}) REFERENCES "{_text(referenced_relation)}"'
+                else:
+                    ddl = f'-- CONSTRAINT {name} ({kind_text})\n-- Review the source expression in the source database.'
+                return SchemaObject(clean_kind, name, ddl)
+        return SchemaObject(clean_kind, name, f"-- CONSTRAINT {name}\n-- Não foi possível obter a definição no catálogo.")
     if clean_kind not in queries:
         return SchemaObject(clean_kind, name, f"-- {clean_kind} {name}\n-- DDL detalhado ainda não está disponível para este tipo.")
     query, prefix = queries[clean_kind]
