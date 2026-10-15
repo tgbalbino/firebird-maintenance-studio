@@ -879,6 +879,7 @@ class MainWindow:
 
         profile = self._profile_from_form()
         result = test_connection(profile, self._password_for(profile))
+        self._log_event("Teste de conexão", profile=profile.name, ok=result.ok, message=result.message)
         self.status.setText(result.message)
         if not result.ok:
             self._show_message("Falha ao testar conexão", result.message)
@@ -921,6 +922,7 @@ class MainWindow:
                 return
         profile = self._query_profile()
         result = execute_sql(profile, sql_text, self._password_for(profile), commit=commit)
+        self._log_event("SQL executado", profile=profile.name, statement=statement.split(None, 1)[0] if statement else "", commit=commit, ok=result.ok, rows=len(result.rows), message=result.message)
         self._add_query_history(sql_text)
         suffix = " Alterações confirmadas." if changes_data and commit and result.ok else (" Alterações desfeitas (modo seguro)." if changes_data and result.ok else "")
         self.status.setText(result.message + suffix)
@@ -994,6 +996,7 @@ class MainWindow:
             self._show_message("Executar script", "Configure o caminho do isql.exe no perfil antes de executar um arquivo.", warning=True)
             return
         result = run_script(profile, Path(filename), self._password_for(profile), Path(profile.isql_path))
+        self._log_event("Script executado", profile=profile.name, file=str(filename), ok=result.ok, error=result.error)
         self.editor.setPlainText(result.output + ("\n" + result.error if result.error else ""))
         self.status.setText(("Script concluído. " if result.ok else "Script falhou. ") + result.error)
 
@@ -1017,6 +1020,7 @@ class MainWindow:
             result = run_gbak(profile, "backup", source, Path(filename), self._password_for(profile), Path(self.gbak_path.text()))
         finally:
             QApplication.restoreOverrideCursor()
+        self._log_event("Backup concluído" if result.ok else "Backup falhou", profile=profile.name, target=str(filename), ok=result.ok, error=result.error)
         self.editor.setPlainText(result.output + ("\n" + result.error if result.error else ""))
         if result.ok:
             self.status.setText("Backup concluído.")
@@ -1044,6 +1048,7 @@ class MainWindow:
             result = run_gbak(profile, "restore", Path(source), Path(target), self._password_for(profile), Path(self.gbak_path.text()))
         finally:
             QApplication.restoreOverrideCursor()
+        self._log_event("Restore concluído" if result.ok else "Restore falhou", profile=profile.name, source=str(source), target=str(target), ok=result.ok, error=result.error)
         self.editor.setPlainText(result.output + ("\n" + result.error if result.error else ""))
         if result.ok:
             from dataclasses import replace
@@ -1069,11 +1074,13 @@ class MainWindow:
             profile = self._profile_from_form()
             objects = load_schema(profile, self._password_for(profile))
         except Exception as exc:
+            self._log_event("Falha ao ler estrutura", profile=profile.name, error=str(exc))
             self.status.setText(f"Falha ao ler estrutura: {exc}")
             self._show_message("Falha ao ler estrutura", str(exc))
             return
         self.editor.setPlainText("\n".join(f"{obj.kind}: {obj.name}\n{obj.ddl}" for obj in objects))
         self._populate_object_tree(objects)
+        self._log_event("Estrutura lida", profile=profile.name, objects=len(objects))
         self.status.setText(f"Estrutura lida: {len(objects)} objeto(s).")
 
     def inspect_plan(self):
@@ -1085,6 +1092,7 @@ class MainWindow:
             self._show_message("Ver plano", "Configure o caminho do isql.exe no perfil antes de analisar o plano.", warning=True)
             return
         result = explain_query(profile, self.editor.toPlainText(), self._password_for(profile), Path(profile.isql_path))
+        self._log_event("Plano analisado", profile=profile.name, ok=result.ok, suggestions=len(result.suggestions), error=result.error)
         if not result.ok:
             self.status.setText(result.error)
             self._show_message("Falha ao obter plano", result.error)
@@ -1117,6 +1125,7 @@ class MainWindow:
             profile = self._profile_from_form()
             report = inspect_health(profile, self._password_for(profile))
         except Exception as exc:
+            self._log_event("Falha ao analisar saúde", profile=profile.name, error=str(exc))
             self.status.setText(f"Falha ao ler saúde: {exc}")
             self._show_message("Falha ao analisar saúde", str(exc))
             return
@@ -1125,6 +1134,7 @@ class MainWindow:
         for finding in report.findings:
             lines.extend([f"[{finding.severity.upper()}] {finding.title}", f"Evidência: {finding.evidence}", f"Ação sugerida: {finding.recommendation}", ""])
         self.editor.setPlainText("\n".join(lines))
+        self._log_event("Saúde analisada", profile=profile.name, findings=len(report.findings))
         self.status.setText(f"Saúde analisada: {len(report.findings)} recomendação(ões).")
 
     def inspect_sessions(self):
@@ -1133,6 +1143,7 @@ class MainWindow:
             profile = self._profile_from_form()
             sessions = list_sessions(profile, self._password_for(profile))
         except Exception as exc:
+            self._log_event("Falha ao ler sessões", profile=profile.name, error=str(exc))
             self.status.setText(f"Falha ao ler sessões: {exc}")
             self._show_message("Falha ao ler sessões", str(exc))
             return
@@ -1140,6 +1151,7 @@ class MainWindow:
         for session in sessions:
             lines.append(f"ID: {session['id']} | Usuário: {session['user']} | Endereço: {session['address']} | Processo: {session['process']} | Estado: {session['state'] or 'N/D'}")
         self.editor.setPlainText("\n".join(lines))
+        self._log_event("Sessões lidas", profile=profile.name, sessions=len(sessions))
         self.status.setText(f"Sessões lidas: {len(sessions)}.")
 
     def validate_database(self):
@@ -1178,6 +1190,7 @@ class MainWindow:
             target_objects = load_schema(target, target_password)
             changes = compare_schema(source_objects, target_objects)
         except Exception as exc:
+            self._log_event("Falha ao comparar estruturas", source=source.name, target=target.name, error=str(exc))
             self.status.setText(f"Falha ao comparar estruturas: {exc}")
             self._show_message("Falha ao comparar estruturas", str(exc))
             return
@@ -1187,4 +1200,5 @@ class MainWindow:
             lines.append(f"[{marker}] {change.object.kind} {change.object.name}")
         lines.extend(["", "PRÉVIA DE MIGRAÇÃO", "", generate_migration(changes)])
         self.editor.setPlainText("\n".join(lines))
+        self._log_event("Comparação concluída", source=source.name, target=target.name, changes=len(changes))
         self.status.setText(f"Comparação concluída: {len(changes)} diferença(s). Nenhuma alteração foi aplicada.")
