@@ -32,6 +32,22 @@ class SchemaChange:
     destructive: bool = False
 
 
+_MIGRATION_ORDER = {
+    "DOMAIN": 10,
+    "SEQUENCE": 20,
+    "GENERATOR": 20,
+    "EXCEPTION": 30,
+    "TABLE": 40,
+    "CONSTRAINT": 50,
+    "INDEX": 60,
+    "VIEW": 70,
+    "PACKAGE": 80,
+    "PROCEDURE": 90,
+    "FUNCTION": 100,
+    "TRIGGER": 110,
+}
+
+
 def compare_schema(source: list[SchemaObject], target: list[SchemaObject]) -> list[SchemaChange]:
     source_map = {obj.key: obj for obj in source}
     target_map = {obj.key: obj for obj in target}
@@ -54,7 +70,15 @@ def _is_destructive(source: SchemaObject, target: SchemaObject) -> bool:
 
 def generate_migration(changes: list[SchemaChange]) -> str:
     lines = ["-- Firebird Maintenance Studio: migration preview", "-- Review every statement before applying it.", ""]
-    for change in changes:
+    ordered_changes = sorted(
+        changes,
+        key=lambda change: (
+            _MIGRATION_ORDER.get(change.object.kind.upper(), 999),
+            change.action == "REMOVE",
+            change.object.name.upper(),
+        ),
+    )
+    for change in ordered_changes:
         label = f"{change.action} {change.object.kind} {change.object.name}"
         if change.action == "ADD":
             lines.extend([f"-- {label}", change.object.ddl.rstrip().rstrip(";") + ";", ""])

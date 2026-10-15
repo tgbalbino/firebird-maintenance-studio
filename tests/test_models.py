@@ -6,7 +6,7 @@ from firebird_studio.models import ConnectionProfile, ProfileStore
 from firebird_studio.sql import execute_sql
 from firebird_studio.script_runner import build_isql_args, run_script
 from firebird_studio.backup import build_gbak_args, run_gbak
-from firebird_studio.schema import SchemaObject, compare_schema, generate_migration
+from firebird_studio.schema import SchemaChange, SchemaObject, compare_schema, generate_migration
 from firebird_studio.catalog import _field_type
 from firebird_studio.plan import build_plan_script, parse_plan, suggest_improvements
 from firebird_studio.health import build_findings
@@ -84,6 +84,15 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual({change.object.kind for change in changes}, {"DOMAIN", "INDEX"})
         self.assertIn('CREATE DOMAIN "DM_CODE"', migration)
         self.assertIn('CREATE INDEX "IX_CUSTOMER_CODE"', migration)
+
+    def test_migration_orders_dependencies_before_consumers(self):
+        migration = generate_migration([
+            SchemaChange("ADD", SchemaObject("TRIGGER", "TR_CUSTOMER", "CREATE TRIGGER TR_CUSTOMER")),
+            SchemaChange("ADD", SchemaObject("TABLE", "CUSTOMER", "CREATE TABLE CUSTOMER (ID INTEGER)")),
+            SchemaChange("ADD", SchemaObject("DOMAIN", "DM_ID", "CREATE DOMAIN DM_ID AS INTEGER")),
+        ])
+        self.assertLess(migration.index("CREATE DOMAIN DM_ID"), migration.index("CREATE TABLE CUSTOMER"))
+        self.assertLess(migration.index("CREATE TABLE CUSTOMER"), migration.index("CREATE TRIGGER TR_CUSTOMER"))
 
     def test_catalog_type_mapping_is_conservative(self):
         self.assertEqual(_field_type(8, 4, 0, None), "INTEGER")
