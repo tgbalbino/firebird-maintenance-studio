@@ -52,6 +52,7 @@ class MainWindow:
         self._settings = QSettings("TGBalbino", "FirebirdMaintenanceStudio")
         self._open_thread = None
         self._open_worker = None
+        self.selected_object = None
         self.profiles = store.load()
         self.profile_list = QListWidget()
         self.profile_list.setMinimumHeight(120)
@@ -89,6 +90,10 @@ class MainWindow:
         left = QWidget(); left_layout = QVBoxLayout(left); left.setMinimumWidth(280)
         left_layout.addWidget(QLabel("Bancos configurados (duplo clique para abrir)")); left_layout.addWidget(self.profile_list, 1)
         left_layout.addWidget(QLabel("Objetos do banco")); left_layout.addWidget(self.object_tree, 1)
+        self.open_data_button = QPushButton("Abrir dados da tabela")
+        self.open_data_button.setEnabled(False)
+        self.open_data_button.clicked.connect(self.open_table_data)
+        left_layout.addWidget(self.open_data_button)
         new_button = QPushButton("Novo perfil"); new_button.clicked.connect(self.new_profile); left_layout.addWidget(new_button)
         save_button = QPushButton("Salvar perfil"); save_button.clicked.connect(self.save_profile); left_layout.addWidget(save_button)
         open_button = QPushButton("Abrir banco"); open_button.clicked.connect(self.open_profile); left_layout.addWidget(open_button)
@@ -307,6 +312,8 @@ class MainWindow:
     def _populate_object_tree(self, objects):
         from PySide6.QtWidgets import QTreeWidgetItem
 
+        self.selected_object = None
+        self.open_data_button.setEnabled(False)
         self.object_tree.clear()
         groups = {}
         for obj in objects:
@@ -336,7 +343,11 @@ class MainWindow:
 
         obj = item.data(0, 32)
         if obj is None:
+            self.selected_object = None
+            self.open_data_button.setEnabled(False)
             return
+        self.selected_object = obj
+        self.open_data_button.setEnabled(obj.kind.upper() == "TABLE")
         if obj.kind.upper() == "TABLE":
             self.result_table.clear()
             self.result_table.setColumnCount(5)
@@ -355,6 +366,32 @@ class MainWindow:
             self.result_table.setItem(0, 1, QTableWidgetItem(obj.kind))
         self._show_object_sql(obj, new_tab=False)
         self.status.setText(f"{obj.kind.title()} selecionado: {obj.name}. DDL carregado na janela SQL.")
+
+    def open_table_data(self):
+        from .sql import execute_sql
+        from PySide6.QtWidgets import QTableWidgetItem
+
+        obj = self.selected_object
+        if obj is None or obj.kind.upper() != "TABLE":
+            self._show_message("Abrir dados", "Selecione uma tabela na árvore de objetos.", warning=True)
+            return
+        profile = self._profile_from_form()
+        table_name = obj.name.replace('"', '""')
+        self.status.setText(f"Carregando até 200 linhas de {obj.name}...")
+        result = execute_sql(profile, f'SELECT FIRST 200 * FROM "{table_name}"', self._password_for(profile))
+        if not result.ok:
+            self.status.setText(result.message)
+            self._show_message("Falha ao abrir dados", result.message)
+            return
+        self.result_table.clear()
+        self.result_table.setColumnCount(len(result.columns))
+        self.result_table.setRowCount(len(result.rows))
+        self.result_table.setHorizontalHeaderLabels(result.columns)
+        for row_index, row in enumerate(result.rows):
+            for column_index, value in enumerate(row):
+                self.result_table.setItem(row_index, column_index, QTableWidgetItem("" if value is None else str(value)))
+        self.result_table.resizeColumnsToContents()
+        self.status.setText(f"Dados carregados: {len(result.rows)} linha(s), limite de 200.")
 
     def open_object(self, item, _column=0):
         obj = item.data(0, 32)
