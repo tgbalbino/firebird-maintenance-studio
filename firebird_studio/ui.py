@@ -495,6 +495,11 @@ class MainWindow:
             return
         self._log_event("Conexão direta concluída", profile=profile.name)
         self.status.setText("Conexão realizada. Lendo objetos do banco...")
+        # Let Qt repaint the status before catalog queries begin. On large
+        # databases this makes it clear that authentication succeeded and
+        # only metadata loading is still in progress.
+        from PySide6.QtWidgets import QApplication
+        QApplication.processEvents()
         try:
             objects = load_schema(profile, password, detailed=False)
             self._log_event("Objetos carregados", profile=profile.name, count=len(objects))
