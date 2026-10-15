@@ -373,7 +373,7 @@ class MainWindow:
         if 0 <= index < len(self.profiles):
             self.select_profile(index)
         if is_object_item and obj is not None:
-            self.preview_object(item)
+            self.preview_object(item, _column, load_data=True)
             self.open_object(item, _column)
             return
         if index >= 0:
@@ -606,8 +606,8 @@ class MainWindow:
         self.editor.setPlainText(obj.ddl + dml)
         self.sql_tabs.setTabText(self.sql_tabs.currentIndex(), obj.name)
 
-    def preview_object(self, item, _column=0):
-        """Show metadata for tables and DDL for every selected object."""
+    def preview_object(self, item, _column=0, load_data=False):
+        """Show metadata/DDL; optionally load the first table data page."""
         from PySide6.QtWidgets import QTableWidgetItem
 
         obj = item.data(0, 32)
@@ -662,7 +662,9 @@ class MainWindow:
             self.structure_table.resizeColumnsToContents()
             self.structure_table.setSortingEnabled(True)
             self.result_tabs.setCurrentWidget(self.structure_table)
+            data_loaded = bool(load_data and self._load_table_page(0))
         else:
+            data_loaded = False
             self.data_filter.clear()
             self.structure_table.clear()
             self.structure_table.setColumnCount(2)
@@ -673,7 +675,8 @@ class MainWindow:
             self.structure_table.resizeColumnsToContents()
             self.result_tabs.setCurrentWidget(self.structure_table)
         self._show_object_sql(obj, new_tab=False)
-        self.status.setText(f"{obj.kind.title()} selecionado: {obj.name}. DDL carregado na janela SQL.")
+        suffix = " DDL e primeira página de dados carregados." if data_loaded else " DDL carregado na janela SQL."
+        self.status.setText(f"{obj.kind.title()} selecionado: {obj.name}.{suffix}")
 
     def open_table_data(self):
         self._load_table_page(self.table_page)
@@ -711,7 +714,7 @@ class MainWindow:
         obj = self.selected_object
         if obj is None or obj.kind.upper() != "TABLE":
             self._show_message("Abrir dados", "Selecione uma tabela na árvore de objetos.", warning=True)
-            return
+            return False
         page = max(0, page)
         profile = self._profile_from_form()
         table_name = obj.name.replace('"', '""')
@@ -722,7 +725,7 @@ class MainWindow:
         if not result.ok:
             self.status.setText(result.message)
             self._show_message("Falha ao abrir dados", result.message)
-            return
+            return False
         self.result_table.clear()
         self.result_table.setSortingEnabled(False)
         self.result_table.setColumnCount(len(result.columns))
@@ -739,6 +742,7 @@ class MainWindow:
         self.next_data_button.setEnabled(len(result.rows) == 200)
         self.data_page_label.setText(f"Página {page + 1} · linhas {start}-{start + max(0, len(result.rows) - 1)}")
         self.status.setText(f"Dados carregados: {len(result.rows)} linha(s).")
+        return True
 
     def open_object(self, item, _column=0):
         obj = item.data(0, 32)
