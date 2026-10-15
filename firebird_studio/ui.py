@@ -127,6 +127,7 @@ class MainWindow:
         new_sql_button = QPushButton("Nova janela SQL"); new_sql_button.clicked.connect(self._new_sql_tab)
         execute_button = QPushButton("Executar SQL"); execute_button.clicked.connect(self.execute_selected)
         selection_button = QPushButton("Executar seleção"); selection_button.clicked.connect(self.execute_selection)
+        export_button = QPushButton("Exportar CSV"); export_button.clicked.connect(self.export_result_csv)
         script_button = QPushButton("Executar arquivo SQL"); script_button.clicked.connect(self.execute_script_file)
         backup_button = QPushButton("Backup"); backup_button.clicked.connect(self.execute_backup)
         restore_button = QPushButton("Restore"); restore_button.clicked.connect(self.execute_restore)
@@ -137,7 +138,7 @@ class MainWindow:
         self.open_data_action = QPushButton("Dados da tabela")
         self.open_data_action.setEnabled(False)
         self.open_data_action.clicked.connect(self.open_table_data)
-        action_row.addWidget(test_button); action_row.addWidget(new_sql_button); action_row.addWidget(execute_button); action_row.addWidget(selection_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addWidget(health_button); action_row.addWidget(compare_button); action_row.addWidget(self.open_data_action); action_row.addStretch(); right_layout.addLayout(action_row)
+        action_row.addWidget(test_button); action_row.addWidget(new_sql_button); action_row.addWidget(execute_button); action_row.addWidget(selection_button); action_row.addWidget(export_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addWidget(health_button); action_row.addWidget(compare_button); action_row.addWidget(self.open_data_action); action_row.addStretch(); right_layout.addLayout(action_row)
         pagination_row = QHBoxLayout()
         self.previous_data_button = QPushButton("Anterior")
         self.previous_data_button.setEnabled(False)
@@ -596,6 +597,28 @@ class MainWindow:
         for row_index, row in enumerate(result.rows):
             for column_index, value in enumerate(row):
                 self.result_table.setItem(row_index, column_index, QTableWidgetItem("" if value is None else str(value)))
+
+    def export_result_csv(self):
+        from PySide6.QtWidgets import QFileDialog
+        import csv
+
+        if self.result_table.columnCount() == 0:
+            self._show_message("Exportar CSV", "Não há resultado para exportar.", warning=True)
+            return
+        filename, _ = QFileDialog.getSaveFileName(self._window, "Exportar resultado", "resultado.csv", "CSV (*.csv);;Todos (*.*)")
+        if not filename:
+            return
+        try:
+            with open(filename, "w", newline="", encoding="utf-8-sig") as handle:
+                writer = csv.writer(handle, delimiter=";")
+                writer.writerow([self.result_table.horizontalHeaderItem(column).text() if self.result_table.horizontalHeaderItem(column) else "" for column in range(self.result_table.columnCount())])
+                for row in range(self.result_table.rowCount()):
+                    writer.writerow([self.result_table.item(row, column).text() if self.result_table.item(row, column) else "" for column in range(self.result_table.columnCount())])
+        except OSError as exc:
+            self.status.setText(f"Falha ao exportar CSV: {exc}")
+            self._show_message("Falha ao exportar CSV", str(exc))
+            return
+        self.status.setText(f"CSV exportado: {filename}")
 
     def execute_script_file(self):
         from .script_runner import run_script
