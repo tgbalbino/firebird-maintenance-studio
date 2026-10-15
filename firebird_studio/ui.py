@@ -103,7 +103,7 @@ class MainWindow:
         self.result_tabs = QTabWidget(); self.result_tabs.addTab(self.result_table, "Resultado"); self.result_tabs.addTab(self.plan_output, "Plano e sugestões")
 
         left = QWidget(); left_layout = QVBoxLayout(left); left.setMinimumWidth(280)
-        left_layout.addWidget(QLabel("Bancos e objetos (duplo clique para abrir)")); left_layout.addWidget(self.profile_list, 1)
+        left_layout.addWidget(QLabel("Bancos e objetos (clique para conectar)")); left_layout.addWidget(self.profile_list, 1)
         self.open_data_button = QPushButton("Abrir dados da tabela")
         self.open_data_button.setEnabled(False)
         self.open_data_button.clicked.connect(self.open_table_data)
@@ -270,11 +270,10 @@ class MainWindow:
                 self.open_object(item)
             return
         if 0 <= index < len(self.profiles):
-            self.status.setText(f"Cadastro '{self.profiles[index].name}' selecionado. Use duplo clique para abrir.")
-            if is_double_click:
-                self._last_tree_activation_key = item_key
-                self._last_tree_activation_time = now
-                self.open_profile()
+            self.status.setText(f"Conectando ao cadastro '{self.profiles[index].name}'...")
+            self._last_tree_activation_key = item_key
+            self._last_tree_activation_time = now
+            self.open_profile()
 
     def _on_tree_pressed(self, item):
         """Fallback for packaged Windows builds that omit itemDoubleClicked."""
