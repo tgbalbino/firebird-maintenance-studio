@@ -93,8 +93,6 @@ class MainWindow:
         self._open_worker = None
         self._open_timeout_timer = None
         self._opening_profile_name = None
-        self._last_tree_click_key = None
-        self._last_tree_click_time = 0.0
         self._last_tree_activation_key = None
         self._last_tree_activation_time = 0.0
         self.selected_object = None
@@ -234,11 +232,9 @@ class MainWindow:
         splitter.splitterMoved.connect(lambda _position, _index: self._save_splitter_state(splitter))
         self._window.setCentralWidget(splitter)
         self.profile_list.itemClicked.connect(self._on_profile_clicked)
-        self.profile_list.itemPressed.connect(self._on_tree_pressed)
-        # itemActivated is emitted by Qt for mouse double-click and keyboard
-        # activation; keep it alongside the repeated-click fallback used by
-        # some packaged Windows builds.
-        self.profile_list.itemActivated.connect(self._on_tree_activated)
+        # Use Qt's actual double-click signal. Inferring a double click from
+        # itemPressed/itemClicked makes a fast single click open object data.
+        self.profile_list.itemDoubleClicked.connect(self._on_tree_double_clicked)
         self.refresh_profiles()
         if self.profiles:
             self._hide_profile_details()
@@ -337,20 +333,11 @@ class MainWindow:
         self.editor = editor
 
     def _on_profile_clicked(self, item):
-        """Select a database/object; load object details only on double click."""
-        now = time.monotonic()
+        """Select a database/object; loading happens only on double click."""
         index = self._profile_index_for_item(item)
         obj = item.data(0, 32)
-        item_key = (index, getattr(obj, "kind", ""), getattr(obj, "name", "")) if obj is not None else (index, "PROFILE")
         is_object_item = item.parent() is not None
         self._log_event("Item da árvore clicado", index=index, item=item.text(0), object=getattr(obj, "name", ""), object_item=is_object_item, object_type=type(obj).__name__)
-        is_double_click = item_key == self._last_tree_click_key and now - self._last_tree_click_time <= 0.75
-        # The pressed-event fallback may already have handled this double click
-        # in packaged Windows builds. Avoid loading/opening the same object twice.
-        if is_double_click and item_key == self._last_tree_activation_key and now - self._last_tree_activation_time < 0.4:
-            return
-        self._last_tree_click_key = item_key
-        self._last_tree_click_time = now
         typed_password = self.password.text()
         if 0 <= index < len(self.profiles):
             self.select_profile(index)
@@ -359,48 +346,17 @@ class MainWindow:
             if typed_password and not self.password.text():
                 self.password.setText(typed_password)
         if is_object_item and obj is not None:
-            if is_double_click:
-                self._last_tree_activation_key = item_key
-                self._last_tree_activation_time = now
-                self.preview_object(item)
-                self.open_object(item)
-            else:
-                self.selected_object = obj
-                self._set_table_data_enabled(str(getattr(obj, "kind", "")).upper() == "TABLE")
-                self.status.setText(
-                    f"{obj.kind.title()} selecionado: {obj.name}. Duplo clique para carregar DDL e dados."
-                )
+            self.selected_object = obj
+            self._set_table_data_enabled(str(getattr(obj, "kind", "")).upper() == "TABLE")
+            self.status.setText(
+                f"{obj.kind.title()} selecionado: {obj.name}. Duplo clique para carregar DDL e dados."
+            )
             return
         if 0 <= index < len(self.profiles):
             self.status.setText(f"Perfil '{self.profiles[index].name}' selecionado. Duplo clique para conectar.")
 
-    def _on_tree_pressed(self, item):
-        """Fallback for packaged Windows builds that omit itemDoubleClicked."""
-        now = time.monotonic()
-        index = self._profile_index_for_item(item)
-        obj = item.data(0, 32)
-        is_object_item = item.parent() is not None
-        key = (index, getattr(obj, "kind", ""), getattr(obj, "name", "")) if obj is not None else (index, "PROFILE")
-        if key == self._last_tree_click_key and now - self._last_tree_click_time <= 0.75:
-            if key == self._last_tree_activation_key and now - self._last_tree_activation_time < 0.4:
-                return
-            self._last_tree_activation_key = key
-            self._last_tree_activation_time = now
-            if 0 <= index < len(self.profiles):
-                self.select_profile(index)
-            if is_object_item and obj is not None:
-                self.preview_object(item)
-                self.open_object(item)
-            elif 0 <= index < len(self.profiles):
-                self.open_profile(index)
-        self._last_tree_click_key = key
-        self._last_tree_click_time = now
-
-    def _on_profile_activated(self, item=None):
-        """Open exactly the profile represented by the activated list item."""
-        self._on_tree_activated(item or self.profile_list.currentItem())
-
-    def _on_tree_activated(self, item, _column=0):
+    def _on_tree_double_clicked(self, item, _column=0):
+        """Open a profile or object only after Qt confirms a double click."""
         index = self._profile_index_for_item(item)
         obj = item.data(0, 32)
         is_object_item = item.parent() is not None
