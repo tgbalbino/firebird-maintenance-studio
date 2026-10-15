@@ -381,12 +381,12 @@ class MainWindow:
             credentials = CredentialStore()
             if self.save_password.isChecked() and self.password.text():
                 credentials.set(profile.name, self.password.text())
-                if previous_name and previous_name != profile.name:
-                    credentials.delete(previous_name)
                 message = "Perfil e senha criptografada salvos."
             else:
                 credentials.delete(profile.name)
                 message = "Perfil salvo sem senha."
+            if previous_name and previous_name != profile.name:
+                credentials.delete(previous_name)
         except Exception as exc:
             message = f"Perfil salvo, mas não foi possível proteger a senha: {exc}"
         self.refresh_profiles(); self.status.setText(message)
