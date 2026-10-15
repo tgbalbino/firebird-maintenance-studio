@@ -188,6 +188,7 @@ class MainWindow:
         self.commit_changes.setToolTip("Quando marcado, confirma DDL/DML. Desmarcado, alterações são desfeitas ao terminar a execução.")
         export_button = QPushButton("Exportar CSV"); export_button.clicked.connect(self.export_result_csv)
         json_button = QPushButton("Exportar JSON"); json_button.clicked.connect(self.export_result_json)
+        save_sql_button = QPushButton("Salvar SQL"); save_sql_button.clicked.connect(self.save_sql_file)
         script_button = QPushButton("Executar arquivo SQL"); script_button.clicked.connect(self.execute_script_file)
         backup_button = QPushButton("Backup"); backup_button.clicked.connect(self.execute_backup)
         restore_button = QPushButton("Restore"); restore_button.clicked.connect(self.execute_restore)
@@ -198,7 +199,7 @@ class MainWindow:
         self.open_data_action = QPushButton("Dados da tabela")
         self.open_data_action.setEnabled(False)
         self.open_data_action.clicked.connect(self.open_table_data)
-        action_row.addWidget(new_sql_button); action_row.addWidget(execute_button); action_row.addWidget(selection_button); action_row.addWidget(self.commit_changes); action_row.addWidget(export_button); action_row.addWidget(json_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addWidget(health_button); action_row.addWidget(compare_button); action_row.addWidget(self.open_data_action); action_row.addStretch(); right_layout.addLayout(action_row)
+        action_row.addWidget(new_sql_button); action_row.addWidget(execute_button); action_row.addWidget(selection_button); action_row.addWidget(self.commit_changes); action_row.addWidget(export_button); action_row.addWidget(json_button); action_row.addWidget(save_sql_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addWidget(health_button); action_row.addWidget(compare_button); action_row.addWidget(self.open_data_action); action_row.addStretch(); right_layout.addLayout(action_row)
         pagination_row = QHBoxLayout()
         self.previous_data_button = QPushButton("Anterior")
         self.previous_data_button.setEnabled(False)
@@ -928,6 +929,18 @@ class MainWindow:
         except OSError as exc:
             self.status.setText(f"Falha ao exportar JSON: {exc}")
             self._show_message("Falha ao exportar JSON", str(exc))
+
+    def save_sql_file(self):
+        from PySide6.QtWidgets import QFileDialog
+        filename, _ = QFileDialog.getSaveFileName(self._window, "Salvar script SQL", "", "SQL (*.sql);;Todos (*.*)")
+        if not filename:
+            return
+        try:
+            Path(filename).write_text(self.editor.toPlainText(), encoding="utf-8")
+            self.status.setText(f"Script SQL salvo: {filename}")
+        except OSError as exc:
+            self.status.setText(f"Falha ao salvar SQL: {exc}")
+            self._show_message("Falha ao salvar SQL", str(exc))
 
     def execute_script_file(self):
         from .script_runner import run_script
