@@ -10,6 +10,10 @@ O pacote não inclui um servidor Firebird nem os utilitários `isql.exe` e `gbak
 
 O primeiro início deve ser feito em uma máquina de teste, com um banco descartável. O build foi validado iniciando a janela por mais de três segundos; não foi possível validar conexão ou backup porque nenhum banco de teste foi fornecido.
 
+## Instalador
+
+O arquivo `installer/FirebirdMaintenanceStudio.iss` está pronto para ser compilado pelo Inno Setup em uma máquina Windows que tenha o Inno Setup instalado. Ele gera um instalador x64 com atalho no menu Iniciar e, opcionalmente, na área de trabalho. O ambiente atual não possui o compilador do Inno Setup, portanto o instalador não foi gerado aqui.
+
 Para reconstruir:
 
 ```powershell
