@@ -309,8 +309,12 @@ class MainWindow:
 
     def _new_sql_tab(self):
         from PySide6.QtWidgets import QTextEdit
+        from PySide6.QtGui import QKeySequence, QShortcut
         editor = QTextEdit()
         editor.setPlaceholderText("Execute uma instrução SQL...")
+        shortcut = QShortcut(QKeySequence("Ctrl+Return"), editor)
+        shortcut.activated.connect(self.execute_selected)
+        editor.setProperty("execute_shortcut", shortcut)
         selected_name = self.query_profile_combo.currentText() if hasattr(self, "query_profile_combo") else ""
         editor.setProperty("query_profile", selected_name or (self.profiles[0].name if self.profiles else ""))
         index = self.sql_tabs.addTab(editor, f"SQL {self.sql_tabs.count() + 1}")
