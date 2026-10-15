@@ -455,8 +455,9 @@ class MainWindow:
         # This avoids relying on the form repaint completing before the worker
         # starts, which was the reason the button appeared to have no effect.
         profile = self.profiles[selected] if 0 <= selected < len(self.profiles) else self._profile_from_form()
-        if 0 <= selected < len(self.profiles):
-            self.select_profile(selected)
+        # The tree click already selected this profile. Calling select_profile
+        # again here can block on Windows Credential Manager before the worker
+        # even starts; the Testar conexão button does not repeat that lookup.
         errors = profile.validate()
         if errors:
             message = " ".join(errors)
