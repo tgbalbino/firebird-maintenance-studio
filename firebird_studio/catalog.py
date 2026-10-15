@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from typing import Any, Iterator
 
-from .connection import _dsn
+from .connection import _client_library, _dsn
 from .models import ConnectionProfile
 from .schema import SchemaObject
 
@@ -14,6 +14,9 @@ def open_database(profile: ConnectionProfile, password: str | None = None) -> It
     if errors:
         raise ValueError(" ".join(errors))
     kwargs = {"dsn": _dsn(profile), "user": profile.user, "password": password or "", "charset": profile.charset}
+    client_library = _client_library(profile)
+    if client_library:
+        kwargs["fb_library_name"] = client_library
     if profile.role:
         kwargs["role"] = profile.role
     if profile.version == "2.5":

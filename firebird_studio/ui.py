@@ -35,6 +35,9 @@ class MainWindow:
             QTableWidget,
             QTableWidgetItem,
             QFileDialog,
+            QTabWidget,
+            QTreeWidget,
+            QTreeWidgetItem,
         )
 
         self._window = QMainWindow()
@@ -56,12 +59,17 @@ class MainWindow:
         self.isql_path = QLineEdit(); self.isql_path.setPlaceholderText("C:\\Firebird\\Firebird_5_0\\isql.exe")
         self.gbak_path = QLineEdit(); self.gbak_path.setPlaceholderText("C:\\Firebird\\Firebird_5_0\\gbak.exe")
         self.status = QLabel("Pronto. Nenhum banco conectado.")
-        self.editor = QTextEdit()
-        self.editor.setPlaceholderText("Execute uma instrução SQL. Scripts com múltiplos comandos usarão o runner isql em uma próxima etapa.")
+        self.object_tree = QTreeWidget(); self.object_tree.setHeaderLabels(["Objetos do banco"])
+        self.object_tree.itemDoubleClicked.connect(self.open_object)
+        self.sql_tabs = QTabWidget(); self.sql_tabs.setTabsClosable(True); self.sql_tabs.tabCloseRequested.connect(self.close_sql_tab)
+        self.sql_tabs.currentChanged.connect(self._sync_editor)
+        self.editor = None
+        self._new_sql_tab()
         self.result_table = QTableWidget(); self.result_table.setEditTriggers(QTableWidget.NoEditTriggers)
 
         left = QWidget(); left_layout = QVBoxLayout(left)
         left_layout.addWidget(QLabel("Bancos configurados")); left_layout.addWidget(self.profile_list)
+        left_layout.addWidget(QLabel("Objetos do banco")); left_layout.addWidget(self.object_tree, 1)
         new_button = QPushButton("Novo perfil"); new_button.clicked.connect(self.new_profile); left_layout.addWidget(new_button)
         save_button = QPushButton("Salvar perfil"); save_button.clicked.connect(self.save_profile); left_layout.addWidget(save_button)
         left_layout.addStretch()
@@ -71,8 +79,9 @@ class MainWindow:
         form.addRow("Firebird", self.version); form.addRow("Usuário", self.user); form.addRow("Senha", self.password); form.addRow("Charset", self.charset); form.addRow("Caminho isql", self.isql_path); form.addRow("Caminho gbak", self.gbak_path); form.addRow("Comparar com", self.target_profile)
         box = QGroupBox("Perfil selecionado"); box.setLayout(form)
         right = QWidget(); right_layout = QVBoxLayout(right); right_layout.addWidget(box)
-        right_layout.addWidget(QLabel("Editor SQL")); right_layout.addWidget(self.editor)
+        right_layout.addWidget(QLabel("Janelas SQL")); right_layout.addWidget(self.sql_tabs, 1)
         action_row = QHBoxLayout(); test_button = QPushButton("Testar conexão"); test_button.clicked.connect(self.test_selected)
+        new_sql_button = QPushButton("Nova janela SQL"); new_sql_button.clicked.connect(self._new_sql_tab)
         execute_button = QPushButton("Executar SQL"); execute_button.clicked.connect(self.execute_selected)
         script_button = QPushButton("Executar arquivo SQL"); script_button.clicked.connect(self.execute_script_file)
         backup_button = QPushButton("Backup"); backup_button.clicked.connect(self.execute_backup)
@@ -81,12 +90,55 @@ class MainWindow:
         plan_button = QPushButton("Ver plano"); plan_button.clicked.connect(self.inspect_plan)
         health_button = QPushButton("Saúde"); health_button.clicked.connect(self.inspect_health)
         compare_button = QPushButton("Comparar"); compare_button.clicked.connect(self.compare_selected)
-        action_row.addWidget(test_button); action_row.addWidget(execute_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addWidget(health_button); action_row.addWidget(compare_button); action_row.addStretch(); right_layout.addLayout(action_row)
+        action_row.addWidget(test_button); action_row.addWidget(new_sql_button); action_row.addWidget(execute_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addWidget(health_button); action_row.addWidget(compare_button); action_row.addStretch(); right_layout.addLayout(action_row)
         right_layout.addWidget(self.result_table); right_layout.addWidget(self.status)
         splitter = QSplitter(); splitter.addWidget(left); splitter.addWidget(right); splitter.setSizes([260, 840])
         self._window.setCentralWidget(splitter)
         self.profile_list.currentRowChanged.connect(self.select_profile)
         self.refresh_profiles()
+
+    def _sync_editor(self, index: int):
+        self.editor = self.sql_tabs.widget(index) if index >= 0 else None
+
+    def _new_sql_tab(self):
+        from PySide6.QtWidgets import QTextEdit
+        editor = QTextEdit()
+        editor.setPlaceholderText("Execute uma instrução SQL...")
+        index = self.sql_tabs.addTab(editor, f"SQL {self.sql_tabs.count() + 1}")
+        self.sql_tabs.setCurrentIndex(index)
+        self.editor = editor
+
+    def close_sql_tab(self, index: int):
+        if self.sql_tabs.count() == 1:
+            return
+        widget = self.sql_tabs.widget(index)
+        self.sql_tabs.removeTab(index)
+        widget.deleteLater()
+
+    def _populate_object_tree(self, objects):
+        from PySide6.QtWidgets import QTreeWidgetItem
+
+        self.object_tree.clear()
+        groups = {}
+        for obj in objects:
+            label = {"TABLE": "Tabelas", "VIEW": "Views", "PROCEDURE": "Procedures", "TRIGGER": "Triggers"}.get(obj.kind, obj.kind.title())
+            groups.setdefault(label, []).append(obj)
+        for label in sorted(groups):
+            parent = QTreeWidgetItem([f"{label} ({len(groups[label])})"])
+            self.object_tree.addTopLevelItem(parent)
+            for obj in groups[label]:
+                item = QTreeWidgetItem([obj.name])
+                item.setData(0, 32, obj)
+                parent.addChild(item)
+            parent.setExpanded(True)
+
+    def open_object(self, item, _column=0):
+        obj = item.data(0, 32)
+        if obj is None:
+            return
+        self._new_sql_tab()
+        self.editor.setPlainText(obj.ddl)
+        self.sql_tabs.setTabText(self.sql_tabs.currentIndex(), obj.name)
 
     def refresh_profiles(self):
         self.profile_list.clear()
@@ -122,6 +174,14 @@ class MainWindow:
         from .credentials import CredentialStore
         result = test_connection(self._profile_from_form(), self.password.text() or CredentialStore().get(self.name.text()))
         self.status.setText(result.message)
+        if result.ok:
+            try:
+                from .catalog import load_schema
+                objects = load_schema(self._profile_from_form(), self.password.text() or CredentialStore().get(self.name.text()))
+                self._populate_object_tree(objects)
+                self.status.setText(f"{result.message} Objetos carregados: {len(objects)}.")
+            except Exception as exc:
+                self.status.setText(f"{result.message} Conectado, mas não foi possível ler objetos: {exc}")
 
     def execute_selected(self):
         from .credentials import CredentialStore
@@ -188,6 +248,7 @@ class MainWindow:
             self.status.setText(f"Falha ao ler estrutura: {exc}")
             return
         self.editor.setPlainText("\n".join(f"{obj.kind}: {obj.name}\n{obj.ddl}" for obj in objects))
+        self._populate_object_tree(objects)
         self.status.setText(f"Estrutura lida: {len(objects)} objeto(s).")
 
     def inspect_plan(self):
