@@ -184,6 +184,10 @@ class MainWindow:
     def _on_profile_clicked(self, item):
         """Load the clicked profile into the editor without connecting."""
         index = self.profile_list.row(item)
+        # Selecting a profile means the user may want to review or edit its
+        # connection data, so expand the details after a successful connection
+        # has previously collapsed them.
+        self._show_profile_details()
         self.select_profile(index)
         if 0 <= index < len(self.profiles):
             self.status.setText(f"Cadastro '{self.profiles[index].name}' selecionado. Use duplo clique para abrir.")
@@ -193,6 +197,7 @@ class MainWindow:
         if item is not None:
             index = self.profile_list.row(item)
             self.profile_list.setCurrentRow(index)
+            self._show_profile_details()
             self.select_profile(index)
         self.open_profile()
 
