@@ -40,13 +40,14 @@ class MainWindow:
             QTreeWidgetItem,
             QSizePolicy,
         )
-        from PySide6.QtCore import QObject, QThread, Signal, Slot
+        from PySide6.QtCore import QObject, QThread, Signal, Slot, QSettings, Qt
 
         self._window = QMainWindow()
         self.show = self._window.show
         self._window.setWindowTitle("Firebird Maintenance Studio")
         self._window.resize(1100, 700)
         self.store = store
+        self._settings = QSettings("TGBalbino", "FirebirdMaintenanceStudio")
         self._open_thread = None
         self._open_worker = None
         self.profiles = store.load()
@@ -99,13 +100,27 @@ class MainWindow:
         compare_button = QPushButton("Comparar"); compare_button.clicked.connect(self.compare_selected)
         action_row.addWidget(test_button); action_row.addWidget(new_sql_button); action_row.addWidget(execute_button); action_row.addWidget(script_button); action_row.addWidget(backup_button); action_row.addWidget(restore_button); action_row.addWidget(schema_button); action_row.addWidget(plan_button); action_row.addWidget(health_button); action_row.addWidget(compare_button); action_row.addStretch(); right_layout.addLayout(action_row)
         right_layout.addWidget(self.result_table); right_layout.addWidget(self.status)
-        splitter = QSplitter(); splitter.addWidget(left); splitter.addWidget(right); splitter.setSizes([260, 840])
+        splitter = QSplitter(Qt.Horizontal); splitter.addWidget(left); splitter.addWidget(right)
+        self.main_splitter = splitter
+        splitter.setChildrenCollapsible(False)
+        splitter.setHandleWidth(10)
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.splitterMoved.connect(lambda _position, _index: self._save_splitter_state(splitter))
         self._window.setCentralWidget(splitter)
         self.profile_list.currentRowChanged.connect(self.select_profile)
         self.profile_list.itemDoubleClicked.connect(lambda _item: self.open_profile())
         self.profile_list.itemActivated.connect(lambda _item, _column: self.open_profile())
         self.refresh_profiles()
-        splitter.setSizes([360, 1040])
+        saved_splitter = self._settings.value("main_splitter_state")
+        if saved_splitter and splitter.restoreState(saved_splitter):
+            pass
+        else:
+            splitter.setSizes([360, 1040])
+
+    def _save_splitter_state(self, splitter):
+        self._settings.setValue("main_splitter_state", splitter.saveState())
+        self._settings.sync()
 
     def _sync_editor(self, index: int):
         self.editor = self.sql_tabs.widget(index) if index >= 0 else None
