@@ -45,8 +45,15 @@ def build_findings(metrics: dict[str, Any]) -> list[HealthFinding]:
 
 def inspect_health(profile: ConnectionProfile, password: str | None = None) -> HealthReport:
     with open_database(profile, password) as connection:
-        database = _fetch_one(connection, "SELECT MON$OLDEST_TRANSACTION, MON$OLDEST_ACTIVE, MON$OLDEST_SNAPSHOT, MON$NEXT_TRANSACTION, MON$BACKUP_STATE FROM MON$DATABASE")
-        attachment = _fetch_one(connection, "SELECT COUNT(*) FROM MON$ATTACHMENTS")
+        try:
+            database = _fetch_one(connection, "SELECT MON$OLDEST_TRANSACTION, MON$OLDEST_ACTIVE, MON$OLDEST_SNAPSHOT, MON$NEXT_TRANSACTION, MON$BACKUP_STATE FROM MON$DATABASE")
+        except Exception:
+            # Firebird 2.5 exposes a smaller MON$DATABASE surface.
+            database = _fetch_one(connection, "SELECT MON$OLDEST_TRANSACTION, MON$OLDEST_ACTIVE, MON$OLDEST_SNAPSHOT, MON$NEXT_TRANSACTION FROM MON$DATABASE")
+        try:
+            attachment = _fetch_one(connection, "SELECT COUNT(*) FROM MON$ATTACHMENTS")
+        except Exception:
+            attachment = (0,)
     metrics = {
         "oldest_transaction": database[0] if len(database) > 0 else None,
         "oldest_active": database[1] if len(database) > 1 else None,
