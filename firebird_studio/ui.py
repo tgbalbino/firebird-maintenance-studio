@@ -338,8 +338,6 @@ class MainWindow:
             return
         if 0 <= index < len(self.profiles):
             self.status.setText(f"Perfil '{self.profiles[index].name}' selecionado. Duplo clique para conectar.")
-            self._last_tree_activation_key = item_key
-            self._last_tree_activation_time = now
 
     def _on_tree_pressed(self, item):
         """Fallback for packaged Windows builds that omit itemDoubleClicked."""
