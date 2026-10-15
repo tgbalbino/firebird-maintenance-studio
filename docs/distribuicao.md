@@ -8,6 +8,8 @@ O build atual é Windows x64, feito com Python 3.12 x64, PySide6 e PyInstaller. 
 
 O pacote não inclui um servidor Firebird nem os utilitários `isql.exe` e `gbak.exe`. Configure no perfil os caminhos correspondentes à versão do servidor. O cliente `fbclient.dll` também deve estar disponível para o driver usado.
 
+Existe também uma versão de arquivo único, `FirebirdMaintenanceStudioOnefile.exe`. Ela extrai as DLLs para uma pasta temporária ao iniciar e é a opção recomendada quando o usuário não quer distribuir uma pasta com dependências. Mesmo assim, o arquivo deve ser extraído do ZIP antes de executar.
+
 O primeiro início deve ser feito em uma máquina de teste, com um banco descartável. O build foi validado iniciando a janela por mais de três segundos; não foi possível validar conexão ou backup porque nenhum banco de teste foi fornecido.
 
 ## Instalador
@@ -20,6 +22,7 @@ Para reconstruir:
 python -m pip install -e .
 python -m pip install pyinstaller
 pyinstaller --noconfirm --clean --windowed --name FirebirdMaintenanceStudio --paths . --collect-submodules firebird --collect-submodules fdb --collect-submodules keyring run_app.py
+pyinstaller --noconfirm --clean --onefile --windowed --name FirebirdMaintenanceStudioOnefile --paths . --collect-submodules firebird --collect-submodules fdb --collect-submodules keyring run_app.py
 ```
 
 ## x86 (32 bits)
