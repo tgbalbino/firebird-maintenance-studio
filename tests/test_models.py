@@ -6,6 +6,7 @@ from firebird_studio.models import ConnectionProfile, ProfileStore
 from firebird_studio.sql import execute_sql
 from firebird_studio.script_runner import build_isql_args, run_script
 from firebird_studio.backup import build_gbak_args, run_gbak
+from firebird_studio.schema import SchemaObject, compare_schema, generate_migration
 
 
 class ProfileTests(unittest.TestCase):
@@ -51,3 +52,21 @@ class ProfileTests(unittest.TestCase):
             result = run_gbak(profile, "restore", backup, target, "secret", root / "gbak.exe")
             self.assertFalse(result.ok)
             self.assertIn("já existe", result.error)
+
+    def test_schema_diff_and_migration_preview(self):
+        source = [
+            SchemaObject("TABLE", "CUSTOMER", "CREATE TABLE CUSTOMER (ID INTEGER NOT NULL)"),
+            SchemaObject("TABLE", "ORDERS", "CREATE TABLE ORDERS (ID INTEGER)"),
+        ]
+        target = [SchemaObject("TABLE", "CUSTOMER", "CREATE TABLE CUSTOMER (ID INTEGER)")]
+        changes = compare_schema(source, target)
+        self.assertEqual([change.action for change in changes], ["ADD", "ALTER"])
+        migration = generate_migration(changes)
+        self.assertIn("CREATE TABLE ORDERS", migration)
+        self.assertIn("REVIEW", migration)
+
+    def test_removed_objects_are_not_generated_as_drop(self):
+        changes = compare_schema([], [SchemaObject("TABLE", "OLD_TABLE", "CREATE TABLE OLD_TABLE (ID INTEGER)")])
+        migration = generate_migration(changes)
+        self.assertIn("NOT GENERATED", migration)
+        self.assertNotIn("DROP TABLE", migration)

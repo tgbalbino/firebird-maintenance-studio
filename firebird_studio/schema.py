@@ -1,0 +1,64 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+import re
+
+
+@dataclass(frozen=True, slots=True)
+class SchemaObject:
+    kind: str
+    name: str
+    ddl: str
+    dependencies: tuple[str, ...] = ()
+
+    @property
+    def key(self) -> tuple[str, str]:
+        return (self.kind.upper(), self.name.upper())
+
+    @property
+    def normalized_ddl(self) -> str:
+        text = self.ddl.strip().replace("\r\n", "\n")
+        return re.sub(r"\s+", " ", text).upper()
+
+
+@dataclass(frozen=True, slots=True)
+class SchemaChange:
+    action: str
+    object: SchemaObject
+    previous: SchemaObject | None = None
+    destructive: bool = False
+
+
+def compare_schema(source: list[SchemaObject], target: list[SchemaObject]) -> list[SchemaChange]:
+    source_map = {obj.key: obj for obj in source}
+    target_map = {obj.key: obj for obj in target}
+    changes: list[SchemaChange] = []
+    for key in sorted(source_map.keys() - target_map.keys()):
+        changes.append(SchemaChange("ADD", source_map[key]))
+    for key in sorted(target_map.keys() - source_map.keys()):
+        changes.append(SchemaChange("REMOVE", target_map[key], destructive=True))
+    for key in sorted(source_map.keys() & target_map.keys()):
+        source_obj, target_obj = source_map[key], target_map[key]
+        if source_obj.normalized_ddl != target_obj.normalized_ddl:
+            changes.append(SchemaChange("ALTER", source_obj, target_obj, destructive=_is_destructive(source_obj, target_obj)))
+    return changes
+
+
+def _is_destructive(source: SchemaObject, target: SchemaObject) -> bool:
+    source_ddl, target_ddl = source.normalized_ddl, target.normalized_ddl
+    return any(token in source_ddl or token in target_ddl for token in ("DROP ", "NOT NULL", "PRIMARY KEY")) or len(source_ddl) < len(target_ddl)
+
+
+def generate_migration(changes: list[SchemaChange]) -> str:
+    lines = ["-- Firebird Maintenance Studio: migration preview", "-- Review every statement before applying it.", ""]
+    for change in changes:
+        label = f"{change.action} {change.object.kind} {change.object.name}"
+        if change.action == "ADD":
+            lines.extend([f"-- {label}", change.object.ddl.rstrip().rstrip(";") + ";", ""])
+        elif change.action == "ALTER":
+            lines.extend([f"-- {label}" + (" [REVIEW: potentially destructive]" if change.destructive else ""), change.object.ddl.rstrip().rstrip(";") + ";", ""])
+        elif change.action == "REMOVE":
+            lines.extend([f"-- {label} [NOT GENERATED: destructive change]", ""])
+    if not changes:
+        lines.append("-- No structural differences found.")
+    return "\n".join(lines).rstrip() + "\n"
