@@ -43,6 +43,7 @@ O produto será independente de IDE comercial. **IBExpert é apenas referência 
 - [Validação técnica e arquitetura](docs/validacao-tecnica.md)
 - [Escopo, etapas e critérios de aceite](docs/roteiro.md)
 - [Segurança e regras para operações sensíveis](docs/seguranca.md)
+- [Revisão comparativa e plano de melhorias](docs/melhorias.md)
 
 ## Próxima validação prática
 
