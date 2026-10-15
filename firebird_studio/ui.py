@@ -157,11 +157,6 @@ class MainWindow:
         save_button = QPushButton("Salvar perfil"); save_button.clicked.connect(self.save_profile); left_layout.addWidget(save_button)
         open_button = QPushButton("Abrir banco"); open_button.clicked.connect(self.open_profile); left_layout.addWidget(open_button)
         delete_button = QPushButton("Excluir cadastro"); delete_button.clicked.connect(self.delete_profile); left_layout.addWidget(delete_button)
-        resize_row = QHBoxLayout()
-        wider_button = QPushButton("Lateral +"); wider_button.clicked.connect(lambda: self._resize_sidebar(80))
-        narrower_button = QPushButton("Lateral -"); narrower_button.clicked.connect(lambda: self._resize_sidebar(-80))
-        resize_row.addWidget(wider_button); resize_row.addWidget(narrower_button)
-        left_layout.addLayout(resize_row)
         left_layout.addStretch()
 
         form = QFormLayout(); form.addRow("Nome", self.name); form.addRow("Host", self.host)
@@ -420,11 +415,12 @@ class MainWindow:
         return self.password.text() or self._stored_password(profile_name) or ""
 
     def close_sql_tab(self, index: int):
-        if self.sql_tabs.count() == 1:
-            return
         widget = self.sql_tabs.widget(index)
         self.sql_tabs.removeTab(index)
-        widget.deleteLater()
+        if widget is not None:
+            widget.deleteLater()
+        if self.sql_tabs.count() == 0:
+            self._new_sql_tab()
 
     def _add_query_history(self, sql: str):
         text = sql.strip()
