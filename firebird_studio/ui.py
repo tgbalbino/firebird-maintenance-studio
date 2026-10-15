@@ -417,6 +417,7 @@ class MainWindow:
         # Do not assign None to a possibly active QThread here. Its Qt
         # destructor can wait for the worker and block the packaged app.
         # References are cleared only by the finished/timeout handlers.
+        self._log_event("Preparando worker de conexão")
 
         class OpenWorker(QObject):
             finished = Signal(object, object, str)
@@ -447,6 +448,8 @@ class MainWindow:
                 except Exception as exc:
                     self.progress.emit(f"Falha ao ler objetos: {exc}")
                     self.finished.emit(result, [], str(exc))
+
+        self._log_event("Worker de conexão preparado")
 
         # Click handlers pass the already resolved index. Avoid querying the
         # tree again here because currentItem()/parent() can re-enter Qt while
