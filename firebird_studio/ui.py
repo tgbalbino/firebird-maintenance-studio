@@ -126,8 +126,8 @@ class MainWindow:
         # the item argument in the slot avoids the overloaded Qt signal/lambda
         # mismatch that can make a double click appear to do nothing in a
         # frozen executable.
+        self.profile_list.itemClicked.connect(self._on_profile_clicked)
         self.profile_list.itemDoubleClicked.connect(self._on_profile_activated)
-        self.profile_list.itemActivated.connect(self._on_profile_activated)
         self.refresh_profiles()
         saved_splitter = self._settings.value("main_splitter_state")
         if saved_splitter and splitter.restoreState(saved_splitter):
@@ -158,7 +158,19 @@ class MainWindow:
         self.sql_tabs.setCurrentIndex(index)
         self.editor = editor
 
-    def _on_profile_activated(self, _item=None):
+    def _on_profile_clicked(self, item):
+        """Load the clicked profile into the editor without connecting."""
+        index = self.profile_list.row(item)
+        self.select_profile(index)
+        if 0 <= index < len(self.profiles):
+            self.status.setText(f"Cadastro '{self.profiles[index].name}' selecionado. Use duplo clique para abrir.")
+
+    def _on_profile_activated(self, item=None):
+        """Open exactly the profile represented by the activated list item."""
+        if item is not None:
+            index = self.profile_list.row(item)
+            self.profile_list.setCurrentRow(index)
+            self.select_profile(index)
         self.open_profile()
 
     def close_sql_tab(self, index: int):
