@@ -448,9 +448,8 @@ class MainWindow:
                     self.progress.emit(f"Falha ao ler objetos: {exc}")
                     self.finished.emit(result, [], str(exc))
 
-        from .credentials import CredentialStore
-
         selected = self._profile_index_for_item()
+        self._log_event("Perfil identificado para abrir", selected=selected, profiles=len(self.profiles))
         # When activation comes from the list, use the saved object directly.
         # This avoids relying on the form repaint completing before the worker
         # starts, which was the reason the button appeared to have no effect.
@@ -459,6 +458,7 @@ class MainWindow:
         # again here can block on Windows Credential Manager before the worker
         # even starts; the Testar conexão button does not repeat that lookup.
         errors = profile.validate()
+        self._log_event("Perfil validado para abrir", profile=profile.name, errors=len(errors))
         if errors:
             message = " ".join(errors)
             self._log_event("Perfil inválido ao abrir", errors=message)
@@ -471,6 +471,7 @@ class MainWindow:
         # starts. Only use the credential fallback when no profile item was
         # selected (for example when opening directly from the form).
         password = self.password.text() if 0 <= selected < len(self.profiles) else self._password_for(profile)
+        self._log_event("Senha preparada para abrir", profile=profile.name, password_present=bool(password), selected=selected)
         self._opening_profile_name = profile.name
         self._log_event("Conexão iniciada", profile=profile.name, host=profile.host, database=profile.database, version=profile.version, password_present=bool(password))
         self.status.setText("Conectando e carregando objetos do banco...")
