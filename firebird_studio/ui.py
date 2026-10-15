@@ -137,6 +137,7 @@ class MainWindow:
         self.query_profile_combo.currentTextChanged.connect(self._set_current_query_profile)
         self.query_history = []
         self.last_compare_report = ""
+        self.last_health_report = ""
         self.history_combo = QComboBox()
         self.history_combo.setMinimumWidth(260)
         self.history_combo.setPlaceholderText("Histórico SQL")
@@ -211,7 +212,7 @@ class MainWindow:
         data_button = menu_button("Dados", [("Exportar CSV", self.export_result_csv), ("Exportar JSON", self.export_result_json)], "Exportar resultados e abrir dados de tabelas")
         data_button.menu().addAction(self.open_data_action)
         database_button = menu_button("Banco", [("Backup", self.execute_backup), ("Restore", self.execute_restore)], "Operações de backup e restore")
-        analysis_button = menu_button("Análise", [("Ler estrutura", self.inspect_schema), ("Ver plano", self.inspect_plan), ("Saúde", self.inspect_health), ("Sessões", self.inspect_sessions), ("Validar integridade", self.validate_database), ("Comparar estruturas", self.compare_selected), ("Salvar comparação", self.save_compare_report)], "Estrutura, plano, saúde e comparação")
+        analysis_button = menu_button("Análise", [("Ler estrutura", self.inspect_schema), ("Ver plano", self.inspect_plan), ("Saúde", self.inspect_health), ("Salvar relatório de saúde", self.save_health_report), ("Sessões", self.inspect_sessions), ("Validar integridade", self.validate_database), ("Comparar estruturas", self.compare_selected), ("Salvar comparação", self.save_compare_report)], "Estrutura, plano, saúde e comparação")
         action_row.addWidget(sql_button); action_row.addWidget(data_button); action_row.addWidget(database_button); action_row.addWidget(analysis_button); action_row.addWidget(self.commit_changes); action_row.addStretch(); right_layout.addLayout(action_row)
         pagination_row = QHBoxLayout()
         self.previous_data_button = QPushButton("Anterior")
@@ -1141,9 +1142,35 @@ class MainWindow:
         lines.extend(["", "RECOMENDAÇÕES", ""])
         for finding in report.findings:
             lines.extend([f"[{finding.severity.upper()}] {finding.title}", f"Evidência: {finding.evidence}", f"Ação sugerida: {finding.recommendation}", ""])
-        self.editor.setPlainText("\n".join(lines))
+        self.last_health_report = "\n".join(lines)
+        self.editor.setPlainText(self.last_health_report)
         self._log_event("Saúde analisada", profile=profile.name, findings=len(report.findings))
         self.status.setText(f"Saúde analisada: {len(report.findings)} recomendação(ões).")
+
+    def save_health_report(self):
+        """Save the most recent health report without exposing credentials."""
+        from PySide6.QtWidgets import QFileDialog
+
+        report = self.last_health_report.strip() or self.editor.toPlainText().strip()
+        if not report:
+            self._show_message("Salvar saúde", "Analise a saúde de um banco antes de salvar o relatório.", warning=True)
+            return
+        filename, _ = QFileDialog.getSaveFileName(
+            self._window,
+            "Salvar relatório de saúde",
+            "saude_firebird.txt",
+            "Relatório de texto (*.txt);;Todos (*.*)",
+        )
+        if not filename:
+            return
+        try:
+            Path(filename).write_text(report + "\n", encoding="utf-8")
+        except Exception as exc:
+            self._log_event("Falha ao salvar saúde", target=str(filename), error=str(exc))
+            self._show_message("Falha ao salvar saúde", str(exc))
+            return
+        self._log_event("Relatório de saúde salvo", target=str(filename), bytes=len(report.encode("utf-8")))
+        self.status.setText(f"Relatório de saúde salvo: {filename}")
 
     def inspect_sessions(self):
         from .health import list_sessions
