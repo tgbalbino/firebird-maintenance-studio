@@ -53,7 +53,7 @@ class MainWindow:
         self._open_thread = None
         self._open_worker = None
         self._opening_profile_name = None
-        self._last_tree_click_item = None
+        self._last_tree_click_key = None
         self._last_tree_click_time = 0.0
         self.selected_object = None
         self.table_page = 0
@@ -247,13 +247,14 @@ class MainWindow:
     def _on_profile_clicked(self, item):
         """Select a database or preview one of its child objects."""
         now = time.monotonic()
-        is_double_click = item is self._last_tree_click_item and now - self._last_tree_click_time <= 0.55
-        self._last_tree_click_item = item
-        self._last_tree_click_time = now
         index = self._profile_index_for_item(item)
+        obj = item.data(0, 32)
+        item_key = (index, getattr(obj, "kind", ""), getattr(obj, "name", "")) if obj is not None else (index, "PROFILE")
+        is_double_click = item_key == self._last_tree_click_key and now - self._last_tree_click_time <= 0.75
+        self._last_tree_click_key = item_key
+        self._last_tree_click_time = now
         if 0 <= index < len(self.profiles):
             self.select_profile(index)
-        obj = item.data(0, 32)
         if obj is not None:
             self.preview_object(item)
             if is_double_click:
