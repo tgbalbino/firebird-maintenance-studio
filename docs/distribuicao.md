@@ -22,6 +22,8 @@ O pacote `FirebirdMaintenanceStudio-x64-ibexpert-responsive.zip` mantém a inter
 
 O pacote `FirebirdMaintenanceStudio-x64-splitter-persist.zip` permite redimensionar a lateral e restaura a posição do divisor na próxima abertura.
 
+O pacote `FirebirdMaintenanceStudio-x64-sidebar-fixed.zip` também oferece os botões `Lateral +` e `Lateral -` e permite abrir o perfil preenchido mesmo sem item selecionado na lista.
+
 O primeiro início deve ser feito em uma máquina de teste, com um banco descartável. O build foi validado iniciando a janela por mais de três segundos; não foi possível validar conexão ou backup porque nenhum banco de teste foi fornecido.
 
 ## Instalador
