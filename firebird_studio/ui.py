@@ -228,15 +228,19 @@ class MainWindow:
         self.activity_export_button.clicked.connect(self.export_activity_csv)
         self.activity_open_sql_button = QPushButton("Abrir SQL selecionado")
         self.activity_open_sql_button.clicked.connect(self.open_activity_sql)
+        self.activity_filter = QLineEdit()
+        self.activity_filter.setPlaceholderText("Filtrar usuário, endereço ou SQL...")
+        self.activity_filter.textChanged.connect(self._filter_activity_rows)
         self.activity_auto_refresh = QCheckBox("Atualizar a cada 5 segundos")
         self.activity_auto_refresh.toggled.connect(self._toggle_activity_auto_refresh)
         self.activity_table.cellDoubleClicked.connect(self._open_activity_sql_at)
-        activity_controls = QHBoxLayout(); activity_controls.addWidget(self.activity_refresh_button); activity_controls.addWidget(self.activity_open_sql_button); activity_controls.addWidget(self.activity_export_button); activity_controls.addWidget(self.activity_auto_refresh); activity_controls.addStretch()
+        activity_controls = QHBoxLayout(); activity_controls.addWidget(self.activity_refresh_button); activity_controls.addWidget(self.activity_open_sql_button); activity_controls.addWidget(self.activity_export_button); activity_controls.addWidget(self.activity_filter, 1); activity_controls.addWidget(self.activity_auto_refresh); activity_controls.addStretch()
         self.activity_refresh_timer = QTimer(self._window); self.activity_refresh_timer.setInterval(5000); self.activity_refresh_timer.timeout.connect(self.inspect_activity)
         activity_panel = QWidget(); activity_layout = QVBoxLayout(activity_panel); activity_layout.addLayout(activity_controls); activity_layout.addWidget(self.activity_metrics); activity_layout.addWidget(self.activity_table, 1)
         self.activity_panel = activity_panel
         self.sessions_table = QTableWidget(); self.sessions_table.setEditTriggers(QTableWidget.NoEditTriggers); self.sessions_table.setSelectionBehavior(QAbstractItemView.SelectRows); self.sessions_table.setSortingEnabled(True)
-        sessions_panel = QWidget(); sessions_layout = QVBoxLayout(sessions_panel); sessions_layout.addWidget(QLabel("Conexões ativas do banco")); sessions_layout.addWidget(self.sessions_table, 1)
+        self.sessions_filter = QLineEdit(); self.sessions_filter.setPlaceholderText("Filtrar usuário, endereço ou processo..."); self.sessions_filter.textChanged.connect(self._filter_session_rows)
+        sessions_panel = QWidget(); sessions_layout = QVBoxLayout(sessions_panel); sessions_layout.addWidget(QLabel("Conexões ativas do banco")); sessions_layout.addWidget(self.sessions_filter); sessions_layout.addWidget(self.sessions_table, 1)
         self.sessions_panel = sessions_panel
         self.result_tabs = QTabWidget(); self.result_tabs.addTab(self.result_table, "Resultado"); self.result_tabs.addTab(self.structure_table, "Estrutura"); self.result_tabs.addTab(plan_panel, "Plano e sugestões"); self.result_tabs.addTab(activity_panel, "Banco e atividade"); self.result_tabs.addTab(sessions_panel, "Sessões")
 
@@ -1787,9 +1791,19 @@ class MainWindow:
                 self.activity_table.setItem(row, column, QTableWidgetItem("" if value is None else str(value)))
         self.activity_table.resizeColumnsToContents()
         self.activity_table.setSortingEnabled(True)
+        self._filter_activity_rows(self.activity_filter.text())
         self.result_tabs.setCurrentWidget(self.activity_panel)
         self._log_event("Atividade lida", profile=profile.name, statements=len(statements), estimated_size_mb=size or "")
         self.status.setText(f"Painel atualizado: {len(statements)} consulta(s) em execução.")
+
+    def _filter_activity_rows(self, text: str):
+        needle = text.strip().casefold()
+        for row in range(self.activity_table.rowCount()):
+            values = []
+            for column in range(self.activity_table.columnCount()):
+                item = self.activity_table.item(row, column)
+                values.append(item.text() if item else "")
+            self.activity_table.setRowHidden(row, bool(needle) and needle not in " ".join(values).casefold())
 
     def _open_activity_sql_at(self, row: int, _column: int):
         self.activity_table.selectRow(row)
@@ -1895,9 +1909,19 @@ class MainWindow:
                 self.sessions_table.setItem(row, column, QTableWidgetItem("" if value is None else str(value)))
         self.sessions_table.resizeColumnsToContents()
         self.sessions_table.setSortingEnabled(True)
+        self._filter_session_rows(self.sessions_filter.text())
         self.result_tabs.setCurrentWidget(self.sessions_panel)
         self._log_event("Sessões lidas", profile=profile.name, sessions=len(sessions))
         self.status.setText(f"Sessões lidas: {len(sessions)}.")
+
+    def _filter_session_rows(self, text: str):
+        needle = text.strip().casefold()
+        for row in range(self.sessions_table.rowCount()):
+            values = []
+            for column in range(self.sessions_table.columnCount()):
+                item = self.sessions_table.item(row, column)
+                values.append(item.text() if item else "")
+            self.sessions_table.setRowHidden(row, bool(needle) and needle not in " ".join(values).casefold())
 
     def validate_database(self):
         from .maintenance import validate_database
