@@ -3387,9 +3387,10 @@ class MainWindow:
             f"ODS: {metrics.get('ods_major') or 'N/D'}.{metrics.get('ods_minor') or 'N/D'} · conexões: {metrics.get('attachments') or 0}",
             f"Transações: oldest={metrics.get('oldest_transaction') or 'N/D'} · active={metrics.get('oldest_active') or 'N/D'} · next={metrics.get('next_transaction') or 'N/D'}",
             f"Consultas em execução: {len(statements)}",
+            "Senha: não exposta pelo monitoramento",
         ]
         self.activity_metrics.setPlainText("\n".join(lines))
-        headers = ["ID", "Conexão", "Usuário", "Endereço", "Início", "Duração", "SQL"]
+        headers = ["ID", "Conexão", "Usuário", "Terminal", "Aplicação", "Início", "Duração", "SQL"]
         self.activity_table.setSortingEnabled(False)
         self.activity_table.clear()
         self.activity_table.setColumnCount(len(headers)); self.activity_table.setRowCount(len(statements)); self.activity_table.setHorizontalHeaderLabels(headers)
@@ -3398,7 +3399,7 @@ class MainWindow:
             started_text = started.strftime("%Y-%m-%d %H:%M:%S") if hasattr(started, "strftime") else "N/D"
             elapsed = statement.get("elapsed_seconds")
             duration_text = f"{elapsed:.1f} s" if isinstance(elapsed, (int, float)) else "N/D"
-            values = [statement.get("id"), statement.get("attachment_id"), statement.get("user"), statement.get("address"), started_text, duration_text, statement.get("sql", "")]
+            values = [statement.get("id"), statement.get("attachment_id"), statement.get("user"), statement.get("address"), statement.get("application"), started_text, duration_text, statement.get("sql", "")]
             for column, value in enumerate(values):
                 from PySide6.QtWidgets import QTableWidgetItem
                 self.activity_table.setItem(row, column, QTableWidgetItem("" if value is None else str(value)))

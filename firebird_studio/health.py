@@ -140,7 +140,8 @@ def list_statements(profile: ConnectionProfile, password: str | None = None) -> 
         try:
             rows = _rows(connection, """
                 SELECT s.MON$STATEMENT_ID, s.MON$ATTACHMENT_ID, a.MON$USER,
-                       a.MON$REMOTE_ADDRESS, s.MON$STATE, s.MON$TIMESTAMP,
+                       a.MON$REMOTE_ADDRESS, a.MON$REMOTE_PROCESS,
+                       s.MON$STATE, s.MON$TIMESTAMP,
                        s.MON$SQL_TEXT
                 FROM MON$STATEMENTS s
                 LEFT JOIN MON$ATTACHMENTS a ON a.MON$ATTACHMENT_ID = s.MON$ATTACHMENT_ID
@@ -150,7 +151,7 @@ def list_statements(profile: ConnectionProfile, password: str | None = None) -> 
         except Exception:
             # Older Firebird catalogs may not expose every monitoring column.
             rows = _rows(connection, """
-                SELECT MON$STATEMENT_ID, MON$ATTACHMENT_ID, NULL, NULL,
+                SELECT MON$STATEMENT_ID, MON$ATTACHMENT_ID, NULL, NULL, NULL,
                        MON$STATE, MON$TIMESTAMP, MON$SQL_TEXT
                 FROM MON$STATEMENTS
                 WHERE MON$STATE = 1 AND MON$SQL_TEXT IS NOT NULL
@@ -159,7 +160,7 @@ def list_statements(profile: ConnectionProfile, password: str | None = None) -> 
     now = datetime.now(timezone.utc)
     statements = []
     for row in rows:
-        timestamp = row[5] if len(row) > 5 else None
+        timestamp = row[6] if len(row) > 6 else None
         elapsed = None
         if isinstance(timestamp, datetime):
             if timestamp.tzinfo is None:
@@ -170,9 +171,10 @@ def list_statements(profile: ConnectionProfile, password: str | None = None) -> 
             "attachment_id": row[1] if len(row) > 1 else None,
             "user": row[2] if len(row) > 2 and row[2] else "N/D",
             "address": row[3] if len(row) > 3 and row[3] else "N/D",
-            "state": row[4] if len(row) > 4 else None,
+            "application": row[4] if len(row) > 4 and row[4] else "N/D",
+            "state": row[5] if len(row) > 5 else None,
             "started": timestamp,
             "elapsed_seconds": elapsed,
-            "sql": str(row[6] or "").strip() if len(row) > 6 else "",
+            "sql": str(row[7] or "").strip() if len(row) > 7 else "",
         })
     return statements

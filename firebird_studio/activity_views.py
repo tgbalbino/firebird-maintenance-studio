@@ -24,7 +24,7 @@ def create_activity_panel(on_refresh, on_export, on_open_sql, on_filter, on_auto
     open_sql.setToolTip("Abrir o SQL da consulta selecionada em uma janela de edição")
     open_sql.clicked.connect(on_open_sql)
     filter_edit = QLineEdit()
-    filter_edit.setPlaceholderText("Filtrar usuário, endereço ou SQL...")
+    filter_edit.setPlaceholderText("Filtrar usuário, terminal, aplicação ou SQL...")
     filter_edit.textChanged.connect(on_filter)
     auto_refresh = QCheckBox("Auto 5 s")
     auto_refresh.setToolTip("Atualizar automaticamente a cada 5 segundos")
