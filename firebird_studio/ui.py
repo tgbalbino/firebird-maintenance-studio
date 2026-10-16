@@ -3002,6 +3002,7 @@ class MainWindow:
             self.editor.setPlainText(f"-- Exportação SQL concluída\n-- Arquivo: {result.filename}\n-- Tabelas: {result.tables}\n-- Linhas: {result.rows}\n")
             self._log_event("Exportação SQL concluída", profile=profile.name, filename=result.filename, tables=result.tables, rows=result.rows)
             self.status.setText(f"Exportação SQL concluída: {result.filename}")
+            self._show_toast("Exportação SQL concluída com sucesso.")
         else:
             self._log_event("Exportação SQL falhou", profile=profile.name, filename=result.filename, error=result.error)
             self.status.setText(f"Exportação SQL falhou: {result.error}")
