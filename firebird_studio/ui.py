@@ -367,8 +367,9 @@ class MainWindow:
         data_button.menu().addAction(self.generate_delete_action)
         data_button.menu().addAction(self.apply_update_action)
         database_button = menu_button("Banco", [("Backup", self.execute_backup), ("Restore", self.execute_restore), ("Exportar banco para SQL", self.export_database_sql), ("Histórico de backup/restore", self.show_backup_history)], "Operações de backup, restore e exportação SQL")
+        security_button = menu_button("Segurança", [("Gestão de usuários", self.manage_users)], "Criar usuários e alterar senhas do Firebird")
         analysis_button = menu_button("Análise", [("Ler estrutura", self.inspect_schema), ("Ver plano", self.inspect_plan), ("Saúde", self.inspect_health), ("Banco e atividade", self.inspect_activity), ("Salvar relatório de saúde", self.save_health_report), ("Salvar saúde em HTML", self.save_health_html), ("Sessões", self.inspect_sessions), ("Validar integridade", self.validate_database), ("Comparar estruturas", self.compare_selected), ("Salvar comparação", self.save_compare_report), ("Salvar comparação em HTML", self.save_compare_html)], "Estrutura, plano, saúde, atividade e comparação")
-        action_row.addWidget(sql_button); action_row.addWidget(data_button); action_row.addWidget(database_button); action_row.addWidget(analysis_button); action_row.addWidget(self.commit_changes); action_row.addWidget(self.read_only_mode); action_row.addStretch(); right_layout.addLayout(action_row)
+        action_row.addWidget(sql_button); action_row.addWidget(data_button); action_row.addWidget(database_button); action_row.addWidget(security_button); action_row.addWidget(analysis_button); action_row.addWidget(self.commit_changes); action_row.addWidget(self.read_only_mode); action_row.addStretch(); right_layout.addLayout(action_row)
         pagination_row = QHBoxLayout()
         self.previous_data_button = QPushButton("Anterior")
         self.previous_data_button.setEnabled(False)
@@ -1737,6 +1738,109 @@ class MainWindow:
             lambda: run_gbak(profile, "backup", source, Path(filename), password, gbak_path),
             lambda result: self._finish_backup_operation(result, profile, filename),
         )
+
+    def manage_users(self):
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QInputDialog, QLineEdit, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout
+        from .users import change_user_password, create_user, delete_user, list_users
+
+        profile = self._profile_from_form()
+        admin_password = self._password_for(profile)
+        dialog = QDialog(self._window)
+        dialog.setWindowTitle(f"Usuários · {profile.name}")
+        dialog.resize(640, 420)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("As operações exigem uma conta administrativa. Senhas nunca são salvas nem registradas no log."))
+        table = QTableWidget(0, 4)
+        table.setHorizontalHeaderLabels(["Usuário", "Nome", "Sobrenome", "Ativo"])
+        table.setSelectionBehavior(QTableWidget.SelectRows)
+        table.setEditTriggers(QTableWidget.NoEditTriggers)
+        layout.addWidget(table)
+        actions = QHBoxLayout()
+        refresh = QPushButton("Atualizar")
+        create = QPushButton("Criar usuário")
+        change = QPushButton("Alterar senha")
+        sysdba = QPushButton("Alterar senha SYSDBA")
+        remove = QPushButton("Excluir usuário")
+        actions.addWidget(refresh); actions.addWidget(create); actions.addWidget(change); actions.addWidget(sysdba); actions.addWidget(remove)
+        layout.addLayout(actions)
+        close = QDialogButtonBox(QDialogButtonBox.Close)
+        close.rejected.connect(dialog.reject)
+        layout.addWidget(close)
+
+        def selected_user() -> str:
+            row = table.currentRow()
+            return table.item(row, 0).text() if row >= 0 and table.item(row, 0) else ""
+
+        def ask_secret(title: str) -> tuple[str, str] | None:
+            first, accepted = QInputDialog.getText(dialog, title, "Nova senha:", QLineEdit.Password)
+            if not accepted:
+                return None
+            second, accepted = QInputDialog.getText(dialog, title, "Confirme a nova senha:", QLineEdit.Password)
+            return (first, second) if accepted else None
+
+        def reload_users():
+            try:
+                users = list_users(profile, admin_password)
+            except Exception as exc:
+                self._show_message("Gestão de usuários", str(exc), warning=True)
+                return
+            table.setRowCount(0)
+            for user in users:
+                row = table.rowCount(); table.insertRow(row)
+                for column, value in enumerate((user.name, user.first_name, user.last_name, "Sim" if user.active in (None, 1, "1", True) else "Não")):
+                    table.setItem(row, column, QTableWidgetItem(str(value)))
+            table.resizeColumnsToContents()
+
+        def create_user_action():
+            username, accepted = QInputDialog.getText(dialog, "Criar usuário", "Nome do usuário:")
+            if not accepted or not username.strip():
+                return
+            secrets = ask_secret("Criar usuário")
+            if secrets is None:
+                return
+            try:
+                create_user(profile, admin_password, username, secrets[0], secrets[1])
+                self._log_event("Usuário criado", profile=profile.name, user=username.strip())
+                reload_users()
+            except Exception as exc:
+                self._show_message("Criar usuário", str(exc), warning=True)
+
+        def change_user_action(username: str | None = None):
+            target = username or selected_user()
+            if not target:
+                self._show_message("Alterar senha", "Selecione um usuário.", warning=True); return
+            secrets = ask_secret(f"Alterar senha · {target}")
+            if secrets is None:
+                return
+            try:
+                change_user_password(profile, admin_password, target, secrets[0], secrets[1])
+                self._log_event("Senha de usuário alterada", profile=profile.name, user=target)
+                reload_users()
+            except Exception as exc:
+                self._show_message("Alterar senha", str(exc), warning=True)
+
+        def change_sysdba_action():
+            answer = QMessageBox.question(dialog, "Alterar senha SYSDBA", "Essa operação altera a senha administrativa do banco. Continuar?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if answer == QMessageBox.Yes:
+                change_user_action("SYSDBA")
+
+        def delete_user_action():
+            target = selected_user()
+            if not target:
+                self._show_message("Excluir usuário", "Selecione um usuário.", warning=True); return
+            answer = QMessageBox.question(dialog, "Excluir usuário", f"Excluir o usuário {target}?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if answer != QMessageBox.Yes:
+                return
+            try:
+                delete_user(profile, admin_password, target)
+                self._log_event("Usuário excluído", profile=profile.name, user=target)
+                reload_users()
+            except Exception as exc:
+                self._show_message("Excluir usuário", str(exc), warning=True)
+
+        refresh.clicked.connect(reload_users); create.clicked.connect(create_user_action); change.clicked.connect(lambda: change_user_action()); sysdba.clicked.connect(change_sysdba_action); remove.clicked.connect(delete_user_action)
+        reload_users()
+        dialog.exec()
 
     def _finish_backup_operation(self, result, profile, filename):
         output, error = self._operation_result_text(result)

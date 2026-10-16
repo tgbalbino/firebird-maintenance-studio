@@ -11,6 +11,7 @@ from firebird_studio.script_runner import build_isql_args, run_script
 from firebird_studio.backup import build_gbak_args, run_gbak
 from firebird_studio.maintenance import validate_database
 from firebird_studio.export_sql import export_database_sql, _exportable_columns, _literal
+from firebird_studio.users import _identifier, _password, delete_user
 from firebird_studio.schema import SchemaChange, SchemaObject, compare_schema, generate_migration
 from firebird_studio.catalog import _field_type
 from firebird_studio.plan import build_plan_script, parse_plan, suggest_improvements
@@ -69,6 +70,15 @@ class ProfileTests(unittest.TestCase):
         columns, skipped = _exportable_columns(Connection(), "ORDERS")
         self.assertEqual(columns, ["NAME"])
         self.assertEqual(skipped, ["ID", "TOTAL"])
+
+    def test_user_management_validates_identifiers_passwords_and_sysdba(self):
+        self.assertEqual(_identifier("APP_USER"), '"APP_USER"')
+        with self.assertRaises(ValueError):
+            _identifier("bad user")
+        with self.assertRaises(ValueError):
+            _password("123")
+        with self.assertRaises(ValueError):
+            delete_user(ConnectionProfile("Local", database="sample.fdb"), "secret", "SYSDBA")
 
     def test_empty_sql_is_rejected_without_connection(self):
         result = execute_sql(ConnectionProfile("Local", database="sample.fdb"), " ")
