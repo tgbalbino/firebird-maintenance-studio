@@ -335,11 +335,12 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(_field_type(8, 4, 0, None), "INTEGER")
         self.assertEqual(_field_type(14, 20, 0, None), "CHAR(20)")
         self.assertEqual(_field_type(261, 0, 0, None), "BLOB")
+        self.assertEqual(_field_type(261, 0, 0, None, 1), "BLOB SUB_TYPE TEXT")
 
     def test_domain_definition_includes_default_check_and_nullability(self):
         class Cursor:
             def execute(self, _query): pass
-            def fetchall(self): return [(37, 20, 0, None, 1, "DEFAULT 'BR'", "CHECK (VALUE <> '')")]
+            def fetchall(self): return [(37, 0, 20, 0, None, 1, "DEFAULT 'BR'", "CHECK (VALUE <> '')")]
         class Connection:
             def cursor(self): return Cursor()
         class Database:

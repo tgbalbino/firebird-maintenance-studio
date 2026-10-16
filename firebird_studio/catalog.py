@@ -38,9 +38,11 @@ def _text(value: Any) -> str:
     return "" if value is None else str(value).strip()
 
 
-def _field_type(field_type: int, length: int, scale: int, precision: int | None) -> str:
+def _field_type(field_type: int, length: int, scale: int, precision: int | None, subtype: int | None = None) -> str:
     names = {7: "SMALLINT", 8: "INTEGER", 10: "FLOAT", 12: "DATE", 13: "TIME", 14: "CHAR", 16: "BIGINT", 23: "BOOLEAN", 24: "DECFLOAT(16)", 25: "DECFLOAT(34)", 26: "INT128", 27: "DOUBLE PRECISION", 28: "TIME WITH TIME ZONE", 29: "TIMESTAMP WITH TIME ZONE", 35: "TIMESTAMP", 37: "VARCHAR", 261: "BLOB"}
     name = names.get(field_type, "BLOB")
+    if name == "BLOB" and subtype == 1:
+        return "BLOB SUB_TYPE TEXT"
     if name in {"CHAR", "VARCHAR"}:
         return f"{name}({length})"
     if precision and field_type in {7, 8, 16} and scale:
@@ -347,7 +349,7 @@ def load_object_definition(profile: ConnectionProfile, password: str | None, kin
         with open_database(profile, password) as connection:
             try:
                 rows = _rows(connection, f"""
-                    SELECT RDB$FIELD_TYPE, RDB$FIELD_LENGTH, RDB$FIELD_SCALE,
+                    SELECT RDB$FIELD_TYPE, RDB$FIELD_SUB_TYPE, RDB$FIELD_LENGTH, RDB$FIELD_SCALE,
                            RDB$FIELD_PRECISION, RDB$NULL_FLAG,
                            RDB$DEFAULT_SOURCE, RDB$VALIDATION_SOURCE
                     FROM RDB$FIELDS
@@ -356,8 +358,8 @@ def load_object_definition(profile: ConnectionProfile, password: str | None, kin
             except Exception:
                 rows = []
             if rows:
-                field_type, length, scale, precision, null_flag, default_source, validation_source = rows[0]
-                type_name = _field_type(int(field_type), int(length or 0), int(scale or 0), int(precision) if precision is not None else None)
+                field_type, subtype, length, scale, precision, null_flag, default_source, validation_source = rows[0]
+                type_name = _field_type(int(field_type), int(length or 0), int(scale or 0), int(precision) if precision is not None else None, int(subtype) if subtype is not None else None)
                 clauses = [f'CREATE DOMAIN "{name}" AS {type_name}']
                 if default_source:
                     default_text = _text(default_source).rstrip(";")
