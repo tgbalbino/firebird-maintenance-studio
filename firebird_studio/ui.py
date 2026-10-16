@@ -346,7 +346,7 @@ class MainWindow:
         data_button.menu().addAction(self.generate_delete_action)
         data_button.menu().addAction(self.apply_update_action)
         database_button = menu_button("Banco", [("Backup", self.execute_backup), ("Restore", self.execute_restore), ("Histórico de backup/restore", self.show_backup_history)], "Operações de backup e restore")
-        analysis_button = menu_button("Análise", [("Ler estrutura", self.inspect_schema), ("Ver plano", self.inspect_plan), ("Saúde", self.inspect_health), ("Banco e atividade", self.inspect_activity), ("Salvar relatório de saúde", self.save_health_report), ("Salvar saúde em HTML", self.save_health_html), ("Sessões", self.inspect_sessions), ("Validar integridade", self.validate_database), ("Comparar estruturas", self.compare_selected), ("Salvar comparação", self.save_compare_report)], "Estrutura, plano, saúde, atividade e comparação")
+        analysis_button = menu_button("Análise", [("Ler estrutura", self.inspect_schema), ("Ver plano", self.inspect_plan), ("Saúde", self.inspect_health), ("Banco e atividade", self.inspect_activity), ("Salvar relatório de saúde", self.save_health_report), ("Salvar saúde em HTML", self.save_health_html), ("Sessões", self.inspect_sessions), ("Validar integridade", self.validate_database), ("Comparar estruturas", self.compare_selected), ("Salvar comparação", self.save_compare_report), ("Salvar comparação em HTML", self.save_compare_html)], "Estrutura, plano, saúde, atividade e comparação")
         action_row.addWidget(sql_button); action_row.addWidget(data_button); action_row.addWidget(database_button); action_row.addWidget(analysis_button); action_row.addWidget(self.commit_changes); action_row.addStretch(); right_layout.addLayout(action_row)
         pagination_row = QHBoxLayout()
         self.previous_data_button = QPushButton("Anterior")
@@ -2129,3 +2129,29 @@ class MainWindow:
             return
         self._log_event("Comparação salva", target=str(filename), bytes=len(report.encode("utf-8")))
         self.status.setText(f"Relatório de comparação salvo: {filename}")
+
+    def save_compare_html(self):
+        from PySide6.QtWidgets import QFileDialog
+        from html import escape
+
+        report = self.last_compare_report.strip() or self.editor.toPlainText().strip()
+        if not report:
+            self._show_message("Salvar comparação em HTML", "Execute uma comparação antes de salvar o relatório.", warning=True)
+            return
+        filename, _ = QFileDialog.getSaveFileName(
+            self._window,
+            "Salvar comparação em HTML",
+            "comparacao_firebird.html",
+            "HTML (*.html);;Todos (*.*)",
+        )
+        if not filename:
+            return
+        document = "<!doctype html><html lang='pt-BR'><head><meta charset='utf-8'><title>Comparação Firebird</title><style>body{font-family:Segoe UI,Arial,sans-serif;margin:2rem;color:#202124}pre{white-space:pre-wrap;background:#f6f8fa;border:1px solid #d0d7de;border-radius:6px;padding:1rem} .add{color:#137333}.remove{color:#b3261e}</style></head><body><h1>Comparação de estruturas Firebird</h1><pre>" + escape(report) + "</pre></body></html>"
+        try:
+            Path(filename).write_text(document, encoding="utf-8")
+        except Exception as exc:
+            self._log_event("Falha ao salvar comparação HTML", target=str(filename), error=str(exc))
+            self._show_message("Falha ao salvar comparação HTML", str(exc))
+            return
+        self._log_event("Comparação HTML salva", target=str(filename), bytes=len(document.encode("utf-8")))
+        self.status.setText(f"Comparação HTML salva: {filename}")
