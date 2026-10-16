@@ -224,9 +224,12 @@ class MainWindow:
         self.activity_refresh_button.clicked.connect(self.inspect_activity)
         self.activity_export_button = QPushButton("Exportar CSV")
         self.activity_export_button.clicked.connect(self.export_activity_csv)
+        self.activity_open_sql_button = QPushButton("Abrir SQL selecionado")
+        self.activity_open_sql_button.clicked.connect(self.open_activity_sql)
         self.activity_auto_refresh = QCheckBox("Atualizar a cada 5 segundos")
         self.activity_auto_refresh.toggled.connect(self._toggle_activity_auto_refresh)
-        activity_controls = QHBoxLayout(); activity_controls.addWidget(self.activity_refresh_button); activity_controls.addWidget(self.activity_export_button); activity_controls.addWidget(self.activity_auto_refresh); activity_controls.addStretch()
+        self.activity_table.cellDoubleClicked.connect(self._open_activity_sql_at)
+        activity_controls = QHBoxLayout(); activity_controls.addWidget(self.activity_refresh_button); activity_controls.addWidget(self.activity_open_sql_button); activity_controls.addWidget(self.activity_export_button); activity_controls.addWidget(self.activity_auto_refresh); activity_controls.addStretch()
         self.activity_refresh_timer = QTimer(self._window); self.activity_refresh_timer.setInterval(5000); self.activity_refresh_timer.timeout.connect(self.inspect_activity)
         activity_panel = QWidget(); activity_layout = QVBoxLayout(activity_panel); activity_layout.addLayout(activity_controls); activity_layout.addWidget(self.activity_metrics); activity_layout.addWidget(self.activity_table, 1)
         self.activity_panel = activity_panel
@@ -1724,6 +1727,7 @@ class MainWindow:
             self._show_message("Falha ao ler atividade", str(result))
             return
         report, statements = result
+        self.activity_profile_name = profile.name
         metrics = report.metrics
         size = metrics.get("estimated_size_mb")
         lines = [
@@ -1753,6 +1757,29 @@ class MainWindow:
         self.result_tabs.setCurrentWidget(self.activity_panel)
         self._log_event("Atividade lida", profile=profile.name, statements=len(statements), estimated_size_mb=size or "")
         self.status.setText(f"Painel atualizado: {len(statements)} consulta(s) em execução.")
+
+    def _open_activity_sql_at(self, row: int, _column: int):
+        self.activity_table.selectRow(row)
+        self.open_activity_sql()
+
+    def open_activity_sql(self):
+        row = self.activity_table.currentRow()
+        if row < 0:
+            self._show_message("Abrir SQL", "Selecione uma consulta em execução.", warning=True)
+            return
+        sql_column = self.activity_table.columnCount() - 1
+        item = self.activity_table.item(row, sql_column)
+        sql = item.text().strip() if item else ""
+        if not sql:
+            self._show_message("Abrir SQL", "A consulta selecionada não possui SQL disponível.", warning=True)
+            return
+        self._new_sql_tab()
+        self.editor.setPlainText(sql)
+        profile_name = getattr(self, "activity_profile_name", "")
+        if profile_name:
+            self.editor.setProperty("query_profile", profile_name)
+            self._sync_editor(self.sql_tabs.currentIndex())
+        self.status.setText("Consulta aberta em uma nova janela SQL.")
 
     def export_activity_csv(self):
         """Export the currently displayed activity snapshot without credentials."""
