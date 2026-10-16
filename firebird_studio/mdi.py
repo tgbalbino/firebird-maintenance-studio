@@ -22,6 +22,8 @@ try:
     class SqlMdiArea(QMdiArea):
         """QTabWidget-compatible facade backed by movable MDI sub-windows."""
 
+        _SUBWINDOW_FLAGS = Qt.SubWindow | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowMinMaxButtonsHint | Qt.WindowCloseButtonHint
+
         currentChanged = Signal(int)
         tabCloseRequested = Signal(int)
 
@@ -35,12 +37,18 @@ try:
         def setTabsClosable(self, _enabled):
             return None
 
-        def addTab(self, widget, title):
+        def _new_subwindow(self, title, sql_document, delete_on_close):
+            """Create a consistently configured MDI child window."""
             sub = _SqlSubWindow(self)
-            sub.setAttribute(Qt.WA_DeleteOnClose, True)
+            sub.setAttribute(Qt.WA_DeleteOnClose, delete_on_close)
             sub.setWindowTitle(title)
-            sub.setProperty("sql_document", True)
-            sub.setWindowFlags(Qt.SubWindow | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowMinMaxButtonsHint | Qt.WindowCloseButtonHint)
+            sub.setProperty("sql_document", sql_document)
+            sub.setWindowFlags(self._SUBWINDOW_FLAGS)
+            self.addSubWindow(sub)
+            return sub
+
+        def addTab(self, widget, title):
+            sub = self._new_subwindow(title, True, True)
             container = QWidget()
             layout = QVBoxLayout(container)
             layout.setContentsMargins(0, 0, 0, 0)
@@ -48,7 +56,6 @@ try:
             container.setProperty("sql_editor", widget.property("sql_editor") or widget)
             sub.setWidget(container)
             sub.closed.connect(self._on_close_requested)
-            self.addSubWindow(sub)
             sub.resize(760, 480)
             sub.show()
             self.setActiveSubWindow(sub)
@@ -60,13 +67,8 @@ try:
 
         def add_panel(self, widget, title, width=820, height=360):
             """Add a non-SQL form to the MDI workspace without affecting SQL indexes."""
-            sub = _SqlSubWindow(self)
-            sub.setAttribute(Qt.WA_DeleteOnClose, False)
-            sub.setWindowTitle(title)
-            sub.setProperty("sql_document", False)
-            sub.setWindowFlags(Qt.SubWindow | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowMinMaxButtonsHint | Qt.WindowCloseButtonHint)
+            sub = self._new_subwindow(title, False, False)
             sub.setWidget(widget)
-            self.addSubWindow(sub)
             sub.resize(width, height)
             sub.closed.connect(lambda closed_sub: closed_sub.hide())
             sub.show()
