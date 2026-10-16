@@ -19,10 +19,16 @@ from firebird_studio.health import build_findings, inspect_health, _optional_dat
 from firebird_studio.diagnostics import create_support_package
 from firebird_studio.ui_logging import log_event
 from firebird_studio.sql_documents import SqlDocumentManager
+from firebird_studio.tree_utils import object_group_label
 from unittest.mock import patch
 
 
 class ProfileTests(unittest.TestCase):
+    def test_tree_group_labels_are_stable(self):
+        self.assertEqual(object_group_label("TABLE"), "Tabelas")
+        self.assertEqual(object_group_label("CONSTRAINT"), "Restrições")
+        self.assertEqual(object_group_label("CUSTOM"), "Custom")
+
     def test_sql_document_manager_titles_and_close(self):
         class Tabs:
             def __init__(self): self.items = []; self.current = -1

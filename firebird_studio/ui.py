@@ -1508,31 +1508,18 @@ class MainWindow:
     def refresh_profiles(self):
         self.profile_list.clear()
         from PySide6.QtWidgets import QTreeWidgetItem
+        from PySide6.QtGui import QColor
+        from .tree_utils import make_database_icon, populate_profile_children
         for index, profile in enumerate(self.profiles):
-            from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
             connected = profile.name in self.connected_profiles
             marker = "★ " if profile.favorite else ""
             item = QTreeWidgetItem([f"{marker}{profile.name} · FB {profile.version}"])
-            pixmap = QPixmap(16, 16); pixmap.fill(QColor("transparent"))
-            painter = QPainter(pixmap); painter.setRenderHint(QPainter.Antialiasing)
-            painter.setBrush(QColor("#188038" if connected else "#80868b")); painter.setPen(QColor("#0f5132" if connected else "#5f6368")); painter.drawEllipse(2, 2, 12, 12); painter.end()
-            item.setIcon(0, QIcon(pixmap))
+            item.setIcon(0, make_database_icon(connected))
             item.setForeground(0, QColor("#188038" if connected else "#5f6368"))
             item.setData(0, 33, index)
             self.profile_list.addTopLevelItem(item)
             objects = self.profile_objects.get(profile.name, [])
-            groups = {}
-            for obj in objects:
-                label = {"TABLE": "Tabelas", "VIEW": "Views", "PROCEDURE": "Procedures", "FUNCTION": "Functions", "TRIGGER": "Triggers", "DOMAIN": "Domínios", "INDEX": "Índices", "CONSTRAINT": "Constraints", "SEQUENCE": "Sequences", "GENERATOR": "Generators", "EXCEPTION": "Exceptions", "PACKAGE": "Packages"}.get(obj.kind, obj.kind.title())
-                groups.setdefault(label, []).append(obj)
-            for label in sorted(groups):
-                parent = QTreeWidgetItem([f"{label} ({len(groups[label])})"])
-                item.addChild(parent)
-                for obj in groups[label]:
-                    child = QTreeWidgetItem([obj.name])
-                    child.setData(0, 32, obj)
-                    parent.addChild(child)
-                parent.setExpanded(True)
+            populate_profile_children(item, objects)
             item.setExpanded(bool(objects))
         self.target_profile.clear()
         self.target_profile.addItems([p.name for p in self.profiles])
