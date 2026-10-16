@@ -280,7 +280,14 @@ class MainWindow:
         connection_row = QHBoxLayout(); connection_row.addWidget(QLabel("Conexão desta janela:")); connection_row.addWidget(self.query_profile_combo, 1); connection_row.addWidget(self.query_connection_status); connection_row.addWidget(self.connection_badge)
         connection_row.addWidget(self.query_cursor_status)
         right_layout.addLayout(connection_row)
-        right_layout.addWidget(QLabel("Janelas SQL")); right_layout.addWidget(self.sql_tabs, 1)
+        workspace_row = QHBoxLayout()
+        workspace_title = QLabel("Área de trabalho")
+        workspace_title.setStyleSheet("font-weight: 600;")
+        self.workspace_status = QLabel("SQL 1 · Ctrl+Tab alterna as janelas")
+        self.workspace_status.setStyleSheet("color: #526173;")
+        workspace_row.addWidget(workspace_title)
+        workspace_row.addWidget(self.workspace_status, 1)
+        right_layout.addLayout(workspace_row); right_layout.addWidget(self.sql_tabs, 1)
         action_row = QHBoxLayout()
         action_row.setSpacing(6)
         def menu_button(label, entries, tooltip):
@@ -504,6 +511,10 @@ class MainWindow:
             self.query_profile_combo.setCurrentIndex(combo_index if combo_index >= 0 else -1)
             self.query_profile_combo.blockSignals(False)
             self._update_query_connection_status()
+            if hasattr(self, "workspace_status"):
+                self.workspace_status.setText(f"{self.sql_tabs.tabText(index)} · Ctrl+Tab alterna as janelas")
+        elif hasattr(self, "workspace_status"):
+            self.workspace_status.setText("Resultados e diagnóstico · use o menu Janelas para voltar ao SQL")
 
     def _show_result_window(self):
         """Bring the shared result/diagnostic form back to the front."""
