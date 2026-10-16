@@ -84,7 +84,9 @@ try:
             sub.setWidget(widget)
             sub.resize(width, height)
             sub.closed.connect(lambda closed_sub: closed_sub.hide())
-            sub.show()
+            # Auxiliary panels are shown explicitly by the action that owns
+            # them; keeping them hidden here prevents an empty result panel
+            # from reappearing when the main window is restored.
             return sub
 
         def removeTab(self, index):

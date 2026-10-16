@@ -319,6 +319,7 @@ class MainWindow:
             self.result_tabs.setTabToolTip(index, tooltip)
         self.result_mdi_window = self.sql_tabs.add_panel(self.result_tabs, "Resultados e diagnóstico", width=860, height=330)
         self.result_tabs.currentChanged.connect(lambda _index: self._show_result_window())
+        self.result_mdi_window.hide()
         self.sql_tabs.setCurrentIndex(0)
 
         left = QWidget(); left_layout = QVBoxLayout(left); left.setMinimumWidth(280); left.setObjectName("sidebarPanel"); left.setProperty("panelRole", "sidebar")
@@ -982,8 +983,9 @@ class MainWindow:
         """Bring the shared result/diagnostic form back to the front."""
         if self.result_mdi_window is None:
             return
-        self.result_mdi_window.showNormal()
         self.result_mdi_window.show()
+        self.result_mdi_window.showMaximized()
+        self.result_mdi_window.setGeometry(self.sql_tabs.viewport().rect())
         self.result_mdi_window.raise_()
 
     def _show_sql_result(self):
@@ -1282,6 +1284,8 @@ class MainWindow:
 
     def _new_sql_tab(self):
         from PySide6.QtWidgets import QTextEdit
+        if getattr(self, "result_mdi_window", None) is not None:
+            self.result_mdi_window.hide()
         selected_name = self.query_profile_combo.currentText() if self.query_profile_combo is not None else (self.profiles[0].name if self.profiles else "")
         editor = QTextEdit()
         self._configure_sql_editor(editor)
@@ -1313,6 +1317,8 @@ class MainWindow:
     def _close_all_sql_tabs(self):
         self.sql_documents.close_all(self._new_sql_tab)
         self.editor = None
+        if self.result_mdi_window is not None:
+            self.result_mdi_window.hide()
         self.status.setText("Todas as janelas SQL foram fechadas.")
 
     def _choose_sql_window(self):
@@ -1459,6 +1465,8 @@ class MainWindow:
 
     def close_sql_tab(self, index: int):
         self.sql_documents.close(index, self._new_sql_tab)
+        if self.sql_tabs.count() == 0 and self.result_mdi_window is not None:
+            self.result_mdi_window.hide()
 
     def _add_query_history(self, sql: str):
         text = sql.strip()
