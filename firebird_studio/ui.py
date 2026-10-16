@@ -493,6 +493,7 @@ class MainWindow:
         if self.editor is not None:
             self._refresh_sql_completer(self.editor)
             self._update_cursor_status(self.editor)
+            self._set_transaction_controls_enabled()
             self._update_sql_tab_title(index)
             self.query_profile_combo.blockSignals(True)
             profile_name = self.editor.property("query_profile") or ""
@@ -520,7 +521,7 @@ class MainWindow:
         return next((profile for profile in self.profiles if profile.name == name), self._profile_from_form())
 
     def _new_sql_tab(self):
-        from PySide6.QtWidgets import QCompleter, QTextEdit
+        from PySide6.QtWidgets import QCompleter, QHBoxLayout, QPushButton, QTextEdit, QWidget
         from PySide6.QtCore import QStringListModel, Qt
         from PySide6.QtGui import QKeySequence, QShortcut
         editor = QTextEdit()
@@ -552,7 +553,24 @@ class MainWindow:
         editor.setProperty("query_profile", selected_name or (self.profiles[0].name if self.profiles else ""))
         editor.setProperty("document_title", f"SQL {self.sql_tabs.count() + 1}")
         index = self.sql_documents.add(editor, f"SQL {self.sql_tabs.count() + 1}", editor.property("query_profile") or "")
+        sql_toolbar = QWidget()
+        toolbar_layout = QHBoxLayout(sql_toolbar)
+        toolbar_layout.setContentsMargins(4, 4, 4, 4)
+        execute_button = QPushButton("Executar SQL")
+        execute_button.setToolTip("Executar o SQL desta janela (Ctrl+Return)")
+        execute_button.clicked.connect(lambda: self._execute_sql_text(editor.toPlainText()))
+        commit_button = QPushButton("Commit")
+        commit_button.clicked.connect(self._commit_transaction)
+        rollback_button = QPushButton("Rollback")
+        rollback_button.clicked.connect(self._rollback_transaction)
+        toolbar_layout.addWidget(execute_button)
+        toolbar_layout.addWidget(commit_button)
+        toolbar_layout.addWidget(rollback_button)
+        toolbar_layout.addStretch()
+        self.sql_tabs.add_toolbar(index, sql_toolbar)
+        editor.setProperty("sql_toolbar_controls", (commit_button, rollback_button))
         self.editor = editor
+        self._set_transaction_controls_enabled()
         editor.cursorPositionChanged.connect(lambda target=editor: self._update_cursor_status(target))
         self._update_cursor_status(editor)
         self._refresh_sql_completer(editor)
@@ -843,6 +861,17 @@ class MainWindow:
             self.begin_transaction_action.setEnabled(not active)
             self.commit_transaction_action.setEnabled(active)
             self.rollback_transaction_action.setEnabled(active)
+        self._set_transaction_controls_enabled(active)
+
+    def _set_transaction_controls_enabled(self, active=None):
+        if active is None:
+            active = bool(self._transaction_session is not None and self._transaction_session.active)
+        if self.editor is None:
+            return
+        controls = self.editor.property("sql_toolbar_controls") or ()
+        if len(controls) == 2:
+            controls[0].setEnabled(active)
+            controls[1].setEnabled(active)
 
     def _start_transaction(self):
         from .transaction import TransactionSession
