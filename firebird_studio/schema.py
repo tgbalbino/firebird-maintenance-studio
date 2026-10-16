@@ -22,7 +22,7 @@ class SchemaObject:
 
     @property
     def normalized_ddl(self) -> str:
-        text = self.ddl.strip().replace("\r\n", "\n")
+        text = self.ddl.strip().replace("\r\n", "\n").rstrip(";").strip()
         return re.sub(r"\s+", " ", text).upper()
 
 

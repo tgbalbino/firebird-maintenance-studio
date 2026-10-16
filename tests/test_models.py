@@ -166,6 +166,11 @@ class ProfileTests(unittest.TestCase):
         self.assertIn("CREATE TABLE ORDERS", migration)
         self.assertIn("REVIEW", migration)
 
+    def test_schema_diff_ignores_trailing_ddl_terminator(self):
+        source = [SchemaObject("TABLE", "CUSTOMER", 'CREATE TABLE "CUSTOMER" (ID INTEGER);')]
+        target = [SchemaObject("TABLE", "CUSTOMER", 'CREATE   TABLE "CUSTOMER" (ID INTEGER)')]
+        self.assertEqual(compare_schema(source, target), [])
+
     def test_removed_objects_are_not_generated_as_drop(self):
         changes = compare_schema([], [SchemaObject("TABLE", "OLD_TABLE", "CREATE TABLE OLD_TABLE (ID INTEGER)")])
         migration = generate_migration(changes)
