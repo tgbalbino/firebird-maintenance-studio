@@ -199,9 +199,8 @@ class MainWindow:
         self.structure_table.setSortingEnabled(True)
         self.index_table = QTableWidget(); self.index_table.setEditTriggers(QTableWidget.NoEditTriggers); self.index_table.setSelectionBehavior(QAbstractItemView.SelectRows); self.index_table.setSortingEnabled(True)
         self.constraint_table = QTableWidget(); self.constraint_table.setEditTriggers(QTableWidget.NoEditTriggers); self.constraint_table.setSelectionBehavior(QAbstractItemView.SelectRows); self.constraint_table.setSortingEnabled(True)
-        self.plan_output = QTextEdit(); self.plan_output.setReadOnly(True); self.plan_output.setPlaceholderText("O plano de acesso e as sugestões aparecerão aqui.")
-        self.plan_tree = QTreeWidget(); self.plan_tree.setHeaderLabels(["Árvore do plano"])
-        plan_panel = QWidget(); plan_layout = QVBoxLayout(plan_panel); plan_layout.addWidget(self.plan_tree); plan_layout.addWidget(self.plan_output, 1)
+        from .diagnostic_views import create_plan_panel
+        plan_panel, self.plan_tree, self.plan_output = create_plan_panel()
         self.plan_panel = plan_panel
         self.activity_metrics = QTextEdit(); self.activity_metrics.setReadOnly(True); self.activity_metrics.setMaximumHeight(150)
         self.activity_table = QTableWidget(); self.activity_table.setEditTriggers(QTableWidget.NoEditTriggers); self.activity_table.setSelectionMode(QAbstractItemView.ExtendedSelection); self.activity_table.setSortingEnabled(True)
@@ -2170,24 +2169,8 @@ class MainWindow:
             self.status.setText(result.error)
             self._show_message("Falha ao obter plano", result.error)
             return
-        lines = ["ÁRVORE DO PLANO", ""]
-        self.plan_tree.clear()
-        from PySide6.QtWidgets import QTreeWidgetItem
-        def fill_tree(node, parent=None):
-            target = parent
-            if node.label != "Plano de acesso":
-                target = QTreeWidgetItem(parent, [node.label]) if parent is not None else QTreeWidgetItem(self.plan_tree, [node.label])
-            for child in node.children:
-                fill_tree(child, target)
-        fill_tree(result.tree)
-        self.plan_tree.expandAll()
-        def visit(node, depth=0):
-            if node.label != "Plano de acesso": lines.append("  " * depth + "• " + node.label)
-            for child in node.children: visit(child, depth + (0 if node.label == "Plano de acesso" else 1))
-        visit(result.tree)
-        lines.extend(["", "SUGESTÕES", ""])
-        lines.extend(f"- {item}" for item in result.suggestions)
-        self.plan_output.setPlainText("\n".join(lines) + "\n\nSAÍDA ISQL\n" + result.raw)
+        from .diagnostic_views import render_plan
+        render_plan(self.plan_tree, self.plan_output, result)
         self.result_tabs.setCurrentWidget(self.plan_panel)
         self.status.setText("Plano analisado sem executar a consulta.")
 
