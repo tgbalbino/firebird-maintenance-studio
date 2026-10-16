@@ -121,6 +121,7 @@ class MainWindow:
             QAbstractItemView,
             QToolButton,
             QMenu,
+            QFrame,
         )
         from PySide6.QtCore import QObject, QThread, Signal, Slot, QSettings, Qt, QTimer
         from PySide6.QtGui import QAction, QKeySequence, QShortcut
@@ -252,8 +253,12 @@ class MainWindow:
         self.result_tabs.currentChanged.connect(lambda _index: self._show_result_window())
         self.sql_tabs.setCurrentIndex(0)
 
-        left = QWidget(); left_layout = QVBoxLayout(left); left.setMinimumWidth(280)
-        left_layout.addWidget(QLabel("Bancos e objetos (duplo clique para conectar/abrir)")); left_layout.addWidget(self.tree_filter); left_layout.addWidget(self.profile_list, 1)
+        left = QWidget(); left_layout = QVBoxLayout(left); left.setMinimumWidth(280); left.setObjectName("sidebarLayout"); left.setProperty("panelRole", "sidebar")
+        sidebar_title = QLabel("BANCOS E OBJETOS")
+        sidebar_title.setObjectName("sectionTitle")
+        sidebar_hint = QLabel("Duplo clique conecta ou abre o objeto")
+        sidebar_hint.setObjectName("sectionHint")
+        left_layout.addWidget(sidebar_title); left_layout.addWidget(sidebar_hint); left_layout.addWidget(self.tree_filter); left_layout.addWidget(self.profile_list, 1)
         self.open_data_button = QPushButton("Abrir dados da tabela")
         self.open_data_button.setEnabled(False)
         self.open_data_button.clicked.connect(self.open_table_data)
@@ -285,9 +290,21 @@ class MainWindow:
         light_action = theme_menu.addAction("Tema claro"); light_action.triggered.connect(lambda: self._set_theme("light"))
         dark_action = theme_menu.addAction("Tema escuro"); dark_action.triggered.connect(lambda: self._set_theme("dark"))
         self.theme_button.setMenu(theme_menu)
-        right = QWidget(); right.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
+        right = QWidget(); right.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding); right.setObjectName("workspacePanel")
         profile_actions = QHBoxLayout(); profile_actions.addWidget(self.profile_toggle); profile_actions.addWidget(self.profile_test_button); profile_actions.addWidget(self.profile_log_button); profile_actions.addWidget(self.theme_button)
-        right_layout = QVBoxLayout(right); right_layout.addLayout(profile_actions); right_layout.addWidget(box)
+        right_layout = QVBoxLayout(right)
+        app_header = QFrame()
+        app_header.setObjectName("appHeader")
+        header_layout = QVBoxLayout(app_header)
+        header_layout.setContentsMargins(16, 12, 16, 12)
+        app_title = QLabel("Firebird Maintenance Studio")
+        app_title.setObjectName("appTitle")
+        app_subtitle = QLabel("Workspace de manutenção · SQL, dados, diagnóstico e operações")
+        app_subtitle.setObjectName("appSubtitle")
+        self.header_state = QLabel("Nenhuma conexão ativa")
+        self.header_state.setObjectName("headerState")
+        header_layout.addWidget(app_title); header_layout.addWidget(app_subtitle); header_layout.addWidget(self.header_state)
+        right_layout.addWidget(app_header); right_layout.addLayout(profile_actions); right_layout.addWidget(box)
         history_row = QHBoxLayout(); history_row.addWidget(QLabel("Histórico SQL:")); history_row.addWidget(self.history_combo, 1)
         right_layout.addLayout(history_row)
         connection_row = QHBoxLayout(); connection_row.addWidget(QLabel("Conexão desta janela:")); connection_row.addWidget(self.query_profile_combo, 1); connection_row.addWidget(self.query_connection_status); connection_row.addWidget(self.connection_badge)
@@ -581,9 +598,13 @@ class MainWindow:
             profile = next((item for item in self.profiles if item.name == profile_name), None)
             if profile is None:
                 self.workspace_connection.setText("Banco: nenhum")
+                if hasattr(self, "header_state"):
+                    self.header_state.setText("Nenhuma conexão ativa")
             else:
                 state = "conectado" if connected else "desconectado"
                 self.workspace_connection.setText(f"Banco: {profile.name} · FB {profile.version} · {profile.host}:{profile.port} · {state}")
+                if hasattr(self, "header_state"):
+                    self.header_state.setText(f"{profile.name} · Firebird {profile.version} · {profile.host}:{profile.port} · {state}")
 
     def _query_profile(self):
         name = self.editor.property("query_profile") if self.editor is not None else ""
