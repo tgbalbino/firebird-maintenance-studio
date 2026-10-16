@@ -241,11 +241,11 @@ class MainWindow:
         self._restore_query_history()
         self.editor = None
         self._new_sql_tab()
-        self.structure_table = QTableWidget(); self.structure_table.setMinimumHeight(180); self.structure_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.structure_table = QTableWidget(); self.structure_table.setMinimumHeight(180); self.structure_table.setEditTriggers(QTableWidget.NoEditTriggers); self.structure_table.setAlternatingRowColors(True); self.structure_table.setShowGrid(False)
         self.structure_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.structure_table.setSortingEnabled(True)
-        self.index_table = QTableWidget(); self.index_table.setEditTriggers(QTableWidget.NoEditTriggers); self.index_table.setSelectionBehavior(QAbstractItemView.SelectRows); self.index_table.setSortingEnabled(True)
-        self.constraint_table = QTableWidget(); self.constraint_table.setEditTriggers(QTableWidget.NoEditTriggers); self.constraint_table.setSelectionBehavior(QAbstractItemView.SelectRows); self.constraint_table.setSortingEnabled(True)
+        self.index_table = QTableWidget(); self.index_table.setEditTriggers(QTableWidget.NoEditTriggers); self.index_table.setSelectionBehavior(QAbstractItemView.SelectRows); self.index_table.setAlternatingRowColors(True); self.index_table.setShowGrid(False); self.index_table.setSortingEnabled(True)
+        self.constraint_table = QTableWidget(); self.constraint_table.setEditTriggers(QTableWidget.NoEditTriggers); self.constraint_table.setSelectionBehavior(QAbstractItemView.SelectRows); self.constraint_table.setAlternatingRowColors(True); self.constraint_table.setShowGrid(False); self.constraint_table.setSortingEnabled(True)
         from .diagnostic_views import create_plan_panel
         plan_panel, self.plan_tree, self.plan_output = create_plan_panel()
         self.plan_panel = plan_panel
@@ -265,13 +265,13 @@ class MainWindow:
         from .activity_views import create_sessions_panel
         sessions_panel, self.sessions_table, self.sessions_filter, self.disconnect_session_button = create_sessions_panel(self._filter_session_rows, self.terminate_selected_session)
         self.sessions_panel = sessions_panel
-        self.backup_history_table = QTableWidget(); self.backup_history_table.setEditTriggers(QAbstractItemView.NoEditTriggers); self.backup_history_table.setSelectionBehavior(QAbstractItemView.SelectRows); self.backup_history_table.setSortingEnabled(True)
+        self.backup_history_table = QTableWidget(); self.backup_history_table.setEditTriggers(QAbstractItemView.NoEditTriggers); self.backup_history_table.setSelectionBehavior(QAbstractItemView.SelectRows); self.backup_history_table.setAlternatingRowColors(True); self.backup_history_table.setShowGrid(False); self.backup_history_table.setSortingEnabled(True)
         backup_history_panel = QWidget(); backup_history_layout = QVBoxLayout(backup_history_panel); backup_history_layout.addWidget(QLabel("Histórico local de backup e restore")); backup_history_layout.addWidget(self.backup_history_table, 1)
         self.backup_history_panel = backup_history_panel
         self.compare_changes = []
         self.compare_filter = QLineEdit(); self.compare_filter.setPlaceholderText("Filtrar tipo ou nome..."); self.compare_filter.textChanged.connect(self._filter_compare_rows)
         self.compare_action_filter = QComboBox(); self.compare_action_filter.addItems(["Todas as ações", "ADD", "ALTER", "REMOVE"]); self.compare_action_filter.currentTextChanged.connect(self._filter_compare_rows)
-        self.compare_table = QTableWidget(); self.compare_table.setEditTriggers(QAbstractItemView.NoEditTriggers); self.compare_table.setSelectionBehavior(QAbstractItemView.SelectRows); self.compare_table.setSortingEnabled(True)
+        self.compare_table = QTableWidget(); self.compare_table.setEditTriggers(QAbstractItemView.NoEditTriggers); self.compare_table.setSelectionBehavior(QAbstractItemView.SelectRows); self.compare_table.setAlternatingRowColors(True); self.compare_table.setShowGrid(False); self.compare_table.setSortingEnabled(True)
         compare_controls = QHBoxLayout(); compare_controls.addWidget(self.compare_filter, 1); compare_controls.addWidget(self.compare_action_filter)
         compare_panel = QWidget(); compare_layout = QVBoxLayout(compare_panel); compare_layout.addLayout(compare_controls); compare_layout.addWidget(self.compare_table, 1)
         self.compare_panel = compare_panel

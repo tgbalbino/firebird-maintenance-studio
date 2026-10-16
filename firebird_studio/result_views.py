@@ -14,6 +14,10 @@ def configure_result_table(table, *, selection_mode=None, sorting=True, minimum_
     table.setMinimumHeight(minimum_height)
     table.setEditTriggers(QTableWidget.NoEditTriggers)
     table.setSelectionMode(selection_mode or QAbstractItemView.ExtendedSelection)
+    table.setAlternatingRowColors(True)
+    table.setShowGrid(False)
+    table.horizontalHeader().setHighlightSections(False)
+    table.verticalHeader().setDefaultSectionSize(26)
     table.setSortingEnabled(sorting)
     return table
 

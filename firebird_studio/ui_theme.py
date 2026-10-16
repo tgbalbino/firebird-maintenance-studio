@@ -14,6 +14,8 @@ LIGHT_STYLE += " QToolButton#workspaceAction, QToolButton#profileMenuButton { ba
 DARK_STYLE += " QToolButton#workspaceAction, QToolButton#profileMenuButton { background: #2d3748; border: 1px solid #8b98ab; border-radius: 5px; padding: 6px 12px; font-weight: 600; } QToolButton#workspaceAction:hover, QToolButton#profileMenuButton:hover { background: #3b4a62; border-color: #60a5fa; } QToolButton#workspaceAction:pressed, QToolButton#profileMenuButton:pressed { background: #465a78; } QLabel#workspaceStatusMessage { padding: 5px 8px; border-top: 1px solid #4f5d72; color: #b6c2d2; }"
 LIGHT_STYLE += " QTreeWidget::item { padding: 3px 4px; } QTreeWidget::item:hover { background: #e1ebf8; }"
 DARK_STYLE += " QTreeWidget::item { padding: 3px 4px; } QTreeWidget::item:hover { background: #303b4e; }"
+LIGHT_STYLE += " QTableWidget { alternate-background-color: #f3f6fa; } QTableWidget::item:hover { background: #e1ebf8; }"
+DARK_STYLE += " QTableWidget { alternate-background-color: #272d39; } QTableWidget::item:hover { background: #303b4e; }"
 
 
 def apply_theme(theme: str) -> None:
