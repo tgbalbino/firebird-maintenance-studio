@@ -926,7 +926,7 @@ class MainWindow:
         self.editor = self.sql_tabs.widget(index) if index >= 0 else None
         if self.editor is not None:
             self._set_active_editor_widgets(self.editor)
-            self.result_table = self.editor.property("result_table") or self.result_table
+            self.result_table = getattr(self.editor, "_result_table", None) or self.editor.property("result_table") or self.result_table
             self._table_original_rows = []
             self._refresh_sql_completer(self.editor)
             self._update_cursor_status(self.editor)
@@ -993,8 +993,8 @@ class MainWindow:
     def _show_sql_result(self):
         if self.editor is None:
             return
-        document_tabs = self.editor.property("document_tabs")
-        result_table = self.editor.property("result_table")
+        document_tabs = getattr(self.editor, "_document_tabs", None) or self.editor.property("document_tabs")
+        result_table = getattr(self.editor, "_result_table", None) or self.editor.property("result_table")
         if document_tabs is not None and result_table is not None:
             document_tabs.setCurrentWidget(result_table)
 
@@ -1189,6 +1189,20 @@ class MainWindow:
         editor_footer.addWidget(cursor_status)
         shell_layout.addLayout(editor_footer)
         shell.setProperty("sql_editor", editor)
+        # Keep Python references to Qt widgets.  Dynamic Qt properties may
+        # round-trip a QLabel/QComboBox as the base QWidget in packaged
+        # PySide builds, which loses methods such as setText().
+        editor._document_tabs = document_tabs
+        editor._result_table = result_table
+        editor._profile_combo = profile_combo
+        editor._connection_status = connection_status
+        editor._connection_badge = connection_badge
+        editor._cursor_status = cursor_status
+        editor._history_combo = history_combo
+        editor._history_list = history_list
+        editor._history_panel = history_panel
+        editor._object_breadcrumb = breadcrumb
+        editor._workspace_status = workspace_status
         editor.setProperty("profile_combo", profile_combo)
         editor.setProperty("connection_status", connection_status)
         editor.setProperty("connection_badge", connection_badge)
@@ -1209,13 +1223,14 @@ class MainWindow:
         """Point compatibility aliases at the currently active SQL form."""
         if editor is None:
             return
-        self.query_profile_combo = editor.property("profile_combo")
-        self.query_connection_status = editor.property("connection_status")
-        self.connection_badge = editor.property("connection_badge")
-        self.query_cursor_status = editor.property("cursor_status")
-        self.history_combo = editor.property("history_combo")
-        self.object_breadcrumb = editor.property("object_breadcrumb")
-        self.workspace_status = editor.property("workspace_status")
+        ref = lambda name, prop: getattr(editor, name, None) or editor.property(prop)
+        self.query_profile_combo = ref("_profile_combo", "profile_combo")
+        self.query_connection_status = ref("_connection_status", "connection_status")
+        self.connection_badge = ref("_connection_badge", "connection_badge")
+        self.query_cursor_status = ref("_cursor_status", "cursor_status")
+        self.history_combo = ref("_history_combo", "history_combo")
+        self.object_breadcrumb = ref("_object_breadcrumb", "object_breadcrumb")
+        self.workspace_status = ref("_workspace_status", "workspace_status")
         self.workspace_connection = None
         execution_controls = editor.property("execution_controls") or ()
         self.commit_changes = execution_controls[0] if len(execution_controls) > 0 else None
@@ -1844,6 +1859,13 @@ class MainWindow:
 
     def open_profile(self, selected_index: int | None = None):
         """Open the selected database, like opening a connection in IBExpert."""
+        # A connection can be opened even when the user closed every SQL
+        # document.  Recreate the working document before resolving the
+        # connection so all of the editor aliases and connection controls are
+        # available to the normal open flow.
+        if self.sql_tabs.count() == 0:
+            self._log_event("Nenhuma janela SQL aberta; criando janela para conexão")
+            self._new_sql_tab()
         current_item = self.profile_list.currentItem()
         self._log_event("open_profile chamado", current_item=current_item.text(0) if current_item else "", form_name=self.name.text(), form_database=self.database.text())
         request, error = self._profile_open_request(selected_index)
