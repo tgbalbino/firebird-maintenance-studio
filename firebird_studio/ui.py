@@ -2111,6 +2111,10 @@ class MainWindow:
             profile = self.profiles[profile_index]
             show_details = menu.addAction("Alterar cadastro...")
             show_details.triggered.connect(lambda _checked=False, selected=profile_index: self._show_profile_dialog(selected))
+            copy_name = menu.addAction("Copiar nome do banco")
+            copy_name.triggered.connect(lambda _checked=False, value=profile.name: self._copy_tree_value(value, "Nome do banco"))
+            copy_database = menu.addAction("Copiar caminho ou alias")
+            copy_database.triggered.connect(lambda _checked=False, value=profile.database: self._copy_tree_value(value, "Caminho ou alias"))
             menu.addSeparator()
             if profile.name in self.connected_profiles:
                 disconnect = menu.addAction("Desconectar banco")
@@ -2126,6 +2130,11 @@ class MainWindow:
         collapse_all = menu.addAction("Recolher todos os bancos")
         collapse_all.triggered.connect(self._collapse_all_profiles)
         menu.exec(self.profile_list.viewport().mapToGlobal(position))
+
+    def _copy_tree_value(self, value: str, label: str):
+        from PySide6.QtWidgets import QApplication
+        QApplication.clipboard().setText(value)
+        self.status.setText(f"{label} copiado para a área de transferência.")
 
     def disconnect_selected(self):
         index = self._profile_index_for_item()
