@@ -368,7 +368,7 @@ class MainWindow:
         data_button.menu().addAction(self.apply_update_action)
         database_button = menu_button("Banco", [("Backup", self.execute_backup), ("Restore", self.execute_restore), ("Exportar banco para SQL", self.export_database_sql), ("Histórico de backup/restore", self.show_backup_history)], "Operações de backup, restore e exportação SQL")
         security_button = menu_button("Segurança", [("Gestão de usuários", self.manage_users)], "Criar usuários e alterar senhas do Firebird")
-        analysis_button = menu_button("Análise", [("Ler estrutura", self.inspect_schema), ("Ver plano", self.inspect_plan), ("Saúde", self.inspect_health), ("Banco e atividade", self.inspect_activity), ("Salvar relatório de saúde", self.save_health_report), ("Salvar saúde em HTML", self.save_health_html), ("Sessões", self.inspect_sessions), ("Validar integridade", self.validate_database), ("Comparar estruturas", self.compare_selected), ("Salvar comparação", self.save_compare_report), ("Salvar comparação em HTML", self.save_compare_html)], "Estrutura, plano, saúde, atividade e comparação")
+        analysis_button = menu_button("Análise", [("Ler estrutura", self.inspect_schema), ("Ver plano", self.inspect_plan), ("Saúde", self.inspect_health), ("Banco e atividade", self.inspect_activity), ("Salvar relatório de saúde", self.save_health_report), ("Salvar saúde em HTML", self.save_health_html), ("Criar pacote de suporte", self.create_support_package), ("Sessões", self.inspect_sessions), ("Validar integridade", self.validate_database), ("Comparar estruturas", self.compare_selected), ("Salvar comparação", self.save_compare_report), ("Salvar comparação em HTML", self.save_compare_html)], "Estrutura, plano, saúde, atividade e comparação")
         action_row.addWidget(sql_button); action_row.addWidget(data_button); action_row.addWidget(database_button); action_row.addWidget(security_button); action_row.addWidget(analysis_button); action_row.addWidget(self.commit_changes); action_row.addWidget(self.read_only_mode); action_row.addStretch(); right_layout.addLayout(action_row)
         pagination_row = QHBoxLayout()
         self.previous_data_button = QPushButton("Anterior")
@@ -2308,6 +2308,33 @@ class MainWindow:
             return
         self._log_event("Relatório de saúde HTML salvo", target=str(filename), bytes=len(document.encode("utf-8")))
         self.status.setText(f"Relatório HTML salvo: {filename}")
+
+    def create_support_package(self):
+        from PySide6.QtWidgets import QFileDialog
+        from .diagnostics import create_support_package
+
+        profile = self._profile_from_form()
+        filename, _ = QFileDialog.getSaveFileName(
+            self._window,
+            "Criar pacote de suporte",
+            "firebird-suporte.zip",
+            "Pacote ZIP (*.zip);;Todos (*.*)",
+        )
+        if not filename:
+            return
+        try:
+            create_support_package(
+                Path(filename),
+                profile,
+                self.last_health_report,
+                self.last_compare_report,
+                self._event_log_path,
+            )
+            self._log_event("Pacote de suporte criado", target=filename, profile=profile.name)
+            self.status.setText(f"Pacote de suporte criado: {filename}")
+        except Exception as exc:
+            self._log_event("Falha ao criar pacote de suporte", target=filename, error=str(exc))
+            self._show_message("Pacote de suporte", str(exc), warning=True)
 
     def inspect_sessions(self):
         from .health import list_sessions

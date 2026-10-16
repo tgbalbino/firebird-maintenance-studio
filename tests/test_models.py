@@ -16,10 +16,26 @@ from firebird_studio.schema import SchemaChange, SchemaObject, compare_schema, g
 from firebird_studio.catalog import _field_type
 from firebird_studio.plan import build_plan_script, parse_plan, suggest_improvements
 from firebird_studio.health import build_findings, inspect_health, _optional_database_values
+from firebird_studio.diagnostics import create_support_package
 from unittest.mock import patch
 
 
 class ProfileTests(unittest.TestCase):
+    def test_support_package_omits_password_and_database_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            log = root / "events.txt"
+            log.write_text("senha=secret? evento", encoding="utf-8")
+            output = create_support_package(root / "support.zip", ConnectionProfile("Local", database="C:/db/sample.fdb"), "HEALTH", "COMPARE", log)
+            import zipfile
+            with zipfile.ZipFile(output) as archive:
+                names = archive.namelist()
+                content = "\n".join(archive.read(name).decode("utf-8") for name in names)
+            self.assertIn("perfil.txt", names)
+            self.assertIn("saude.txt", names)
+            self.assertIn("Senha: omitida", content)
+            self.assertNotIn("sample.fdb", names)
+
     def test_privilege_validation(self):
         self.assertIn("SELECT", PRIVILEGES)
         with self.assertRaises(ValueError):
