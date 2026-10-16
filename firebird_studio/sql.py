@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 
 from .connection import _dsn
 from .models import ConnectionProfile
@@ -15,6 +16,21 @@ class QueryResult:
 
 
 DEFAULT_MAX_RESULT_ROWS = 10_000
+
+
+def is_mutating_statement(sql: str) -> bool:
+    """Return whether SQL may change data, metadata, or privileges."""
+    without_comments = re.sub(r"/\*.*?\*/", " ", sql or "", flags=re.DOTALL)
+    without_comments = re.sub(r"--[^\r\n]*", " ", without_comments)
+    keyword = re.match(r"\s*([A-Za-z]+)", without_comments)
+    if not keyword:
+        return False
+    first = keyword.group(1).upper()
+    if first in {"INSERT", "UPDATE", "DELETE", "MERGE", "EXECUTE", "ALTER", "CREATE", "DROP", "RECREATE", "GRANT", "REVOKE"}:
+        return True
+    if first == "WITH":
+        return bool(re.search(r"\b(?:INSERT|UPDATE|DELETE|MERGE)\b", without_comments, re.IGNORECASE))
+    return False
 
 
 def execute_sql(

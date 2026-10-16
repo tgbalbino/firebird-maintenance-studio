@@ -1540,10 +1540,10 @@ class MainWindow:
 
     def _execute_sql_text(self, sql_text: str):
         from PySide6.QtWidgets import QTableWidgetItem
-        from .sql import execute_sql
+        from .sql import execute_sql, is_mutating_statement
 
         statement = sql_text.lstrip().upper()
-        changes_data = statement.startswith(("INSERT", "UPDATE", "DELETE", "MERGE", "EXECUTE", "ALTER", "CREATE", "DROP", "RECREATE", "GRANT", "REVOKE"))
+        changes_data = is_mutating_statement(sql_text)
         commit = bool(self.commit_changes.isChecked())
         if changes_data and self.read_only_mode.isChecked():
             self.status.setText("Modo somente leitura: a instrução foi bloqueada.")

@@ -5,7 +5,7 @@ import types
 import unittest
 
 from firebird_studio.models import ConnectionProfile, ProfileStore
-from firebird_studio.sql import execute_sql
+from firebird_studio.sql import execute_sql, is_mutating_statement
 from firebird_studio.script_runner import build_isql_args, run_script
 from firebird_studio.backup import build_gbak_args, run_gbak
 from firebird_studio.maintenance import validate_database
@@ -72,6 +72,11 @@ class ProfileTests(unittest.TestCase):
         result = execute_sql(ConnectionProfile("Local", database="sample.fdb"), "SELECT 1", max_rows=0)
         self.assertFalse(result.ok)
         self.assertIn("maior que zero", result.message)
+
+    def test_read_only_detector_handles_comments_and_cte_updates(self):
+        self.assertTrue(is_mutating_statement("-- comentário\nUPDATE CUSTOMER SET NAME = 'A'"))
+        self.assertTrue(is_mutating_statement("WITH changed AS (SELECT ID FROM CUSTOMER) DELETE FROM CUSTOMER WHERE ID IN (SELECT ID FROM changed)"))
+        self.assertFalse(is_mutating_statement("/* comentário */ SELECT * FROM CUSTOMER"))
 
     def test_isql_arguments_never_include_password(self):
         profile = ConnectionProfile("Local", database="sample.fdb", user="SYSDBA")
