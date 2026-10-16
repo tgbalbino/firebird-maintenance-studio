@@ -48,6 +48,28 @@ class _Connection:
 
 
 class TransactionTests(unittest.TestCase):
+    def test_transaction_result_is_bounded(self):
+        class BoundedCursor(_Cursor):
+            description = [("VALUE",)]
+
+            def fetchmany(self, count):
+                return [(1,), (2,), (3,)][:count]
+
+        class BoundedConnection(_Connection):
+            def cursor(self):
+                return BoundedCursor(self)
+
+        connection = BoundedConnection()
+        fake_driver = types.ModuleType("firebird.driver")
+        fake_driver.connect = lambda **kwargs: connection
+        profile = ConnectionProfile("Local", database="sample.fdb", version="5")
+        with patch.dict(sys.modules, {"firebird.driver": fake_driver}):
+            session = TransactionSession(profile)
+            result = session.execute("SELECT VALUE FROM T", max_rows=2)
+            session.close()
+        self.assertEqual(result.rows, [(1,), (2,)])
+        self.assertIn("limitado", result.message)
+
     def test_commands_wait_for_commit_and_close(self):
         connection = _Connection()
         fake_driver = types.ModuleType("firebird.driver")

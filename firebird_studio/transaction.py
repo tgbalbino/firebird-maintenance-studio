@@ -4,7 +4,7 @@ from typing import Any
 
 from .connection import _dsn
 from .models import ConnectionProfile
-from .sql import QueryResult
+from .sql import DEFAULT_MAX_RESULT_ROWS, QueryResult
 
 
 class TransactionSession:
@@ -36,15 +36,30 @@ class TransactionSession:
     def active(self) -> bool:
         return self.connection is not None
 
-    def execute(self, sql: str) -> QueryResult:
+    def execute(self, sql: str, max_rows: int = DEFAULT_MAX_RESULT_ROWS) -> QueryResult:
         if not sql.strip():
             return QueryResult(False, [], [], "Informe uma instrução SQL.")
+        if max_rows < 1:
+            return QueryResult(False, [], [], "O limite de linhas deve ser maior que zero.")
         try:
             cursor = self.connection.cursor()
             cursor.execute(sql)
             columns = [item[0] for item in (cursor.description or [])]
-            rows = cursor.fetchall() if columns else []
-            affected = f"{cursor.rowcount} linha(s) afetada(s)." if not columns else f"{len(rows)} linha(s) retornada(s)."
+            truncated = False
+            if columns:
+                fetchmany = getattr(cursor, "fetchmany", None)
+                rows = list(fetchmany(max_rows + 1)) if callable(fetchmany) else list(cursor.fetchall())
+                truncated = len(rows) > max_rows
+                if truncated:
+                    rows = rows[:max_rows]
+            else:
+                rows = []
+            if not columns:
+                affected = f"{cursor.rowcount} linha(s) afetada(s)."
+            elif truncated:
+                affected = f"Primeiras {len(rows)} linha(s) exibidas; resultado limitado a {max_rows}."
+            else:
+                affected = f"{len(rows)} linha(s) retornada(s)."
             return QueryResult(True, columns, rows, affected)
         except Exception as exc:
             return QueryResult(False, [], [], f"Falha ao executar SQL: {exc}")
