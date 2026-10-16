@@ -202,30 +202,21 @@ class MainWindow:
         from .diagnostic_views import create_plan_panel
         plan_panel, self.plan_tree, self.plan_output = create_plan_panel()
         self.plan_panel = plan_panel
-        self.activity_metrics = QTextEdit(); self.activity_metrics.setReadOnly(True); self.activity_metrics.setMaximumHeight(150)
-        self.activity_table = QTableWidget(); self.activity_table.setEditTriggers(QTableWidget.NoEditTriggers); self.activity_table.setSelectionMode(QAbstractItemView.ExtendedSelection); self.activity_table.setSortingEnabled(True)
-        self.activity_refresh_button = QPushButton("Atualizar agora")
-        self.activity_refresh_button.clicked.connect(self.inspect_activity)
-        self.activity_export_button = QPushButton("Exportar CSV")
-        self.activity_export_button.clicked.connect(self.export_activity_csv)
-        self.activity_open_sql_button = QPushButton("Abrir SQL selecionado")
-        self.activity_open_sql_button.clicked.connect(self.open_activity_sql)
-        self.activity_filter = QLineEdit()
-        self.activity_filter.setPlaceholderText("Filtrar usuário, endereço ou SQL...")
-        self.activity_filter.textChanged.connect(self._filter_activity_rows)
-        self.activity_auto_refresh = QCheckBox("Atualizar a cada 5 segundos")
-        self.activity_auto_refresh.toggled.connect(self._toggle_activity_auto_refresh)
-        self.activity_table.cellDoubleClicked.connect(self._open_activity_sql_at)
-        activity_controls = QHBoxLayout(); activity_controls.addWidget(self.activity_refresh_button); activity_controls.addWidget(self.activity_open_sql_button); activity_controls.addWidget(self.activity_export_button); activity_controls.addWidget(self.activity_filter, 1); activity_controls.addWidget(self.activity_auto_refresh); activity_controls.addStretch()
+        from .activity_views import create_activity_panel
+        (
+            activity_panel,
+            self.activity_metrics,
+            self.activity_table,
+            self.activity_refresh_button,
+            self.activity_export_button,
+            self.activity_open_sql_button,
+            self.activity_filter,
+            self.activity_auto_refresh,
+        ) = create_activity_panel(self.inspect_activity, self.export_activity_csv, self.open_activity_sql, self._filter_activity_rows, self._toggle_activity_auto_refresh, self._open_activity_sql_at)
         self.activity_refresh_timer = QTimer(self._window); self.activity_refresh_timer.setInterval(5000); self.activity_refresh_timer.timeout.connect(self.inspect_activity)
-        activity_panel = QWidget(); activity_layout = QVBoxLayout(activity_panel); activity_layout.addLayout(activity_controls); activity_layout.addWidget(self.activity_metrics); activity_layout.addWidget(self.activity_table, 1)
         self.activity_panel = activity_panel
-        self.sessions_table = QTableWidget(); self.sessions_table.setEditTriggers(QTableWidget.NoEditTriggers); self.sessions_table.setSelectionBehavior(QAbstractItemView.SelectRows); self.sessions_table.setSortingEnabled(True)
-        self.sessions_filter = QLineEdit(); self.sessions_filter.setPlaceholderText("Filtrar usuário, endereço ou processo..."); self.sessions_filter.textChanged.connect(self._filter_session_rows)
-        self.disconnect_session_button = QPushButton("Desconectar selecionada")
-        self.disconnect_session_button.clicked.connect(self.terminate_selected_session)
-        sessions_controls = QHBoxLayout(); sessions_controls.addWidget(self.sessions_filter, 1); sessions_controls.addWidget(self.disconnect_session_button)
-        sessions_panel = QWidget(); sessions_layout = QVBoxLayout(sessions_panel); sessions_layout.addWidget(QLabel("Conexões ativas do banco")); sessions_layout.addLayout(sessions_controls); sessions_layout.addWidget(self.sessions_table, 1)
+        from .activity_views import create_sessions_panel
+        sessions_panel, self.sessions_table, self.sessions_filter, self.disconnect_session_button = create_sessions_panel(self._filter_session_rows, self.terminate_selected_session)
         self.sessions_panel = sessions_panel
         self.backup_history_table = QTableWidget(); self.backup_history_table.setEditTriggers(QAbstractItemView.NoEditTriggers); self.backup_history_table.setSelectionBehavior(QAbstractItemView.SelectRows); self.backup_history_table.setSortingEnabled(True)
         backup_history_panel = QWidget(); backup_history_layout = QVBoxLayout(backup_history_panel); backup_history_layout.addWidget(QLabel("Histórico local de backup e restore")); backup_history_layout.addWidget(self.backup_history_table, 1)
