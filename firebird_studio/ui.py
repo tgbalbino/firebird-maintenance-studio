@@ -204,7 +204,7 @@ class MainWindow:
         self.user = QLineEdit("SYSDBA")
         self.role = QLineEdit()
         self.role.setPlaceholderText("Opcional, por exemplo RDB$ADMIN")
-        self.password = QLineEdit(); self.password.setEchoMode(QLineEdit.Password); self.password.setPlaceholderText("Senha temporária; não é salva no perfil")
+        self.password = QLineEdit(); self.password.setEchoMode(QLineEdit.Password); self.password.setPlaceholderText("Senha temporária; não é salva no cadastro")
         self.save_password = QCheckBox("Salvar senha criptografada neste computador")
         self.show_password = QCheckBox("Mostrar senha")
         self.show_password.toggled.connect(lambda visible: self.password.setEchoMode(QLineEdit.Normal if visible else QLineEdit.Password))
@@ -313,10 +313,10 @@ class MainWindow:
         self.open_data_button.setEnabled(False)
         self.open_data_button.clicked.connect(self.open_table_data)
         left_layout.addWidget(self.open_data_button)
-        profile_button = QToolButton(); profile_button.setText("Perfil"); profile_button.setObjectName("profileMenuButton"); profile_button.setToolTip("Criar, salvar, abrir ou excluir o cadastro selecionado")
+        profile_button = QToolButton(); profile_button.setText("Conexão"); profile_button.setObjectName("profileMenuButton"); profile_button.setToolTip("Criar, salvar, abrir ou excluir o cadastro selecionado")
         profile_button.setPopupMode(QToolButton.InstantPopup)
         profile_menu = QMenu(profile_button)
-        for label, callback in (("Novo perfil", self.new_profile), ("Salvar perfil", self.save_profile), ("Abrir banco", self.open_profile), ("Desconectar banco", self.disconnect_selected), ("Excluir cadastro", self.delete_profile)):
+        for label, callback in (("Nova conexão", self.new_profile), ("Salvar conexão", self.save_profile), ("Abrir banco", self.open_profile), ("Desconectar banco", self.disconnect_selected), ("Excluir cadastro", self.delete_profile)):
             profile_action = profile_menu.addAction(label)
             profile_action.triggered.connect(callback)
         profile_button.setMenu(profile_menu)
@@ -326,7 +326,7 @@ class MainWindow:
         form = QFormLayout(); form.addRow("Nome", self.name); form.addRow("", self.favorite); form.addRow("Host", self.host)
         form.addRow("Porta", self.port); form.addRow("Caminho ou alias", self.database)
         form.addRow("Firebird", self.version); form.addRow("Usuário", self.user); form.addRow("Role", self.role); form.addRow("Senha", password_row); form.addRow("Charset", self.charset); form.addRow("Caminho isql", self.isql_path); form.addRow("Caminho gbak", self.gbak_path); form.addRow("Comparar com", self.target_profile)
-        box = QGroupBox("Perfil selecionado"); box.setLayout(form)
+        box = QGroupBox("Conexão selecionada"); box.setLayout(form)
         self.profile_box = box
         self.profile_toggle = QPushButton("Ocultar dados do cadastro")
         self.profile_toggle.clicked.connect(self._toggle_profile_details)
@@ -370,7 +370,7 @@ class MainWindow:
         welcome_text = QLabel("Cadastre um banco Firebird para conectar, abrir objetos e iniciar consultas SQL.")
         welcome_text.setWordWrap(True)
         welcome_actions = QHBoxLayout()
-        welcome_profile = QPushButton("Criar primeiro perfil")
+        welcome_profile = QPushButton("Criar primeira conexão")
         welcome_profile.setObjectName("primaryAction")
         welcome_profile.clicked.connect(self.new_profile)
         welcome_sql = QPushButton("Nova janela SQL")
@@ -602,8 +602,8 @@ class MainWindow:
         window_menu.addAction(self.menu_always_top_action)
 
         database_menu = menu_bar.addMenu("Banco")
-        database_menu.addAction("Novo perfil", self.new_profile)
-        database_menu.addAction("Salvar perfil", self.save_profile)
+        database_menu.addAction("Nova conexão", self.new_profile)
+        database_menu.addAction("Salvar conexão", self.save_profile)
         database_menu.addAction("Abrir banco", self.open_profile)
         database_menu.addAction("Desconectar banco", self.disconnect_selected)
         database_menu.addSeparator()
@@ -816,7 +816,7 @@ class MainWindow:
 
         profile = self.profiles[index] if index is not None else ConnectionProfile(name="", version="5")
         dialog = QDialog(self._window)
-        dialog.setWindowTitle(f"{'Novo perfil' if index is None else 'Dados do cadastro — ' + profile.name}")
+        dialog.setWindowTitle(f"{'Nova conexão' if index is None else 'Dados do cadastro — ' + profile.name}")
         dialog.setModal(True)
         dialog.resize(560, 520)
         form = QFormLayout()
@@ -1333,7 +1333,7 @@ class MainWindow:
             )
             return
         if 0 <= index < len(self.profiles):
-            self.status.setText(f"Perfil '{self.profiles[index].name}' selecionado. Duplo clique para conectar.")
+            self.status.setText(f"Conexão '{self.profiles[index].name}' selecionada. Duplo clique para conectar.")
             if hasattr(self, "object_breadcrumb"):
                 self.object_breadcrumb.setText(f"{self.profiles[index].name} > banco")
 
@@ -1476,7 +1476,7 @@ class MainWindow:
     def show_backup_history(self):
         from PySide6.QtWidgets import QTableWidgetItem
 
-        headers = ["Data", "Operação", "Perfil", "Origem", "Destino", "Resultado", "Detalhe"]
+        headers = ["Data", "Operação", "Conexão", "Origem", "Destino", "Resultado", "Detalhe"]
         self.backup_history_table.setSortingEnabled(False)
         self.backup_history_table.clear()
         self.backup_history_table.setColumnCount(len(headers)); self.backup_history_table.setRowCount(len(self.backup_history)); self.backup_history_table.setHorizontalHeaderLabels(headers)
@@ -1760,7 +1760,7 @@ class MainWindow:
         # tree again here because currentItem()/parent() can re-enter Qt while
         # a packaged Windows activation event is still being dispatched.
         selected = int(selected_index) if selected_index is not None else -1
-        self._log_event("Perfil identificado para abrir", selected=selected, profiles=len(self.profiles))
+        self._log_event("Conexão identificada para abrir", selected=selected, profiles=len(self.profiles))
         # When activation comes from the list, use the saved object directly.
         # This avoids relying on the form repaint completing before the worker
         # starts, which was the reason the button appeared to have no effect.
@@ -1769,10 +1769,10 @@ class MainWindow:
         # again here can block on Windows Credential Manager before the worker
         # even starts; the Testar conexão button does not repeat that lookup.
         errors = profile.validate()
-        self._log_event("Perfil validado para abrir", profile=profile.name, errors=len(errors))
+        self._log_event("Conexão validada para abrir", profile=profile.name, errors=len(errors))
         if errors:
             message = " ".join(errors)
-            self._log_event("Perfil inválido ao abrir", errors=message)
+            self._log_event("Conexão inválida ao abrir", errors=message)
             return None, message
         # Selecting a tree profile already loads its stored password into the
         # form. Avoid querying Windows Credential Manager a second time here:
@@ -2539,7 +2539,7 @@ class MainWindow:
         confirmation = QMessageBox(self._window)
         confirmation.setWindowTitle("Confirmar exclusão do cadastro")
         confirmation.setText(f"Excluir o cadastro '{profile.name}'?")
-        confirmation.setInformativeText("Somente o perfil salvo será removido. O arquivo do banco não será excluído.")
+        confirmation.setInformativeText("Somente o cadastro da conexão será removido. O arquivo do banco não será excluído.")
         confirmation.setIcon(QMessageBox.Warning)
         confirmation.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
         confirmation.setDefaultButton(QMessageBox.No)
@@ -2579,7 +2579,7 @@ class MainWindow:
         if errors:
             message = " ".join(errors)
             self.status.setText(message)
-            self._show_message("Perfil inválido", message, warning=True)
+            self._show_message("Conexão inválida", message, warning=True)
             return
         selected = self._profile_index_for_item()
         duplicate = next((item for index, item in enumerate(self.profiles) if index != selected and item.name.casefold() == profile.name.casefold()), None)
@@ -2592,20 +2592,20 @@ class MainWindow:
         if 0 <= selected < len(self.profiles): self.profiles[selected] = profile
         else: self.profiles.append(profile)
         self.store.save(self.profiles)
-        self._log_event("Perfil salvo", profile=profile.name, count=len(self.profiles), profile_store=str(self.store.path))
+        self._log_event("Conexão salva", profile=profile.name, count=len(self.profiles), profile_store=str(self.store.path))
         from .credentials import CredentialStore
         try:
             credentials = CredentialStore()
             if self.save_password.isChecked() and self.password.text():
                 credentials.set(profile.name, self.password.text())
-                message = "Perfil e senha criptografada salvos."
+                message = "Conexão e senha criptografada salvas."
             else:
                 credentials.delete(profile.name)
-                message = "Perfil salvo sem senha."
+                message = "Conexão salva sem senha."
             if previous_name and previous_name != profile.name:
                 credentials.delete(previous_name)
         except Exception as exc:
-            message = f"Perfil salvo, mas não foi possível proteger a senha: {exc}"
+            message = f"Conexão salva, mas não foi possível proteger a senha: {exc}"
         self.refresh_profiles(); self.status.setText(message)
 
     def _show_connection_result(self, profile, result, details: str = ""):
@@ -2619,7 +2619,7 @@ class MainWindow:
         status = QLabel("Conectado" if result.ok else "Falha na conexão")
         status.setStyleSheet("color: #188038; font-weight: bold;" if result.ok else "color: #c5221f; font-weight: bold;")
         form.addRow("Status", status)
-        form.addRow("Perfil", QLabel(profile.name))
+        form.addRow("Conexão", QLabel(profile.name))
         form.addRow("Servidor", QLabel(f"{profile.host}:{profile.port}"))
         form.addRow("Banco", QLabel(profile.database))
         form.addRow("Firebird", QLabel(profile.version))
@@ -2679,7 +2679,7 @@ class MainWindow:
         profile = self._query_profile()
         explicit_transaction = self._transaction_session is not None and self._transaction_session.active
         if explicit_transaction and self._transaction_profile_name != profile.name:
-            self.status.setText(f"A transação aberta pertence ao perfil '{self._transaction_profile_name}'. Faça Commit/Rollback antes de trocar de banco.")
+            self.status.setText(f"A transação aberta pertence à conexão '{self._transaction_profile_name}'. Faça Commit/Rollback antes de trocar de banco.")
             return
         if changes_data and commit and not explicit_transaction:
             from PySide6.QtWidgets import QMessageBox
@@ -2848,8 +2848,8 @@ class MainWindow:
             return
         profile = self._profile_from_form()
         if not profile.isql_path:
-            self.status.setText("Configure o caminho do isql no perfil antes de executar um arquivo.")
-            self._show_message("Executar script", "Configure o caminho do isql.exe no perfil antes de executar um arquivo.", warning=True)
+            self.status.setText("Configure o caminho do isql na conexão antes de executar um arquivo.")
+            self._show_message("Executar script", "Configure o caminho do isql.exe na conexão antes de executar um arquivo.", warning=True)
             return
         password = self._password_for(profile)
         isql_path = Path(profile.isql_path)
@@ -3191,8 +3191,8 @@ class MainWindow:
 
         profile = self._query_profile()
         if not profile.isql_path:
-            self.status.setText("Configure o caminho do isql no perfil antes de analisar o plano.")
-            self._show_message("Ver plano", "Configure o caminho do isql.exe no perfil antes de analisar o plano.", warning=True)
+            self.status.setText("Configure o caminho do isql na conexão antes de analisar o plano.")
+            self._show_message("Ver plano", "Configure o caminho do isql.exe na conexão antes de analisar o plano.", warning=True)
             return
         password = self._password_for(profile)
         query = self.editor.toPlainText()
@@ -3542,7 +3542,7 @@ class MainWindow:
         source = self._profile_from_form()
         target = next((profile for profile in self.profiles if profile.name == target_name), None)
         if target is None or target.name == source.name:
-            self.status.setText("Cadastre e selecione um perfil de destino diferente da origem.")
+            self.status.setText("Cadastre e selecione uma conexão de destino diferente da origem.")
             return
         password = self._password_for(source)
         target_password = self._stored_password(target.name) or password

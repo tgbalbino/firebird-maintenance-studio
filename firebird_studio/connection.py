@@ -77,7 +77,7 @@ def test_connection(profile: ConnectionProfile, password: str | None = None) -> 
                 if not Path(database_path).exists():
                     details.append("O arquivo informado não existe neste computador.")
         if not password:
-            details.append("Informe a senha do usuário SYSDBA (a senha não é salva no perfil).")
+            details.append("Informe a senha do usuário SYSDBA (a senha não é salva no cadastro).")
         if profile.isql_path and not Path(profile.isql_path).exists():
             details.append(f"isql.exe não encontrado: {profile.isql_path}")
         if profile.gbak_path and not Path(profile.gbak_path).exists():

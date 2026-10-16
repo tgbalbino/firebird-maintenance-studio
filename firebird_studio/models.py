@@ -27,7 +27,7 @@ class ConnectionProfile:
     def validate(self) -> list[str]:
         errors: list[str] = []
         if not self.name.strip():
-            errors.append("O nome do perfil é obrigatório.")
+            errors.append("O nome da conexão é obrigatório.")
         if self.version not in SUPPORTED_VERSIONS:
             errors.append(f"Versão não suportada: {self.version}.")
         if not 1 <= self.port <= 65535:
