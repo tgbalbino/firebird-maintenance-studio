@@ -609,7 +609,7 @@ class MainWindow:
         dialog.exec()
 
     def show_about(self):
-        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout, QFrame, QPushButton
+        from PySide6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QLabel, QVBoxLayout, QHBoxLayout, QFrame, QPushButton
         from PySide6.QtCore import Qt, QUrl
         from PySide6.QtGui import QDesktopServices
 
@@ -621,11 +621,19 @@ class MainWindow:
         header.setObjectName("appHeader")
         header_layout = QVBoxLayout(header)
         header_layout.setContentsMargins(16, 12, 16, 12)
+        header_row = QHBoxLayout()
+        icon_label = QLabel()
+        icon_label.setPixmap(QApplication.instance().windowIcon().pixmap(52, 52))
+        icon_label.setFixedSize(52, 52)
+        header_row.addWidget(icon_label)
+        title_column = QVBoxLayout()
         title = QLabel("Firebird Maintenance Studio")
         title.setObjectName("appTitle")
         subtitle = QLabel("Workspace de manutenção · SQL, dados, diagnóstico e operações")
         subtitle.setObjectName("appSubtitle")
-        header_layout.addWidget(title); header_layout.addWidget(subtitle)
+        title_column.addWidget(title); title_column.addWidget(subtitle)
+        header_row.addLayout(title_column, 1)
+        header_layout.addLayout(header_row)
         description = QLabel(
             "Ferramenta open source para manutenção de bancos Firebird 2.5, 3, 4 e 5.<br>"
             "Editor SQL, múltiplos bancos, catálogo de objetos, plano, saúde, sessões, backup, restore e comparação."
