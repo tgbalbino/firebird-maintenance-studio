@@ -324,7 +324,7 @@ class MainWindow:
         self.apply_update_action.setEnabled(False)
         self.apply_update_action.setToolTip("Executa somente o UPDATE que está no editor após confirmação explícita.")
         self.apply_update_action.triggered.connect(self._apply_update_preview)
-        sql_button = menu_button("SQL", [("Nova janela SQL", self._new_sql_tab), ("Executar SQL", self.execute_selected), ("Executar seleção", self.execute_selection), ("Executar arquivo SQL", self.execute_script_file), ("Salvar SQL", self.save_sql_file)], "Executar comandos e gerenciar janelas SQL")
+        sql_button = menu_button("SQL", [("Nova janela SQL", self._new_sql_tab), ("Localizar no SQL", self.find_in_sql), ("Executar SQL", self.execute_selected), ("Executar seleção", self.execute_selection), ("Executar arquivo SQL", self.execute_script_file), ("Salvar SQL", self.save_sql_file)], "Executar comandos e gerenciar janelas SQL")
         sql_button.menu().addSeparator()
         self.begin_transaction_action = QAction("Iniciar transação", self._window)
         self.begin_transaction_action.triggered.connect(self._start_transaction)
@@ -650,6 +650,26 @@ class MainWindow:
         query = self.history_combo.itemData(index)
         if query is not None and self.editor is not None:
             self.editor.setPlainText(str(query))
+
+    def find_in_sql(self):
+        from PySide6.QtWidgets import QInputDialog
+
+        if self.editor is None:
+            return
+        text, accepted = QInputDialog.getText(self._window, "Localizar no SQL", "Texto:", text=getattr(self, "_find_text", ""))
+        if not accepted or not text:
+            return
+        self._find_text = text
+        if not self.editor.find(text):
+            cursor = self.editor.textCursor()
+            cursor.movePosition(cursor.Start)
+            self.editor.setTextCursor(cursor)
+            if self.editor.find(text):
+                self.status.setText(f"Texto localizado: {text}")
+            else:
+                self.status.setText(f"Texto não encontrado: {text}")
+        else:
+            self.status.setText(f"Texto localizado: {text}")
 
     def execute_selection(self):
         if self.editor is None:
