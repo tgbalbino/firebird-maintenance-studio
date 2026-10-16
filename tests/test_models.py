@@ -1,5 +1,7 @@
 from pathlib import Path
+import sys
 import tempfile
+import types
 import unittest
 
 from firebird_studio.models import ConnectionProfile, ProfileStore
@@ -31,6 +33,44 @@ class ProfileTests(unittest.TestCase):
         result = execute_sql(ConnectionProfile("Local", database="sample.fdb"), " ")
         self.assertFalse(result.ok)
         self.assertIn("SQL", result.message)
+
+    def test_sql_result_is_bounded_and_reports_truncation(self):
+        class Cursor:
+            description = [("ID",)]
+            rowcount = -1
+
+            def execute(self, _sql):
+                pass
+
+            def fetchmany(self, count):
+                return [(1,), (2,), (3,)][:count]
+
+        class Connection:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                pass
+
+            def cursor(self):
+                return Cursor()
+
+            def rollback(self):
+                pass
+
+        fake_driver = types.ModuleType("firebird.driver")
+        fake_driver.connect = lambda **_kwargs: Connection()
+        profile = ConnectionProfile("Local", database="sample.fdb", version="5")
+        with patch.dict(sys.modules, {"firebird.driver": fake_driver}):
+            result = execute_sql(profile, "SELECT ID FROM CUSTOMER", max_rows=2)
+        self.assertTrue(result.ok)
+        self.assertEqual(result.rows, [(1,), (2,)])
+        self.assertIn("limitado", result.message)
+
+    def test_sql_rejects_invalid_result_limit(self):
+        result = execute_sql(ConnectionProfile("Local", database="sample.fdb"), "SELECT 1", max_rows=0)
+        self.assertFalse(result.ok)
+        self.assertIn("maior que zero", result.message)
 
     def test_isql_arguments_never_include_password(self):
         profile = ConnectionProfile("Local", database="sample.fdb", user="SYSDBA")
