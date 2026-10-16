@@ -367,6 +367,7 @@ class MainWindow:
         sql_button.menu().addAction(self.begin_transaction_action)
         sql_button.menu().addAction(self.commit_transaction_action)
         sql_button.menu().addAction(self.rollback_transaction_action)
+        window_button = menu_button("Janelas", [("Selecionar consulta aberta", self._choose_sql_window), ("Fechar consulta atual", lambda: self.close_sql_tab(self.sql_tabs.currentIndex())), ("Fechar todas as consultas", self._close_all_sql_tabs)], "Alternar e fechar consultas SQL abertas")
         data_button = menu_button("Dados", [("Exportar CSV", self.export_result_csv), ("Exportar JSON", self.export_result_json)], "Exportar resultados e abrir dados de tabelas")
         data_button.menu().addAction(self.open_data_action)
         data_button.menu().addAction(self.edit_data_action)
@@ -378,7 +379,7 @@ class MainWindow:
         database_button = menu_button("Banco", [("Backup", self.execute_backup), ("Restore", self.execute_restore), ("Exportar banco para SQL", self.export_database_sql), ("Histórico de backup/restore", self.show_backup_history)], "Operações de backup, restore e exportação SQL")
         security_button = menu_button("Segurança", [("Gestão de usuários", self.manage_users)], "Criar usuários e alterar senhas do Firebird")
         analysis_button = menu_button("Análise", [("Ler estrutura", self.inspect_schema), ("Ver plano", self.inspect_plan), ("Saúde", self.inspect_health), ("Banco e atividade", self.inspect_activity), ("Salvar relatório de saúde", self.save_health_report), ("Salvar saúde em HTML", self.save_health_html), ("Criar pacote de suporte", self.create_support_package), ("Sessões", self.inspect_sessions), ("Validar integridade", self.validate_database), ("Comparar estruturas", self.compare_selected), ("Salvar comparação", self.save_compare_report), ("Salvar comparação em HTML", self.save_compare_html)], "Estrutura, plano, saúde, atividade e comparação")
-        action_row.addWidget(sql_button); action_row.addWidget(data_button); action_row.addWidget(database_button); action_row.addWidget(security_button); action_row.addWidget(analysis_button); action_row.addWidget(self.commit_changes); action_row.addWidget(self.read_only_mode); action_row.addStretch(); right_layout.addLayout(action_row)
+        action_row.addWidget(sql_button); action_row.addWidget(window_button); action_row.addWidget(data_button); action_row.addWidget(database_button); action_row.addWidget(security_button); action_row.addWidget(analysis_button); action_row.addWidget(self.commit_changes); action_row.addWidget(self.read_only_mode); action_row.addStretch(); right_layout.addLayout(action_row)
         pagination_row = QHBoxLayout()
         self.previous_data_button = QPushButton("Anterior")
         self.previous_data_button.setEnabled(False)
@@ -500,6 +501,7 @@ class MainWindow:
         if self.editor is not None:
             self._refresh_sql_completer(self.editor)
             self._update_cursor_status(self.editor)
+            self._update_sql_tab_title(index)
             self.query_profile_combo.blockSignals(True)
             profile_name = self.editor.property("query_profile") or ""
             combo_index = self.query_profile_combo.findText(profile_name)
@@ -510,6 +512,7 @@ class MainWindow:
     def _set_current_query_profile(self, profile_name: str):
         if self.editor is not None and profile_name:
             self.editor.setProperty("query_profile", profile_name)
+            self._update_sql_tab_title()
         self._update_query_connection_status()
 
     def _update_query_connection_status(self):
@@ -551,12 +554,46 @@ class MainWindow:
         editor.setProperty("completion_shortcut", completion_shortcut)
         selected_name = self.query_profile_combo.currentText() if hasattr(self, "query_profile_combo") else ""
         editor.setProperty("query_profile", selected_name or (self.profiles[0].name if self.profiles else ""))
+        editor.setProperty("document_title", f"SQL {self.sql_tabs.count() + 1}")
         index = self.sql_tabs.addTab(editor, f"SQL {self.sql_tabs.count() + 1}")
         self.sql_tabs.setCurrentIndex(index)
         self.editor = editor
         editor.cursorPositionChanged.connect(lambda target=editor: self._update_cursor_status(target))
         self._update_cursor_status(editor)
         self._refresh_sql_completer(editor)
+        self._update_sql_tab_title(index)
+
+    def _update_sql_tab_title(self, index=None):
+        index = self.sql_tabs.currentIndex() if index is None else index
+        if index < 0 or index >= self.sql_tabs.count():
+            return
+        editor = self.sql_tabs.widget(index)
+        profile_name = editor.property("query_profile") if editor is not None else ""
+        base = editor.property("document_title") if editor is not None else ""
+        if not base:
+            base = f"SQL {index + 1}"
+        title = f"{base} · {profile_name}" if profile_name else base
+        self.sql_tabs.setTabText(index, title)
+        self.sql_tabs.setTabToolTip(index, f"Consulta {base}\nBanco: {profile_name or 'não definido'}")
+
+    def _close_all_sql_tabs(self):
+        while self.sql_tabs.count() > 0:
+            widget = self.sql_tabs.widget(0)
+            self.sql_tabs.removeTab(0)
+            if widget is not None:
+                widget.deleteLater()
+        self._new_sql_tab()
+        self.status.setText("Todas as consultas foram fechadas; uma nova consulta vazia foi criada.")
+
+    def _choose_sql_window(self):
+        from PySide6.QtWidgets import QInputDialog
+
+        if self.sql_tabs.count() == 0:
+            return
+        titles = [self.sql_tabs.tabText(index) for index in range(self.sql_tabs.count())]
+        selected, accepted = QInputDialog.getItem(self._window, "Janelas SQL", "Selecionar consulta:", titles, self.sql_tabs.currentIndex(), False)
+        if accepted:
+            self.sql_tabs.setCurrentIndex(titles.index(selected))
 
     def _update_cursor_status(self, editor=None):
         target = editor or self.editor
@@ -1076,7 +1113,8 @@ class MainWindow:
         if obj.kind.upper() == "TABLE":
             dml = f'\n\n-- DML de consulta\nSELECT * FROM "{obj.name}";\n\n-- DML de inserção (modelo)\n-- INSERT INTO "{obj.name}" (...) VALUES (...);\n\n-- DML de alteração (modelo)\n-- UPDATE "{obj.name}" SET ... WHERE ...;\n'
         self.editor.setPlainText(obj.ddl + dml)
-        self.sql_tabs.setTabText(self.sql_tabs.currentIndex(), obj.name)
+        self.editor.setProperty("document_title", obj.name)
+        self._update_sql_tab_title()
 
     def preview_object(self, item, _column=0, load_data=False):
         """Show metadata/DDL; optionally load the first table data page."""
