@@ -8,6 +8,8 @@ DARK_STYLE = COMPACT_STYLE + " QWidget { background: #171a21; color: #f3f4f6; } 
 # Keep the menu visually aligned with the selected application theme.
 LIGHT_STYLE += " QMenuBar#mainMenuBar { background: #f7f9fc; color: #1f2937; } QMenuBar#mainMenuBar::item:hover, QMenuBar#mainMenuBar::item:selected { background: #dbeafe; color: #111827; }"
 DARK_STYLE += " QMenuBar#mainMenuBar { background: #171a21; color: #f3f4f6; } QMenuBar#mainMenuBar::item:hover, QMenuBar#mainMenuBar::item:selected { background: #334e7a; color: #ffffff; }"
+LIGHT_STYLE += " QWidget#sidebarPanel { background: #eef3f9; border: 1px solid #c5d0df; border-radius: 6px; } QWidget#workspacePanel { background: #f7f9fc; } QTreeWidget { alternate-background-color: #f3f6fa; }"
+DARK_STYLE += " QWidget#sidebarPanel { background: #202631; border: 1px solid #4f5d72; border-radius: 6px; } QWidget#workspacePanel { background: #171a21; } QTreeWidget { alternate-background-color: #272d39; }"
 
 
 def apply_theme(theme: str) -> None:
