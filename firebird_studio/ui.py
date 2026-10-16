@@ -491,6 +491,12 @@ class MainWindow:
         shortcut = QShortcut(QKeySequence("Ctrl+Return"), editor)
         shortcut.activated.connect(self.execute_selected)
         editor.setProperty("execute_shortcut", shortcut)
+        find_shortcut = QShortcut(QKeySequence("Ctrl+F"), editor)
+        find_shortcut.activated.connect(self.find_in_sql)
+        editor.setProperty("find_shortcut", find_shortcut)
+        replace_shortcut = QShortcut(QKeySequence("Ctrl+H"), editor)
+        replace_shortcut.activated.connect(self.replace_in_sql)
+        editor.setProperty("replace_shortcut", replace_shortcut)
         selected_name = self.query_profile_combo.currentText() if hasattr(self, "query_profile_combo") else ""
         editor.setProperty("query_profile", selected_name or (self.profiles[0].name if self.profiles else ""))
         index = self.sql_tabs.addTab(editor, f"SQL {self.sql_tabs.count() + 1}")
