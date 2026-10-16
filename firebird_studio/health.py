@@ -77,6 +77,9 @@ def inspect_health(profile: ConnectionProfile, password: str | None = None) -> H
             attachment = _fetch_one(connection, "SELECT COUNT(*) FROM MON$ATTACHMENTS")
         except Exception:
             attachment = (0,)
+        optional_values: dict[str, Any] = {}
+        for column, key in (("MON$PAGE_SIZE", "page_size"), ("MON$PAGES", "pages"), ("MON$ODS_MAJOR", "ods_major"), ("MON$ODS_MINOR", "ods_minor"), ("MON$READ_ONLY", "read_only"), ("MON$FORCED_WRITES", "forced_writes"), ("MON$SWEEP_INTERVAL", "sweep_interval")):
+            optional_values[key] = _optional_database_value(connection, column)
     metrics = {
         "oldest_transaction": database[0] if len(database) > 0 else None,
         "oldest_active": database[1] if len(database) > 1 else None,
@@ -85,8 +88,7 @@ def inspect_health(profile: ConnectionProfile, password: str | None = None) -> H
         "backup_state": database[4] if len(database) > 4 else None,
         "attachments": attachment[0] if attachment else 0,
     }
-    for column, key in (("MON$PAGE_SIZE", "page_size"), ("MON$PAGES", "pages"), ("MON$ODS_MAJOR", "ods_major"), ("MON$ODS_MINOR", "ods_minor"), ("MON$READ_ONLY", "read_only"), ("MON$FORCED_WRITES", "forced_writes"), ("MON$SWEEP_INTERVAL", "sweep_interval")):
-        metrics[key] = _optional_database_value(connection, column)
+    metrics.update(optional_values)
     return HealthReport(metrics, build_findings(metrics))
 
 

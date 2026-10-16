@@ -9,7 +9,8 @@ from firebird_studio.backup import build_gbak_args, run_gbak
 from firebird_studio.schema import SchemaChange, SchemaObject, compare_schema, generate_migration
 from firebird_studio.catalog import _field_type
 from firebird_studio.plan import build_plan_script, parse_plan, suggest_improvements
-from firebird_studio.health import build_findings
+from firebird_studio.health import build_findings, inspect_health
+from unittest.mock import patch
 
 
 class ProfileTests(unittest.TestCase):
@@ -119,3 +120,31 @@ class ProfileTests(unittest.TestCase):
         self.assertIn("Banco somente leitura", titles)
         self.assertIn("Gravação forçada desativada", titles)
         self.assertIn("Sweep automático desativado", titles)
+
+    def test_health_reads_optional_metrics_before_closing_connection(self):
+        class HealthConnection:
+            closed = False
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                self.closed = True
+
+        connection = HealthConnection()
+        optional = {"MON$PAGE_SIZE": 8192, "MON$PAGES": 10, "MON$ODS_MAJOR": 13, "MON$ODS_MINOR": 0,
+                    "MON$READ_ONLY": 0, "MON$FORCED_WRITES": 1, "MON$SWEEP_INTERVAL": 20}
+
+        def read_optional(current, column):
+            self.assertIs(current, connection)
+            self.assertFalse(current.closed)
+            return optional[column]
+
+        with patch("firebird_studio.health.open_database", return_value=connection), \
+             patch("firebird_studio.health._fetch_one", side_effect=[(1, 2, 3, 4, 0), (2,)]), \
+             patch("firebird_studio.health._optional_database_value", side_effect=read_optional):
+            report = inspect_health(ConnectionProfile("Local", database="sample.fdb"))
+
+        self.assertEqual(report.metrics["page_size"], 8192)
+        self.assertEqual(report.metrics["pages"], 10)
+        self.assertTrue(connection.closed)
