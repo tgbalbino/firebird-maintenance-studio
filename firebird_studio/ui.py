@@ -498,6 +498,7 @@ class MainWindow:
         # smaller size.  The previous compact padding made adjacent labels
         # look joined together and could clip the last menu name.
         menu_bar.setMinimumHeight(32)
+        menu_bar.setObjectName("mainMenuBar")
         menu_bar.setStyleSheet(
             "QMenuBar { spacing: 2px; }"
             " QMenuBar::item { padding: 6px 12px; margin: 0 1px; }"
