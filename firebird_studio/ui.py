@@ -2975,12 +2975,31 @@ class MainWindow:
         from PySide6.QtWidgets import QComboBox, QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QInputDialog, QLineEdit, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout
         from .users import PRIVILEGES, change_user_password, create_role, create_user, delete_user, grant_privilege, grant_role, list_users, revoke_privilege, revoke_role
 
-        profile = self._profile_from_form()
+        selected_index = self._profile_index_for_item()
+        profile_name = ""
+        if 0 <= selected_index < len(self.profiles):
+            profile_name = self.profiles[selected_index].name
+        elif self.editor is not None:
+            profile_name = self.editor.property("query_profile") or ""
+        profile = next((item for item in self.profiles if item.name == profile_name), None)
+        if profile is None and self.profiles:
+            profile = self.profiles[0]
+        if profile is None:
+            self._show_message("Gestão de usuários", "Cadastre uma conexão de banco antes de abrir esta tela.", warning=True)
+            return
         admin_password = self._password_for(profile)
         dialog = QDialog(self._window)
         dialog.setWindowTitle(f"Usuários · {profile.name}")
         dialog.resize(640, 420)
         layout = QVBoxLayout(dialog)
+        connection_row = QHBoxLayout()
+        connection_row.addWidget(QLabel("Conexão"))
+        connection_combo = QComboBox()
+        connection_combo.addItems([item.name for item in self.profiles])
+        connection_combo.setCurrentText(profile.name)
+        connection_combo.setToolTip("Banco usado para as operações administrativas")
+        connection_row.addWidget(connection_combo, 1)
+        layout.addLayout(connection_row)
         layout.addWidget(QLabel("As operações exigem uma conta administrativa. Senhas nunca são salvas nem registradas no log."))
         table = QTableWidget(0, 4)
         table.setHorizontalHeaderLabels(["Usuário", "Nome", "Sobrenome", "Ativo"])
@@ -3016,6 +3035,16 @@ class MainWindow:
         def selected_user() -> str:
             row = table.currentRow()
             return table.item(row, 0).text() if row >= 0 and table.item(row, 0) else ""
+
+        def select_connection(name: str):
+            nonlocal profile, admin_password
+            selected = next((item for item in self.profiles if item.name == name), None)
+            if selected is None:
+                return
+            profile = selected
+            admin_password = self._password_for(profile)
+            dialog.setWindowTitle(f"Usuários · {profile.name}")
+            reload_users()
 
         def ask_secret(title: str) -> tuple[str, str] | None:
             first, accepted = QInputDialog.getText(dialog, title, "Nova senha:", QLineEdit.Password)
@@ -3126,6 +3155,7 @@ class MainWindow:
             except Exception as exc:
                 self._show_message("Excluir usuário", str(exc), warning=True)
 
+        connection_combo.currentTextChanged.connect(select_connection)
         refresh.clicked.connect(reload_users); create.clicked.connect(create_user_action); change.clicked.connect(lambda: change_user_action()); sysdba.clicked.connect(change_sysdba_action); remove.clicked.connect(delete_user_action)
         create_role_button.clicked.connect(create_role_action); grant_role_button.clicked.connect(lambda: change_role_action(False)); revoke_role_button.clicked.connect(lambda: change_role_action(True))
         grant_privilege_button.clicked.connect(lambda: change_privilege_action(False)); revoke_privilege_button.clicked.connect(lambda: change_privilege_action(True))
