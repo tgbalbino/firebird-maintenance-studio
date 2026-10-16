@@ -89,12 +89,25 @@ def export_database_sql(
     try:
         filename = Path(filename)
         filename.parent.mkdir(parents=True, exist_ok=True)
-        metadata = load_schema(profile, password, detailed=True) if mode in {"metadata", "both"} else []
+        metadata_warning = ""
+        if mode in {"metadata", "both"}:
+            try:
+                metadata = load_schema(profile, password, detailed=True)
+            except Exception as exc:
+                # Older Firebird catalogs or restricted users may reject one
+                # detailed catalog query. Keep the export usable with the
+                # conservative object list instead of failing the whole file.
+                metadata_warning = f"-- AVISO: metadados detalhados indisponíveis ({exc})\n"
+                metadata = load_schema(profile, password, detailed=False)
+        else:
+            metadata = []
         tables = [obj for obj in metadata if obj.kind.upper() == "TABLE"] if metadata else []
         with open_database(profile, password) as connection, filename.open("w", encoding="utf-8", newline="\n") as output:
             output.write("-- Firebird Maintenance Studio SQL export\nSET SQL DIALECT 3;\n\n")
             if mode in {"metadata", "both"}:
                 output.write("-- METADADOS\n")
+                if metadata_warning:
+                    output.write(metadata_warning + "\n")
                 for obj in metadata:
                     ddl = obj.ddl.strip()
                     if ddl and not ddl.startswith("--"):

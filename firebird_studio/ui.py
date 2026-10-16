@@ -245,6 +245,7 @@ class MainWindow:
         self.last_compare_report = ""
         self.last_health_report = ""
         self.history_combo = None
+        self._toast = None
         self._restore_query_history()
         self.editor = None
         self._new_sql_tab()
@@ -2945,6 +2946,7 @@ class MainWindow:
         self.editor.setPlainText(output + ("\n" + error if error else ""))
         if ok:
             self.status.setText("Backup concluído.")
+            self._show_toast("Backup concluído com sucesso.")
         else:
             message = error or output or "O gbak retornou uma falha sem detalhes."
             self.status.setText(f"Backup falhou: {message}")
@@ -3022,12 +3024,39 @@ class MainWindow:
         validation = test_connection(restored_profile, password)
         if validation.ok:
             self.status.setText("Restore concluído e banco restaurado validado.")
+            self._show_toast("Restore concluído com sucesso.")
             self._log_event("Restore validado", target=str(target))
         else:
             message = f"Restore concluído, mas a validação falhou: {validation.message}"
             self.status.setText(message)
             self._show_message("Restore com aviso", message, warning=True)
             self._log_event("Restore com falha na validação", target=str(target), error=validation.message)
+
+    def _show_toast(self, message: str, duration: int = 3500):
+        """Show a transient non-blocking confirmation near the status bar."""
+        from PySide6.QtCore import QTimer, Qt
+        from PySide6.QtWidgets import QLabel
+
+        if self._toast is not None:
+            self._toast.deleteLater()
+        toast = QLabel(message, self._window)
+        toast.setObjectName("toastMessage")
+        toast.setAlignment(Qt.AlignCenter)
+        toast.setStyleSheet(
+            "QLabel#toastMessage { background: #1f7a45; color: #ffffff; "
+            "border: 1px solid #8bd3a8; border-radius: 6px; padding: 8px 14px; font-weight: 600; }"
+        )
+        toast.adjustSize()
+        margin = 18
+        toast.move(max(margin, self._window.width() - toast.width() - margin), self._window.height() - toast.height() - 48)
+        toast.show()
+        toast.raise_()
+        self._toast = toast
+        def clear_toast():
+            if self._toast is toast:
+                self._toast = None
+            toast.deleteLater()
+        QTimer.singleShot(duration, clear_toast)
 
     def inspect_schema(self):
         from .catalog import load_schema
