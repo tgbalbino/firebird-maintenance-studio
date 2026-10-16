@@ -40,6 +40,22 @@ try:
             self._keywords = FIREBIRD_RESERVED_WORDS
             self._types = FIREBIRD_TYPES
 
+        def set_theme(self, dark: bool):
+            """Use readable syntax colors in both the light and dark themes."""
+            colors = {
+                "keyword": "#7db7ff" if dark else "#005cc5",
+                "type": "#f2b880" if dark else "#7b3f00",
+                "string": "#98d89c" if dark else "#008000",
+                "comment": "#9aa4b2" if dark else "#6a737d",
+                "number": "#d9a1ff" if dark else "#8b008b",
+            }
+            self._keyword_format.setForeground(QColor(colors["keyword"]))
+            self._type_format.setForeground(QColor(colors["type"]))
+            self._string_format.setForeground(QColor(colors["string"]))
+            self._comment_format.setForeground(QColor(colors["comment"]))
+            self._number_format.setForeground(QColor(colors["number"]))
+            self.rehighlight()
+
         def highlightBlock(self, text):
             import re
 
@@ -436,6 +452,10 @@ class MainWindow:
         self._settings.setValue("theme", theme)
         self._settings.sync()
         self._apply_theme(theme)
+        for index in range(self.sql_tabs.count()):
+            highlighter = self.sql_tabs.widget(index).property("sql_highlighter")
+            if highlighter is not None and hasattr(highlighter, "set_theme"):
+                highlighter.set_theme(theme == "dark")
         self.status.setText("Tema escuro aplicado." if theme == "dark" else "Tema claro aplicado.")
 
     def _set_always_on_top(self, enabled: bool):
@@ -574,7 +594,9 @@ class MainWindow:
         from PySide6.QtGui import QKeySequence, QShortcut
         editor.setFont(QFont("Consolas", 10))
         editor.setPlaceholderText("Execute uma instrução SQL...")
-        editor.setProperty("sql_highlighter", SqlHighlighter(editor.document()))
+        highlighter = SqlHighlighter(editor.document())
+        highlighter.set_theme(str(self._settings.value("theme", "light")) == "dark")
+        editor.setProperty("sql_highlighter", highlighter)
         shortcut = QShortcut(QKeySequence("Ctrl+Return"), editor)
         shortcut.activated.connect(self.execute_selected)
         editor.setProperty("execute_shortcut", shortcut)
