@@ -169,11 +169,18 @@ class MainWindow:
         self.tree_filter = QLineEdit()
         self.tree_filter.setPlaceholderText("Filtrar bancos e objetos...")
         self.tree_filter.textChanged.connect(self._filter_tree)
-        self.tree_filter.setText(str(self._settings.value("tree_filter", "")))
+        # A stale filter can make a restored profile look missing.  Start a
+        # session with the complete catalog; the user can filter again as
+        # needed without losing any saved profile.
+        self.tree_filter.setText("")
+        self._settings.setValue("tree_filter", "")
         self.tree_filter.textChanged.connect(lambda value: self._settings.setValue("tree_filter", value))
         self.tree_connected_only = QCheckBox("Conectados")
         self.tree_connected_only.setToolTip("Mostrar somente bancos conectados")
-        self.tree_connected_only.setChecked(bool(self._settings.value("tree_connected_only", False, type=bool)))
+        # Connections are not restored between application sessions, so a
+        # persisted "connected only" flag would hide every profile at start.
+        self.tree_connected_only.setChecked(False)
+        self._settings.setValue("tree_connected_only", False)
         self.tree_connected_only.toggled.connect(self._tree_connected_filter_changed)
         self.name = QLineEdit()
         self.favorite = QCheckBox("Favorito")
