@@ -199,6 +199,16 @@ class MainWindow:
         self.host = QLineEdit("localhost")
         self.port = QSpinBox(); self.port.setRange(1, 65535); self.port.setValue(3050)
         self.database = QLineEdit()
+        self.database_browse = QPushButton("...")
+        self.database_browse.setFixedWidth(34)
+        self.database_browse.setToolTip("Selecionar arquivo de banco Firebird")
+        self.database_browse.clicked.connect(self._browse_database_file)
+        database_row = QWidget()
+        database_layout = QHBoxLayout(database_row)
+        database_layout.setContentsMargins(0, 0, 0, 0)
+        database_layout.setSpacing(6)
+        database_layout.addWidget(self.database, 1)
+        database_layout.addWidget(self.database_browse)
         self.version = QComboBox(); self.version.addItems(SUPPORTED_VERSIONS)
         self.target_profile = QComboBox()
         self.user = QLineEdit("SYSDBA")
@@ -324,7 +334,7 @@ class MainWindow:
         left_layout.addStretch()
 
         form = QFormLayout(); form.addRow("Nome", self.name); form.addRow("", self.favorite); form.addRow("Host", self.host)
-        form.addRow("Porta", self.port); form.addRow("Caminho ou alias", self.database)
+        form.addRow("Porta", self.port); form.addRow("Caminho ou alias", database_row)
         form.addRow("Firebird", self.version); form.addRow("Usuário", self.user); form.addRow("Role", self.role); form.addRow("Senha", password_row); form.addRow("Charset", self.charset); form.addRow("Caminho isql", self.isql_path); form.addRow("Caminho gbak", self.gbak_path); form.addRow("Comparar com", self.target_profile)
         box = QGroupBox("Conexão selecionada"); box.setLayout(form)
         self.profile_box = box
@@ -2522,6 +2532,22 @@ class MainWindow:
         for index in range(self.profile_list.topLevelItemCount()):
             self.profile_list.topLevelItem(index).setExpanded(False)
         self.status.setText("Objetos dos bancos recolhidos.")
+
+    def _browse_database_file(self):
+        from PySide6.QtWidgets import QFileDialog
+
+        start_dir = self.database.text().strip()
+        if start_dir and not Path(start_dir).is_dir():
+            start_dir = str(Path(start_dir).parent)
+        filename, _ = QFileDialog.getOpenFileName(
+            self._window,
+            "Selecionar arquivo do banco Firebird",
+            start_dir or str(Path.home()),
+            "Bancos Firebird (*.fdb *.FDB *.gdb *.GDB);;Todos os arquivos (*.*)",
+        )
+        if filename:
+            self.database.setText(filename)
+            self.status.setText(f"Arquivo selecionado: {filename}")
 
     def new_profile(self):
         self._show_profile_dialog()
