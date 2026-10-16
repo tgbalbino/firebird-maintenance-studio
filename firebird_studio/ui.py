@@ -10,9 +10,15 @@ from . import __version__
 
 def create_application():
     from PySide6.QtWidgets import QApplication
+    from PySide6.QtGui import QIcon
+    import sys
 
     app = QApplication.instance() or QApplication([])
     app.setApplicationName("Firebird Maintenance Studio")
+    asset_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
+    icon_path = asset_root / "assets" / "firebird-maintenance-studio.ico"
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
     app.setStyleSheet("QToolButton, QPushButton { padding: 5px 9px; } QTabBar::tab { padding: 6px 12px; } QHeaderView::section { padding: 5px; font-weight: 600; }")
     return app
 

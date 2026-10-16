@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="24" y1="16" x2="230" y2="240" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#173b72"/>
+      <stop offset="1" stop-color="#081a35"/>
+    </linearGradient>
+    <linearGradient id="db" x1="54" y1="69" x2="164" y2="201" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#71d7ff"/>
+      <stop offset="1" stop-color="#1671d9"/>
+    </linearGradient>
+    <linearGradient id="fire" x1="180" y1="73" x2="222" y2="152" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffd166"/>
+      <stop offset="1" stop-color="#f04438"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#000" flood-opacity=".35"/>
+    </filter>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="54" fill="url(#bg)"/>
+  <path d="M62 74c0-14 26-25 58-25s58 11 58 25v105c0 14-26 25-58 25s-58-11-58-25V74Z" fill="url(#db)" stroke="#b9efff" stroke-width="5" filter="url(#shadow)"/>
+  <ellipse cx="120" cy="74" rx="58" ry="25" fill="#4eb9f1" stroke="#d1f5ff" stroke-width="5"/>
+  <path d="M64 109c0 14 25 25 56 25s56-11 56-25M64 145c0 14 25 25 56 25s56-11 56-25" fill="none" stroke="#b9efff" stroke-width="5" opacity=".9"/>
+  <path d="M196 46c-3 19-21 27-17 45 3 14 17 20 29 14 13-6 17-21 9-33-4 8-10 11-15 8 5-12 4-23-6-34Z" fill="url(#fire)" stroke="#ffe0a3" stroke-width="4" filter="url(#shadow)"/>
+  <path d="m183 177 18 18 18-18M219 177l-18 18-18-18" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
