@@ -222,9 +222,11 @@ class MainWindow:
         self.activity_table = QTableWidget(); self.activity_table.setEditTriggers(QTableWidget.NoEditTriggers); self.activity_table.setSelectionMode(QAbstractItemView.ExtendedSelection); self.activity_table.setSortingEnabled(True)
         self.activity_refresh_button = QPushButton("Atualizar agora")
         self.activity_refresh_button.clicked.connect(self.inspect_activity)
+        self.activity_export_button = QPushButton("Exportar CSV")
+        self.activity_export_button.clicked.connect(self.export_activity_csv)
         self.activity_auto_refresh = QCheckBox("Atualizar a cada 5 segundos")
         self.activity_auto_refresh.toggled.connect(self._toggle_activity_auto_refresh)
-        activity_controls = QHBoxLayout(); activity_controls.addWidget(self.activity_refresh_button); activity_controls.addWidget(self.activity_auto_refresh); activity_controls.addStretch()
+        activity_controls = QHBoxLayout(); activity_controls.addWidget(self.activity_refresh_button); activity_controls.addWidget(self.activity_export_button); activity_controls.addWidget(self.activity_auto_refresh); activity_controls.addStretch()
         self.activity_refresh_timer = QTimer(self._window); self.activity_refresh_timer.setInterval(5000); self.activity_refresh_timer.timeout.connect(self.inspect_activity)
         activity_panel = QWidget(); activity_layout = QVBoxLayout(activity_panel); activity_layout.addLayout(activity_controls); activity_layout.addWidget(self.activity_metrics); activity_layout.addWidget(self.activity_table, 1)
         self.activity_panel = activity_panel
@@ -1751,6 +1753,38 @@ class MainWindow:
         self.result_tabs.setCurrentWidget(self.activity_panel)
         self._log_event("Atividade lida", profile=profile.name, statements=len(statements), estimated_size_mb=size or "")
         self.status.setText(f"Painel atualizado: {len(statements)} consulta(s) em execução.")
+
+    def export_activity_csv(self):
+        """Export the currently displayed activity snapshot without credentials."""
+        from PySide6.QtWidgets import QFileDialog
+        import csv
+
+        if self.activity_table.rowCount() == 0:
+            self._show_message("Exportar atividade", "Atualize o painel antes de exportar.", warning=True)
+            return
+        filename, _ = QFileDialog.getSaveFileName(
+            self._window,
+            "Exportar atividade",
+            "atividade_firebird.csv",
+            "CSV (*.csv);;Todos (*.*)",
+        )
+        if not filename:
+            return
+        try:
+            headers = [self.activity_table.horizontalHeaderItem(column).text() for column in range(self.activity_table.columnCount())]
+            with open(filename, "w", newline="", encoding="utf-8-sig") as handle:
+                writer = csv.writer(handle, delimiter=";")
+                writer.writerow(headers)
+                for row in range(self.activity_table.rowCount()):
+                    writer.writerow([
+                        self.activity_table.item(row, column).text() if self.activity_table.item(row, column) else ""
+                        for column in range(self.activity_table.columnCount())
+                    ])
+            self._log_event("Atividade exportada", filename=filename, rows=self.activity_table.rowCount())
+            self.status.setText(f"Atividade exportada: {filename}")
+        except Exception as exc:
+            self._log_event("Falha ao exportar atividade", filename=filename, error=str(exc))
+            self._show_message("Falha ao exportar atividade", str(exc))
 
     def save_health_report(self):
         """Save the most recent health report without exposing credentials."""
