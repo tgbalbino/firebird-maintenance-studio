@@ -1491,15 +1491,27 @@ class MainWindow:
     def _refresh_query_history(self):
         import json
 
+        live_combos = []
         for combo in self._history_combos:
-            combo.blockSignals(True)
-            combo.clear()
-            for item in self.query_history:
-                label = " ".join(item.split())
-                combo.addItem(label[:120], item)
-            combo.blockSignals(False)
+            try:
+                combo.blockSignals(True)
+                combo.clear()
+                for item in self.query_history:
+                    label = " ".join(item.split())
+                    combo.addItem(label[:120], item)
+                combo.blockSignals(False)
+                live_combos.append(combo)
+            except RuntimeError:
+                continue
+        self._history_combos = live_combos
+        live_lists = []
         for history_list in self._history_lists:
-            self._refresh_history_list(history_list)
+            try:
+                self._refresh_history_list(history_list)
+                live_lists.append(history_list)
+            except RuntimeError:
+                continue
+        self._history_lists = live_lists
         self._settings.setValue("query_history", json.dumps(self.query_history, ensure_ascii=False))
         self._settings.sync()
 
