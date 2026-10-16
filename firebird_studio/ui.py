@@ -380,6 +380,7 @@ class MainWindow:
             button.setToolTip(tooltip)
             button.setPopupMode(QToolButton.InstantPopup)
             menu = QMenu(button)
+            menu.setMinimumWidth(300)
             for text, callback in entries:
                 action = menu.addAction(text)
                 action.triggered.connect(callback)
@@ -597,6 +598,8 @@ class MainWindow:
         help_menu = menu_bar.addMenu("Ajuda")
         help_menu.addAction("Sobre", self.show_about)
         help_menu.addAction("Verificar atualizações...", self.check_for_updates)
+        for menu in (app_menu, sql_menu, window_menu, database_menu, help_menu):
+            menu.setMinimumWidth(240)
 
     def _choose_history_query(self):
         if self.history_combo.count() == 0:
