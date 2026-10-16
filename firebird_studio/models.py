@@ -58,6 +58,7 @@ class ProfileStore:
             return []
         allowed = {item.name for item in fields(ConnectionProfile)}
         profiles: list[ConnectionProfile] = []
+        names: set[str] = set()
         for item in raw:
             if not isinstance(item, dict):
                 continue
@@ -65,9 +66,14 @@ class ProfileStore:
             data.setdefault("isql_path", "")
             data.setdefault("gbak_path", "")
             try:
-                profiles.append(ConnectionProfile(**data))
+                profile = ConnectionProfile(**data)
             except (TypeError, ValueError):
                 continue
+            normalized_name = profile.name.strip().casefold()
+            if not normalized_name or normalized_name in names:
+                continue
+            names.add(normalized_name)
+            profiles.append(profile)
         return profiles
 
     def save(self, profiles: list[ConnectionProfile]) -> None:

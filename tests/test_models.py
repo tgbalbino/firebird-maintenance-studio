@@ -119,6 +119,17 @@ class ProfileTests(unittest.TestCase):
             profiles = ProfileStore(path).load()
             self.assertEqual([profile.name for profile in profiles], ["Local"])
 
+    def test_profile_store_ignores_duplicate_names_case_insensitively(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "profiles.json"
+            path.write_text(json.dumps([
+                {"name": "Local", "database": "first.fdb"},
+                {"name": " local ", "database": "second.fdb"},
+            ]), encoding="utf-8")
+            profiles = ProfileStore(path).load()
+            self.assertEqual(len(profiles), 1)
+            self.assertEqual(profiles[0].database, "first.fdb")
+
     def test_sql_export_validates_mode_and_literals(self):
         with tempfile.TemporaryDirectory() as directory:
             result = export_database_sql(ConnectionProfile("Local", database="sample.fdb"), "secret", Path(directory) / "export.sql", "unknown")
