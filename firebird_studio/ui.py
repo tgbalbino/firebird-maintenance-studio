@@ -1161,6 +1161,9 @@ class MainWindow:
         copy_action = menu.addAction("Copiar seleção")
         copy_action.setEnabled(bool(self.result_table.selectedItems()))
         copy_action.triggered.connect(self._copy_table_selection)
+        view_action = menu.addAction("Ver valor completo")
+        view_action.setEnabled(bool(self.result_table.currentItem()))
+        view_action.triggered.connect(self._view_selected_cell)
         menu.addSeparator()
         menu.addAction(self.edit_data_action)
         menu.addAction(self.add_data_row_action)
@@ -1169,6 +1172,34 @@ class MainWindow:
         menu.addAction(self.generate_delete_action)
         menu.addAction(self.apply_update_action)
         menu.exec(self.result_table.viewport().mapToGlobal(position))
+
+    def _view_selected_cell(self):
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout, QTextEdit
+        from PySide6.QtCore import Qt
+
+        item = self.result_table.currentItem()
+        if item is None:
+            self._show_message("Valor da célula", "Selecione uma célula da grade.", warning=True)
+            return
+        value = item.data(Qt.UserRole)
+        if isinstance(value, bytes):
+            try:
+                text = value.decode("utf-8")
+                description = f"BLOB · {len(value)} bytes · UTF-8"
+            except UnicodeDecodeError:
+                text = value.hex(" ")
+                description = f"BLOB binário · {len(value)} bytes · hexadecimal"
+        else:
+            text = "NULL" if value is None else str(value)
+            description = type(value).__name__ if value is not None else "NULL"
+        dialog = QDialog(self._window)
+        dialog.setWindowTitle("Valor completo da célula")
+        dialog.resize(760, 460)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel(description))
+        editor = QTextEdit(); editor.setReadOnly(True); editor.setPlainText(text); layout.addWidget(editor, 1)
+        close = QDialogButtonBox(QDialogButtonBox.Close); close.rejected.connect(dialog.reject); close.accepted.connect(dialog.accept); layout.addWidget(close)
+        dialog.exec()
 
     def _toggle_data_edit_mode(self, enabled: bool):
         """Enable local grid editing without opening a write transaction."""
