@@ -204,6 +204,7 @@ class MainWindow:
         self.isql_path = QLineEdit(); self.isql_path.setPlaceholderText("C:\\Firebird\\Firebird_5_0\\isql.exe")
         self.gbak_path = QLineEdit(); self.gbak_path.setPlaceholderText("C:\\Firebird\\Firebird_5_0\\gbak.exe")
         self.status = QLabel("Pronto. Nenhum banco conectado.")
+        self.status.setObjectName("workspaceStatusMessage")
         self.object_tree = self.profile_list
         self.object_tree.setMinimumWidth(240)
         self.object_tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -285,13 +286,13 @@ class MainWindow:
         sidebar_hint.setObjectName("sectionHint")
         self.sidebar_status = QLabel("Nenhum banco conectado")
         self.sidebar_status.setObjectName("sidebarStatus")
-        tree_filter_row = QHBoxLayout(); tree_filter_row.addWidget(self.tree_filter, 1); tree_filter_row.addWidget(self.tree_connected_only)
+        tree_filter_row = QHBoxLayout(); tree_filter_row.setSpacing(6); tree_filter_row.addWidget(self.tree_filter, 1); tree_filter_row.addWidget(self.tree_connected_only)
         left_layout.addWidget(sidebar_title); left_layout.addWidget(sidebar_hint); left_layout.addWidget(self.sidebar_status); left_layout.addLayout(tree_filter_row); left_layout.addWidget(self.profile_list, 1)
         self.open_data_button = QPushButton("Abrir dados da tabela")
         self.open_data_button.setEnabled(False)
         self.open_data_button.clicked.connect(self.open_table_data)
         left_layout.addWidget(self.open_data_button)
-        profile_button = QToolButton(); profile_button.setText("Perfil"); profile_button.setToolTip("Criar, salvar, abrir ou excluir o cadastro selecionado")
+        profile_button = QToolButton(); profile_button.setText("Perfil"); profile_button.setObjectName("profileMenuButton"); profile_button.setToolTip("Criar, salvar, abrir ou excluir o cadastro selecionado")
         profile_button.setPopupMode(QToolButton.InstantPopup)
         profile_menu = QMenu(profile_button)
         for label, callback in (("Novo perfil", self.new_profile), ("Salvar perfil", self.save_profile), ("Abrir banco", self.open_profile), ("Desconectar banco", self.disconnect_selected), ("Excluir cadastro", self.delete_profile)):
@@ -357,6 +358,7 @@ class MainWindow:
         def menu_button(label, entries, tooltip):
             button = QToolButton()
             button.setText(label)
+            button.setObjectName("workspaceAction")
             button.setMinimumHeight(30)
             button.setToolTip(tooltip)
             button.setPopupMode(QToolButton.InstantPopup)

@@ -10,6 +10,8 @@ LIGHT_STYLE += " QMenuBar#mainMenuBar { background: #f7f9fc; color: #1f2937; } Q
 DARK_STYLE += " QMenuBar#mainMenuBar { background: #171a21; color: #f3f4f6; } QMenuBar#mainMenuBar::item:hover, QMenuBar#mainMenuBar::item:selected { background: #334e7a; color: #ffffff; }"
 LIGHT_STYLE += " QWidget#sidebarPanel { background: #eef3f9; border: 1px solid #c5d0df; border-radius: 6px; } QWidget#workspacePanel { background: #f7f9fc; } QTreeWidget { alternate-background-color: #f3f6fa; }"
 DARK_STYLE += " QWidget#sidebarPanel { background: #202631; border: 1px solid #4f5d72; border-radius: 6px; } QWidget#workspacePanel { background: #171a21; } QTreeWidget { alternate-background-color: #272d39; }"
+LIGHT_STYLE += " QToolButton#workspaceAction, QToolButton#profileMenuButton { background: #e8eef7; border: 1px solid #718096; border-radius: 5px; padding: 6px 12px; font-weight: 600; } QToolButton#workspaceAction:hover, QToolButton#profileMenuButton:hover { background: #d5e2f5; border-color: #1d4ed8; } QToolButton#workspaceAction:pressed, QToolButton#profileMenuButton:pressed { background: #b9cbea; } QLabel#workspaceStatusMessage { padding: 5px 8px; border-top: 1px solid #c5d0df; color: #526173; }"
+DARK_STYLE += " QToolButton#workspaceAction, QToolButton#profileMenuButton { background: #2d3748; border: 1px solid #8b98ab; border-radius: 5px; padding: 6px 12px; font-weight: 600; } QToolButton#workspaceAction:hover, QToolButton#profileMenuButton:hover { background: #3b4a62; border-color: #60a5fa; } QToolButton#workspaceAction:pressed, QToolButton#profileMenuButton:pressed { background: #465a78; } QLabel#workspaceStatusMessage { padding: 5px 8px; border-top: 1px solid #4f5d72; color: #b6c2d2; }"
 
 
 def apply_theme(theme: str) -> None:
