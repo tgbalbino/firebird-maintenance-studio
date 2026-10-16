@@ -1815,6 +1815,7 @@ class MainWindow:
         # only metadata loading is still in progress.
         from PySide6.QtWidgets import QApplication
         from PySide6.QtCore import Qt
+        self.status.setText("Executando SQL...")
         QApplication.setOverrideCursor(Qt.WaitCursor)
         QApplication.processEvents()
         try:
