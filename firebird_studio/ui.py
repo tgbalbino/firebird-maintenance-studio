@@ -608,9 +608,11 @@ class MainWindow:
             return
         editor = self.editor
         document_tabs = editor.property("document_tabs") if editor is not None else None
+        history_panel = editor.property("history_panel") if editor is not None else None
         history_list = editor.property("history_list") if editor is not None else None
-        if document_tabs is not None and history_list is not None:
-            document_tabs.setCurrentWidget(history_list)
+        if document_tabs is not None and history_panel is not None:
+            document_tabs.setCurrentWidget(history_panel)
+        if history_list is not None:
             history_list.setFocus()
 
     def show_app_settings(self):
@@ -996,7 +998,7 @@ class MainWindow:
         editor.setProperty("completion_shortcut", completion_shortcut)
 
     def _create_sql_document_tabs(self, editor):
-        from PySide6.QtWidgets import QListWidget, QComboBox, QHBoxLayout, QLabel, QTableWidget, QTabWidget, QVBoxLayout, QWidget
+        from PySide6.QtWidgets import QListWidget, QComboBox, QHBoxLayout, QLabel, QTableWidget, QTabWidget, QVBoxLayout, QWidget, QPushButton
         from PySide6.QtCore import Qt
         from .result_views import configure_result_table
         result_table = configure_result_table(QTableWidget())
@@ -1018,7 +1020,26 @@ class MainWindow:
         history_list.setAlternatingRowColors(True)
         history_list.setToolTip("Duplo clique em uma consulta para restaurá-la no editor SQL")
         history_list.itemDoubleClicked.connect(lambda item, target=editor: self._restore_history_item(item, target))
-        document_tabs.addTab(history_list, "Histórico SQL")
+        history_panel = QWidget()
+        history_layout = QVBoxLayout(history_panel)
+        history_layout.setContentsMargins(6, 6, 6, 6)
+        history_hint = QLabel("Duplo clique restaura a consulta no editor. Use os botões para gerenciar o histórico.")
+        history_hint.setObjectName("sectionHint")
+        history_hint.setWordWrap(True)
+        history_actions = QHBoxLayout()
+        restore_history = QPushButton("Restaurar selecionada")
+        restore_history.setObjectName("secondaryAction")
+        restore_history.clicked.connect(lambda _checked=False, target=editor, listing=history_list: self._restore_selected_history_item(listing, target))
+        clear_history = QPushButton("Limpar histórico")
+        clear_history.setObjectName("secondaryAction")
+        clear_history.clicked.connect(self._clear_query_history)
+        history_actions.addWidget(restore_history)
+        history_actions.addWidget(clear_history)
+        history_actions.addStretch()
+        history_layout.addWidget(history_hint)
+        history_layout.addLayout(history_actions)
+        history_layout.addWidget(history_list, 1)
+        document_tabs.addTab(history_panel, "Histórico SQL")
         document_tabs.setCurrentWidget(editor)
         document_tabs.setProperty("sql_editor", editor)
         editor.setProperty("document_tabs", document_tabs)
@@ -1079,6 +1100,7 @@ class MainWindow:
         editor.setProperty("cursor_status", cursor_status)
         editor.setProperty("history_combo", history_combo)
         editor.setProperty("history_list", history_list)
+        editor.setProperty("history_panel", history_panel)
         editor.setProperty("object_breadcrumb", breadcrumb)
         editor.setProperty("workspace_status", workspace_status)
         self._query_profile_combos.append(profile_combo)
@@ -1458,6 +1480,32 @@ class MainWindow:
         if document_tabs is not None:
             document_tabs.setCurrentWidget(editor)
         self.status.setText("Consulta restaurada do histórico.")
+
+    def _restore_selected_history_item(self, history_list, editor=None):
+        item = history_list.currentItem() if history_list is not None else None
+        if item is None:
+            self.status.setText("Selecione uma consulta no histórico para restaurar.")
+            return
+        self._restore_history_item(item, editor)
+
+    def _clear_query_history(self):
+        from PySide6.QtWidgets import QMessageBox
+
+        if not self.query_history:
+            self.status.setText("O histórico SQL já está vazio.")
+            return
+        answer = QMessageBox.question(
+            self._window,
+            "Limpar histórico SQL",
+            "Deseja remover todas as consultas salvas no histórico?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        self.query_history = []
+        self._refresh_query_history()
+        self.status.setText("Histórico SQL limpo.")
 
     def find_in_sql(self):
         from PySide6.QtWidgets import QInputDialog
