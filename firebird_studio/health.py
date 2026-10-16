@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 
 from .catalog import open_database
@@ -100,3 +101,47 @@ def list_sessions(profile: ConnectionProfile, password: str | None = None) -> li
     for row in rows:
         sessions.append({"id": row[0] if len(row) > 0 else None, "user": row[1] if len(row) > 1 else "", "address": row[2] if len(row) > 2 else "", "process": row[3] if len(row) > 3 else "", "state": row[4] if len(row) > 4 else None})
     return sessions
+
+
+def list_statements(profile: ConnectionProfile, password: str | None = None) -> list[dict[str, Any]]:
+    """Return currently active statements with a best-effort elapsed time."""
+    with open_database(profile, password) as connection:
+        try:
+            rows = _rows(connection, """
+                SELECT s.MON$STATEMENT_ID, s.MON$ATTACHMENT_ID, a.MON$USER,
+                       a.MON$REMOTE_ADDRESS, s.MON$STATE, s.MON$TIMESTAMP,
+                       s.MON$SQL_TEXT
+                FROM MON$STATEMENTS s
+                LEFT JOIN MON$ATTACHMENTS a ON a.MON$ATTACHMENT_ID = s.MON$ATTACHMENT_ID
+                WHERE s.MON$STATE = 1 AND s.MON$SQL_TEXT IS NOT NULL
+                ORDER BY s.MON$TIMESTAMP
+            """)
+        except Exception:
+            # Older Firebird catalogs may not expose every monitoring column.
+            rows = _rows(connection, """
+                SELECT MON$STATEMENT_ID, MON$ATTACHMENT_ID, NULL, NULL,
+                       MON$STATE, MON$TIMESTAMP, MON$SQL_TEXT
+                FROM MON$STATEMENTS
+                WHERE MON$STATE = 1 AND MON$SQL_TEXT IS NOT NULL
+                ORDER BY MON$TIMESTAMP
+            """)
+    now = datetime.now(timezone.utc)
+    statements = []
+    for row in rows:
+        timestamp = row[5] if len(row) > 5 else None
+        elapsed = None
+        if isinstance(timestamp, datetime):
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=timezone.utc)
+            elapsed = max(0.0, (now - timestamp.astimezone(timezone.utc)).total_seconds())
+        statements.append({
+            "id": row[0] if len(row) > 0 else None,
+            "attachment_id": row[1] if len(row) > 1 else None,
+            "user": row[2] if len(row) > 2 and row[2] else "N/D",
+            "address": row[3] if len(row) > 3 and row[3] else "N/D",
+            "state": row[4] if len(row) > 4 else None,
+            "started": timestamp,
+            "elapsed_seconds": elapsed,
+            "sql": str(row[6] or "").strip() if len(row) > 6 else "",
+        })
+    return statements

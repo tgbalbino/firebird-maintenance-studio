@@ -3,11 +3,14 @@ import types
 import unittest
 import tempfile
 from pathlib import Path
+from contextlib import contextmanager
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from firebird_studio.models import ConnectionProfile
 from firebird_studio.transaction import TransactionSession
 from firebird_studio.plan import explain_query
+from firebird_studio.health import list_statements
 
 
 class _Cursor:
@@ -85,6 +88,31 @@ class TransactionTests(unittest.TestCase):
         stdin = run.call_args.kwargs["input"]
         self.assertIn("CONNECT 'localhost:sample.fdb' USER 'SYSDBA' PASSWORD 'secret';", stdin)
         self.assertIn("SET PLANONLY ON", stdin)
+
+    def test_active_statements_include_elapsed_time(self):
+        class Cursor:
+            description = None
+
+            def execute(self, query):
+                self.query = query
+
+            def fetchall(self):
+                return [(7, 3, "SYSDBA", "10.0.0.5", 1, datetime.now() - timedelta(seconds=4), "SELECT * FROM CUSTOMER")]
+
+        class Connection:
+            def cursor(self):
+                return Cursor()
+
+        @contextmanager
+        def fake_database(*_args, **_kwargs):
+            yield Connection()
+
+        profile = ConnectionProfile("Local", database="sample.fdb", version="5")
+        with patch("firebird_studio.health.open_database", fake_database):
+            statements = list_statements(profile)
+        self.assertEqual(statements[0]["id"], 7)
+        self.assertEqual(statements[0]["user"], "SYSDBA")
+        self.assertGreaterEqual(statements[0]["elapsed_seconds"], 3)
 
 
 if __name__ == "__main__":

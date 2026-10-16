@@ -218,7 +218,11 @@ class MainWindow:
         self.plan_tree = QTreeWidget(); self.plan_tree.setHeaderLabels(["Árvore do plano"])
         plan_panel = QWidget(); plan_layout = QVBoxLayout(plan_panel); plan_layout.addWidget(self.plan_tree); plan_layout.addWidget(self.plan_output, 1)
         self.plan_panel = plan_panel
-        self.result_tabs = QTabWidget(); self.result_tabs.addTab(self.result_table, "Resultado"); self.result_tabs.addTab(self.structure_table, "Estrutura"); self.result_tabs.addTab(plan_panel, "Plano e sugestões")
+        self.activity_metrics = QTextEdit(); self.activity_metrics.setReadOnly(True); self.activity_metrics.setMaximumHeight(150)
+        self.activity_table = QTableWidget(); self.activity_table.setEditTriggers(QTableWidget.NoEditTriggers); self.activity_table.setSelectionMode(QAbstractItemView.ExtendedSelection); self.activity_table.setSortingEnabled(True)
+        activity_panel = QWidget(); activity_layout = QVBoxLayout(activity_panel); activity_layout.addWidget(self.activity_metrics); activity_layout.addWidget(self.activity_table, 1)
+        self.activity_panel = activity_panel
+        self.result_tabs = QTabWidget(); self.result_tabs.addTab(self.result_table, "Resultado"); self.result_tabs.addTab(self.structure_table, "Estrutura"); self.result_tabs.addTab(plan_panel, "Plano e sugestões"); self.result_tabs.addTab(activity_panel, "Banco e atividade")
 
         left = QWidget(); left_layout = QVBoxLayout(left); left.setMinimumWidth(280)
         left_layout.addWidget(QLabel("Bancos e objetos (duplo clique para conectar/abrir)")); left_layout.addWidget(self.tree_filter); left_layout.addWidget(self.profile_list, 1)
@@ -315,7 +319,7 @@ class MainWindow:
         data_button.menu().addAction(self.generate_delete_action)
         data_button.menu().addAction(self.apply_update_action)
         database_button = menu_button("Banco", [("Backup", self.execute_backup), ("Restore", self.execute_restore)], "Operações de backup e restore")
-        analysis_button = menu_button("Análise", [("Ler estrutura", self.inspect_schema), ("Ver plano", self.inspect_plan), ("Saúde", self.inspect_health), ("Salvar relatório de saúde", self.save_health_report), ("Sessões", self.inspect_sessions), ("Validar integridade", self.validate_database), ("Comparar estruturas", self.compare_selected), ("Salvar comparação", self.save_compare_report)], "Estrutura, plano, saúde e comparação")
+        analysis_button = menu_button("Análise", [("Ler estrutura", self.inspect_schema), ("Ver plano", self.inspect_plan), ("Saúde", self.inspect_health), ("Banco e atividade", self.inspect_activity), ("Salvar relatório de saúde", self.save_health_report), ("Sessões", self.inspect_sessions), ("Validar integridade", self.validate_database), ("Comparar estruturas", self.compare_selected), ("Salvar comparação", self.save_compare_report)], "Estrutura, plano, saúde, atividade e comparação")
         action_row.addWidget(sql_button); action_row.addWidget(data_button); action_row.addWidget(database_button); action_row.addWidget(analysis_button); action_row.addWidget(self.commit_changes); action_row.addStretch(); right_layout.addLayout(action_row)
         pagination_row = QHBoxLayout()
         self.previous_data_button = QPushButton("Anterior")
@@ -1684,6 +1688,54 @@ class MainWindow:
         self.editor.setPlainText(self.last_health_report)
         self._log_event("Saúde analisada", profile=profile.name, findings=len(report.findings))
         self.status.setText(f"Saúde analisada: {len(report.findings)} recomendação(ões).")
+
+    def inspect_activity(self):
+        from .health import inspect_health, list_statements
+
+        profile = self._profile_from_form()
+        password = self._password_for(profile)
+        self._start_background_operation(
+            "Painel do banco",
+            lambda: (inspect_health(profile, password), list_statements(profile, password)),
+            lambda result: self._finish_activity_operation(result, profile),
+        )
+
+    def _finish_activity_operation(self, result, profile):
+        if isinstance(result, Exception):
+            self._log_event("Falha ao ler atividade", profile=profile.name, error=str(result))
+            self.status.setText(f"Falha ao ler informações do banco: {result}")
+            self._show_message("Falha ao ler atividade", str(result))
+            return
+        report, statements = result
+        metrics = report.metrics
+        size = metrics.get("estimated_size_mb")
+        lines = [
+            f"Banco: {profile.name}",
+            f"Tamanho estimado: {size:.1f} MB" if isinstance(size, (int, float)) else "Tamanho estimado: indisponível",
+            f"Página: {metrics.get('page_size') or 'N/D'} bytes · páginas: {metrics.get('pages') or 'N/D'}",
+            f"ODS: {metrics.get('ods_major') or 'N/D'}.{metrics.get('ods_minor') or 'N/D'} · conexões: {metrics.get('attachments') or 0}",
+            f"Transações: oldest={metrics.get('oldest_transaction') or 'N/D'} · active={metrics.get('oldest_active') or 'N/D'} · next={metrics.get('next_transaction') or 'N/D'}",
+            f"Consultas em execução: {len(statements)}",
+        ]
+        self.activity_metrics.setPlainText("\n".join(lines))
+        headers = ["ID", "Conexão", "Usuário", "Endereço", "Início", "Duração", "SQL"]
+        self.activity_table.setSortingEnabled(False)
+        self.activity_table.clear()
+        self.activity_table.setColumnCount(len(headers)); self.activity_table.setRowCount(len(statements)); self.activity_table.setHorizontalHeaderLabels(headers)
+        for row, statement in enumerate(statements):
+            started = statement.get("started")
+            started_text = started.strftime("%Y-%m-%d %H:%M:%S") if hasattr(started, "strftime") else "N/D"
+            elapsed = statement.get("elapsed_seconds")
+            duration_text = f"{elapsed:.1f} s" if isinstance(elapsed, (int, float)) else "N/D"
+            values = [statement.get("id"), statement.get("attachment_id"), statement.get("user"), statement.get("address"), started_text, duration_text, statement.get("sql", "")]
+            for column, value in enumerate(values):
+                from PySide6.QtWidgets import QTableWidgetItem
+                self.activity_table.setItem(row, column, QTableWidgetItem("" if value is None else str(value)))
+        self.activity_table.resizeColumnsToContents()
+        self.activity_table.setSortingEnabled(True)
+        self.result_tabs.setCurrentWidget(self.activity_panel)
+        self._log_event("Atividade lida", profile=profile.name, statements=len(statements), estimated_size_mb=size or "")
+        self.status.setText(f"Painel atualizado: {len(statements)} consulta(s) em execução.")
 
     def save_health_report(self):
         """Save the most recent health report without exposing credentials."""
