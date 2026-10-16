@@ -648,22 +648,51 @@ class MainWindow:
         from PySide6.QtCore import QUrl
         from PySide6.QtGui import QDesktopServices
         import json
+        import re
         from urllib.request import Request, urlopen
         from urllib.error import HTTPError, URLError
 
         current = __version__
+        repository_url = "https://github.com/tgbalbino/firebird-maintenance-studio"
         api_url = "https://api.github.com/repos/tgbalbino/firebird-maintenance-studio/releases/latest"
-        try:
-            request = Request(api_url, headers={"Accept": "application/vnd.github+json", "User-Agent": "FirebirdMaintenanceStudio"})
+        tags_url = "https://api.github.com/repos/tgbalbino/firebird-maintenance-studio/tags?per_page=10"
+
+        def load_json(url):
+            request = Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "FirebirdMaintenanceStudio"})
             with urlopen(request, timeout=5) as response:
-                payload = json.loads(response.read().decode("utf-8"))
+                return json.loads(response.read().decode("utf-8"))
+
+        def version_key(value):
+            match = re.search(r"(\d+)(?:\.(\d+))?(?:\.(\d+))?", str(value or ""))
+            if not match:
+                raise ValueError(f"Versão inválida: {value}")
+            return tuple(int(part or 0) for part in match.groups())
+
+        try:
+            source = "release"
+            try:
+                payload = load_json(api_url)
+            except HTTPError as release_error:
+                if release_error.code != 404:
+                    raise
+                # A public repository can exist before its first Release is
+                # published.  Tags are still a useful update source.
+                tags = load_json(tags_url)
+                if not isinstance(tags, list) or not tags:
+                    self._log_event("Nenhuma versão publicada no GitHub", repository=repository_url)
+                    self._show_message("Atualizações", f"O GitHub ainda não publicou uma versão para atualização.\n\nVersão instalada: {current}\n\nPublique uma Release ou uma tag no projeto para disponibilizar atualizações.")
+                    return
+                payload = tags[0]
+                source = "tag"
             tag = str(payload.get("tag_name", "")).strip()
+            if not tag:
+                tag = str(payload.get("name", "")).strip()
             latest = tag[1:] if tag.lower().startswith("v") else tag
-            release_url = str(payload.get("html_url", "https://github.com/tgbalbino/firebird-maintenance-studio/releases"))
+            release_url = str(payload.get("html_url", f"{repository_url}/releases"))
             if not latest:
                 raise ValueError("A release não informou uma versão.")
-            current_key = tuple(int(part) for part in current.split(".")[:3])
-            latest_key = tuple(int(part) for part in latest.split(".")[:3])
+            current_key = version_key(current)
+            latest_key = version_key(latest)
         except (OSError, ValueError, TypeError, json.JSONDecodeError, HTTPError, URLError) as exc:
             self._log_event("Falha ao verificar atualização", error=str(exc))
             self._show_message("Atualizações", f"Não foi possível consultar o GitHub.\n\nVersão instalada: {current}\n\n{exc}", warning=True)
@@ -671,7 +700,8 @@ class MainWindow:
         if latest_key <= current_key:
             self._show_message("Atualizações", f"Você já está usando a versão mais recente ({current}).")
             return
-        answer = QMessageBox.question(self._window, "Atualização disponível", f"Versão instalada: {current}\nNova versão: {latest}\n\nAbrir a página de download?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        source_label = "Release" if source == "release" else "tag"
+        answer = QMessageBox.question(self._window, "Atualização disponível", f"Versão instalada: {current}\nNova versão: {latest} ({source_label})\n\nAbrir a página de download?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
         if answer == QMessageBox.Yes:
             QDesktopServices.openUrl(QUrl(release_url))
 
