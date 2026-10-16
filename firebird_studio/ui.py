@@ -160,9 +160,13 @@ class MainWindow:
         self.profile_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.profile_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.profile_list.customContextMenuRequested.connect(self._tree_context_menu)
+        self.profile_list.itemExpanded.connect(lambda item: self._save_tree_expansion(item, True))
+        self.profile_list.itemCollapsed.connect(lambda item: self._save_tree_expansion(item, False))
         self.tree_filter = QLineEdit()
         self.tree_filter.setPlaceholderText("Filtrar bancos e objetos...")
         self.tree_filter.textChanged.connect(self._filter_tree)
+        self.tree_filter.setText(str(self._settings.value("tree_filter", "")))
+        self.tree_filter.textChanged.connect(lambda value: self._settings.setValue("tree_filter", value))
         self.name = QLineEdit()
         self.favorite = QCheckBox("Favorito")
         self.host = QLineEdit("localhost")
@@ -1737,7 +1741,7 @@ class MainWindow:
             self.profile_list.addTopLevelItem(item)
             objects = self.profile_objects.get(profile.name, [])
             populate_profile_children(item, objects)
-            item.setExpanded(bool(objects))
+            item.setExpanded(self._tree_expansion(profile.name, bool(objects)))
         self.target_profile.clear()
         self.target_profile.addItems([p.name for p in self.profiles])
         current_query_name = self.editor.property("query_profile") if self.editor is not None else ""
@@ -1750,6 +1754,24 @@ class MainWindow:
                 self.query_profile_combo.setCurrentIndex(index)
         self.query_profile_combo.blockSignals(False)
         self._filter_tree(self.tree_filter.text())
+
+    def _tree_state_key(self, profile_name: str) -> str:
+        return f"tree_expanded/{profile_name}"
+
+    def _tree_expansion(self, profile_name: str, default: bool = False) -> bool:
+        key = self._tree_state_key(profile_name)
+        if not self._settings.contains(key):
+            return default
+        return bool(self._settings.value(key, default, type=bool))
+
+    def _save_tree_expansion(self, item, expanded: bool):
+        if item is None or item.parent() is not None:
+            return
+        index = item.data(0, 33)
+        if index is None or not (0 <= int(index) < len(self.profiles)):
+            return
+        self._settings.setValue(self._tree_state_key(self.profiles[int(index)].name), bool(expanded))
+        self._settings.sync()
 
     def _filter_tree(self, text):
         query = (text or "").strip().casefold()

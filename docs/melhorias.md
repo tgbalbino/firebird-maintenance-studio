@@ -25,6 +25,12 @@ Foram comparados os fluxos atuais com as documentações oficiais do IBExpert e 
 5. **Grade:** paginação configurável, filtro geral, filtro por coluna, cabeçalho fixo e menu de contexto.
 6. **Acessibilidade:** contraste nos dois temas, foco visível, atalhos exibidos e significado sem depender somente da cor.
 
+### Implementação validada nesta rodada
+
+- Estado expandido ou recolhido de cada banco salvo entre aberturas.
+- Texto do filtro da árvore salvo entre aberturas.
+- A árvore preserva a navegação escolhida mesmo depois de atualizar perfis ou o catálogo.
+
 ### Critérios de aceite visual
 
 - Em 1280×720, os nomes dos menus, abas e banco ativo permanecem legíveis sem sobreposição.
