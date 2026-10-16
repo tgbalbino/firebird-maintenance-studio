@@ -2152,12 +2152,13 @@ class MainWindow:
         from PySide6.QtWidgets import QTreeWidgetItem
         from PySide6.QtGui import QColor
         from .tree_utils import make_database_icon, populate_profile_children
+        dark_theme = str(self._settings.value("theme", "light")) == "dark"
         for index, profile in enumerate(self.profiles):
             connected = profile.name in self.connected_profiles
             marker = "★ " if profile.favorite else ""
             item = QTreeWidgetItem([f"{marker}{profile.name} · FB {profile.version}"])
             item.setIcon(0, make_database_icon(connected))
-            item.setForeground(0, QColor("#188038" if connected else "#5f6368"))
+            item.setForeground(0, QColor(("#98d89c" if dark_theme else "#188038") if connected else ("#b6c2d2" if dark_theme else "#5f6368")))
             item.setData(0, 33, index)
             self.profile_list.addTopLevelItem(item)
             objects = self.profile_objects.get(profile.name, [])
