@@ -1013,7 +1013,7 @@ class MainWindow:
         document_tabs.setObjectName("sqlDocumentTabs")
         document_tabs.setDocumentMode(True)
         document_tabs.setUsesScrollButtons(True)
-        document_tabs.addTab(editor, "SQL")
+        document_tabs.addTab(editor, "Editor")
         document_tabs.addTab(result_table, "Resultado")
         history_list = QListWidget()
         history_list.setObjectName("sqlHistoryList")
@@ -1136,10 +1136,6 @@ class MainWindow:
         execute_button.setObjectName("primaryAction")
         execute_button.setToolTip("Executar o SQL desta janela (F5 ou Ctrl+Return)")
         execute_button.clicked.connect(lambda: self._execute_sql_text(editor.toPlainText()))
-        result_button = QPushButton("Resultado")
-        result_button.setObjectName("secondaryAction")
-        result_button.setToolTip("Mostrar o resultado desta consulta")
-        result_button.clicked.connect(lambda: (self.sql_tabs.setCurrentWidget(editor), self._show_sql_result()))
         more_button = QToolButton()
         more_button.setText("Mais")
         more_button.setObjectName("workspaceAction")
@@ -1166,7 +1162,7 @@ class MainWindow:
         read_only_mode = QCheckBox("Somente leitura")
         read_only_mode.setObjectName("toolbarOption")
         read_only_mode.setToolTip("Bloqueia DML, DDL, EXECUTE, GRANT e REVOKE nesta sessão SQL.")
-        for button in (execute_button, result_button, more_button):
+        for button in (execute_button, more_button):
             toolbar_layout.addWidget(button)
         separator = QFrame()
         separator.setObjectName("toolbarSeparator")
