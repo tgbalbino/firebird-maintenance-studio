@@ -1028,17 +1028,7 @@ class MainWindow:
         self._set_transaction_actions(False)
         self._update_query_connection_status()
 
-    def open_profile(self, selected_index: int | None = None):
-        """Open the selected database, like opening a connection in IBExpert."""
-        self._log_event("open_profile chamado", current_item=self.profile_list.currentItem().text(0) if self.profile_list.currentItem() else "", form_name=self.name.text(), form_database=self.database.text())
-        self._log_event("Verificando worker de conexão")
-        # Do not assign None to a possibly active QThread here. Its Qt
-        # destructor can wait for the worker and block the packaged app.
-        # References are cleared only by the finished/timeout handlers.
-        self._log_event("Preparando worker de conexão")
-
-        self._log_event("Worker de conexão preparado")
-
+    def _profile_open_request(self, selected_index: int | None):
         # Click handlers pass the already resolved index. Avoid querying the
         # tree again here because currentItem()/parent() can re-enter Qt while
         # a packaged Windows activation event is still being dispatched.
@@ -1056,9 +1046,7 @@ class MainWindow:
         if errors:
             message = " ".join(errors)
             self._log_event("Perfil inválido ao abrir", errors=message)
-            self.status.setText(message)
-            self._show_message("Não foi possível abrir o banco", message, warning=True)
-            return
+            return None, message
         # Selecting a tree profile already loads its stored password into the
         # form. Avoid querying Windows Credential Manager a second time here:
         # that lookup can block in packaged Windows builds before the worker
@@ -1066,6 +1054,18 @@ class MainWindow:
         # selected (for example when opening directly from the form).
         password = self.password.text() if 0 <= selected < len(self.profiles) else self._password_for(profile)
         self._log_event("Senha preparada para abrir", profile=profile.name, password_present=bool(password), selected=selected)
+        return (profile, password), ""
+
+    def open_profile(self, selected_index: int | None = None):
+        """Open the selected database, like opening a connection in IBExpert."""
+        current_item = self.profile_list.currentItem()
+        self._log_event("open_profile chamado", current_item=current_item.text(0) if current_item else "", form_name=self.name.text(), form_database=self.database.text())
+        request, error = self._profile_open_request(selected_index)
+        if request is None:
+            self.status.setText(error)
+            self._show_message("Não foi possível abrir o banco", error, warning=True)
+            return
+        profile, password = request
         self._opening_profile_name = profile.name
         self._log_event("Conexão iniciada", profile=profile.name, host=profile.host, database=profile.database, version=profile.version, password_present=bool(password))
         self.status.setText("Conectando e carregando objetos do banco...")
