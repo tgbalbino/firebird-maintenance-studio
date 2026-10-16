@@ -1035,10 +1035,14 @@ class MainWindow:
         restore_history = QPushButton("Restaurar selecionada")
         restore_history.setObjectName("secondaryAction")
         restore_history.clicked.connect(lambda _checked=False, target=editor, listing=history_list: self._restore_selected_history_item(listing, target))
+        copy_history = QPushButton("Copiar SQL")
+        copy_history.setObjectName("secondaryAction")
+        copy_history.clicked.connect(lambda _checked=False, listing=history_list: self._copy_selected_history_item(listing))
         clear_history = QPushButton("Limpar histórico")
         clear_history.setObjectName("secondaryAction")
         clear_history.clicked.connect(self._clear_query_history)
         history_actions.addWidget(restore_history)
+        history_actions.addWidget(copy_history)
         history_actions.addWidget(clear_history)
         history_actions.addStretch()
         history_layout.addWidget(history_hint)
@@ -1498,6 +1502,18 @@ class MainWindow:
             self.status.setText("Selecione uma consulta no histórico para restaurar.")
             return
         self._restore_history_item(item, editor)
+
+    def _copy_selected_history_item(self, history_list):
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QApplication
+
+        item = history_list.currentItem() if history_list is not None else None
+        query = item.data(Qt.UserRole) if item is not None else None
+        if not query:
+            self.status.setText("Selecione uma consulta no histórico para copiar.")
+            return
+        QApplication.clipboard().setText(str(query))
+        self.status.setText("Consulta do histórico copiada para a área de transferência.")
 
     def _clear_query_history(self):
         from PySide6.QtWidgets import QMessageBox
