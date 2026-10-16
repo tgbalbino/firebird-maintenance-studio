@@ -615,6 +615,7 @@ class MainWindow:
         details = QLabel("Tecnologias: Python + PySide6<br>Distribuição: Windows x64<br>Licença: MIT")
         details.setTextFormat(Qt.RichText)
         link = QLabel('<a href="https://github.com/tgbalbino/firebird-maintenance-studio">github.com/tgbalbino/firebird-maintenance-studio</a>')
+        link.setObjectName("aboutLink")
         link.setOpenExternalLinks(True)
         layout.addWidget(header); layout.addWidget(description); layout.addWidget(details); layout.addWidget(link)
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
