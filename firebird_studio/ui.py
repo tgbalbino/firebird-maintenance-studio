@@ -206,22 +206,24 @@ class MainWindow:
         self._mdi_previous_shortcut.activated.connect(self.sql_tabs.activate_previous)
         self.sql_documents = SqlDocumentManager(self.sql_tabs)
         self.sql_tabs.currentChanged.connect(self._sync_editor)
-        self.query_profile_combo = QComboBox()
-        self.query_profile_combo.setMinimumWidth(240)
-        self.query_profile_combo.currentTextChanged.connect(self._set_current_query_profile)
-        self.query_connection_status = QLabel("Perfil da aba: não definido")
-        self.connection_badge = QLabel("● Desconectado")
-        self.connection_badge.setToolTip("Estado da conexão do banco desta consulta")
-        self.query_cursor_status = QLabel("Linha 1, coluna 1")
+        # These controls belong to each SQL MDI form.  The active form is
+        # exposed through the aliases below so existing actions keep using
+        # the selected document without duplicating connection information.
+        self._query_profile_combos = []
+        self._history_combos = []
+        self.query_profile_combo = None
+        self.query_connection_status = None
+        self.connection_badge = None
+        self.query_cursor_status = None
+        self.object_breadcrumb = None
+        self.workspace_status = None
+        self.workspace_connection = None
         self.query_history = []
         self._transaction_session = None
         self._transaction_profile_name = ""
         self.last_compare_report = ""
         self.last_health_report = ""
-        self.history_combo = QComboBox()
-        self.history_combo.setMinimumWidth(260)
-        self.history_combo.setPlaceholderText("Histórico SQL")
-        self.history_combo.activated.connect(self._load_history_query)
+        self.history_combo = None
         self._restore_query_history()
         self.editor = None
         self._new_sql_tab()
@@ -326,27 +328,7 @@ class MainWindow:
         welcome_actions.addWidget(welcome_profile); welcome_actions.addWidget(welcome_sql); welcome_actions.addWidget(welcome_log); welcome_actions.addStretch()
         welcome_layout.addWidget(welcome_title); welcome_layout.addWidget(welcome_text); welcome_layout.addLayout(welcome_actions)
         right_layout.addWidget(self.welcome_banner); right_layout.addLayout(profile_actions); right_layout.addWidget(box)
-        history_row = QHBoxLayout(); history_row.addWidget(QLabel("Histórico SQL:")); history_row.addWidget(self.history_combo, 1)
-        right_layout.addLayout(history_row)
-        connection_row = QHBoxLayout(); connection_row.addWidget(QLabel("Conexão desta janela:")); connection_row.addWidget(self.query_profile_combo, 1); connection_row.addWidget(self.query_connection_status); connection_row.addWidget(self.connection_badge)
-        connection_row.addWidget(self.query_cursor_status)
-        right_layout.addLayout(connection_row)
-        workspace_row = QHBoxLayout()
-        workspace_title = QLabel("Área de trabalho")
-        workspace_title.setStyleSheet("font-weight: 600;")
-        self.object_breadcrumb = QLabel("Banco > nenhum objeto")
-        self.object_breadcrumb.setObjectName("objectBreadcrumb")
-        self.object_breadcrumb.setToolTip("Caminho do objeto selecionado")
-        self.workspace_status = QLabel("SQL 1 · Ctrl+Tab alterna as janelas")
-        self.workspace_status.setStyleSheet("color: #526173;")
-        self.workspace_connection = QLabel("Banco: nenhum")
-        self.workspace_connection.setObjectName("workspaceConnection")
-        self.workspace_connection.setToolTip("Banco associado à consulta ativa")
-        workspace_row.addWidget(workspace_title)
-        workspace_row.addWidget(self.object_breadcrumb)
-        workspace_row.addWidget(self.workspace_status, 1)
-        workspace_row.addWidget(self.workspace_connection)
-        right_layout.addLayout(workspace_row); right_layout.addWidget(self.sql_tabs, 1)
+        right_layout.addWidget(self.sql_tabs, 1)
         action_row = QHBoxLayout()
         action_row.setSpacing(6)
         def menu_button(label, entries, tooltip):
@@ -691,6 +673,7 @@ class MainWindow:
     def _sync_editor(self, index: int):
         self.editor = self.sql_tabs.widget(index) if index >= 0 else None
         if self.editor is not None:
+            self._set_active_editor_widgets(self.editor)
             self.result_table = self.editor.property("result_table") or self.result_table
             self._table_original_rows = []
             self._refresh_sql_completer(self.editor)
@@ -705,12 +688,10 @@ class MainWindow:
             self.query_profile_combo.setCurrentIndex(combo_index if combo_index >= 0 else -1)
             self.query_profile_combo.blockSignals(False)
             self._update_query_connection_status()
-            if hasattr(self, "workspace_status"):
+            if self.workspace_status is not None:
                 self.workspace_status.setText(f"{self.sql_tabs.tabText(index)} · Ctrl+Tab alterna as janelas")
-        elif hasattr(self, "workspace_status"):
+        elif self.workspace_status is not None:
             self.workspace_status.setText("Resultados e diagnóstico · use o menu Janelas para voltar ao SQL")
-            if hasattr(self, "workspace_connection"):
-                self.workspace_connection.setText("Banco: nenhum")
 
     def _show_result_window(self):
         """Bring the shared result/diagnostic form back to the front."""
@@ -728,30 +709,24 @@ class MainWindow:
         if document_tabs is not None and result_table is not None:
             document_tabs.setCurrentWidget(result_table)
 
-    def _set_current_query_profile(self, profile_name: str):
-        if self.editor is not None and profile_name:
-            self.editor.setProperty("query_profile", profile_name)
-            self._update_sql_tab_title()
+    def _set_current_query_profile(self, profile_name: str, editor=None):
+        target = editor or self.editor
+        if target is not None and profile_name:
+            target.setProperty("query_profile", profile_name)
+            index = self.sql_tabs.indexOf(target)
+            if index >= 0:
+                self._update_sql_tab_title(index)
         self._update_query_connection_status()
 
     def _update_query_connection_status(self):
         profile_name = self.editor.property("query_profile") if self.editor is not None else ""
         transaction_open = self._transaction_session is not None and self._transaction_session.active
-        self.query_connection_status.setText(f"Perfil da aba: {profile_name or 'não definido'}" + (" · transação aberta" if transaction_open else ""))
+        if self.query_connection_status is None:
+            return
+        self.query_connection_status.setText(f"Perfil: {profile_name or 'não definido'}" + (" · transação aberta" if transaction_open else ""))
         connected = bool(profile_name and profile_name in self.connected_profiles)
         self.connection_badge.setText("● Conectado" if connected else "● Desconectado")
         self.connection_badge.setStyleSheet("color: #188038; font-weight: 600;" if connected else "color: #b3261e; font-weight: 600;")
-        if hasattr(self, "workspace_connection"):
-            profile = next((item for item in self.profiles if item.name == profile_name), None)
-            if profile is None:
-                self.workspace_connection.setText("Banco: nenhum")
-                if hasattr(self, "header_state"):
-                    self.header_state.setText("Nenhuma conexão ativa")
-            else:
-                state = "conectado" if connected else "desconectado"
-                self.workspace_connection.setText(f"Banco: {profile.name} · FB {profile.version} · {profile.host}:{profile.port} · {state}")
-                if hasattr(self, "header_state"):
-                    self.header_state.setText(f"{profile.name} · Firebird {profile.version} · {profile.host}:{profile.port} · {state}")
 
     def _query_profile(self):
         name = self.editor.property("query_profile") if self.editor is not None else ""
@@ -801,7 +776,7 @@ class MainWindow:
         editor.setProperty("completion_shortcut", completion_shortcut)
 
     def _create_sql_document_tabs(self, editor):
-        from PySide6.QtWidgets import QTableWidget, QTabWidget
+        from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QTableWidget, QTabWidget, QVBoxLayout, QWidget
         from PySide6.QtCore import Qt
         from .result_views import configure_result_table
         result_table = configure_result_table(QTableWidget())
@@ -819,7 +794,76 @@ class MainWindow:
         document_tabs.setProperty("sql_editor", editor)
         editor.setProperty("document_tabs", document_tabs)
         editor.setProperty("result_table", result_table)
-        return document_tabs, result_table
+
+        # Per-document context stays inside the MDI child so multiple SQL
+        # windows never appear to share one connection or cursor status.
+        profile_combo = QComboBox()
+        profile_combo.setMinimumWidth(220)
+        profile_combo.setPlaceholderText("Selecionar banco")
+        profile_combo.addItems([profile.name for profile in self.profiles])
+        profile_combo.setProperty("sql_editor", editor)
+        profile_combo.currentTextChanged.connect(lambda name, target=editor: self._set_current_query_profile(name, target))
+        connection_status = QLabel("Perfil: não definido")
+        connection_badge = QLabel("● Desconectado")
+        connection_badge.setObjectName("connectionBadge")
+        connection_badge.setToolTip("Estado da conexão do banco desta consulta")
+        cursor_status = QLabel("Linha 1, coluna 1")
+        history_combo = QComboBox()
+        history_combo.setMinimumWidth(260)
+        history_combo.setPlaceholderText("Histórico SQL")
+        for query in self.query_history:
+            history_combo.addItem(" ".join(query.split())[:120], query)
+        history_combo.activated.connect(lambda index, combo=history_combo, target=editor: self._load_history_query(index, combo, target))
+        breadcrumb = QLabel("Banco > consulta SQL")
+        breadcrumb.setObjectName("objectBreadcrumb")
+        breadcrumb.setToolTip("Caminho do objeto selecionado")
+        workspace_status = QLabel("SQL · Ctrl+Tab alterna as janelas")
+        workspace_status.setObjectName("workspaceStatus")
+        context_row = QHBoxLayout()
+        context_row.addWidget(QLabel("Área de trabalho"))
+        context_row.addWidget(breadcrumb)
+        context_row.addWidget(workspace_status, 1)
+        connection_row = QHBoxLayout()
+        connection_row.addWidget(QLabel("Banco"))
+        connection_row.addWidget(profile_combo)
+        connection_row.addWidget(connection_status)
+        connection_row.addWidget(connection_badge)
+        connection_row.addWidget(cursor_status)
+        history_row = QHBoxLayout()
+        history_row.addWidget(QLabel("Histórico SQL"))
+        history_row.addWidget(history_combo, 1)
+        shell = QWidget()
+        shell_layout = QVBoxLayout(shell)
+        shell_layout.setContentsMargins(0, 0, 0, 0)
+        shell_layout.addLayout(history_row)
+        shell_layout.addLayout(connection_row)
+        shell_layout.addLayout(context_row)
+        shell_layout.addWidget(document_tabs, 1)
+        shell.setProperty("sql_editor", editor)
+        editor.setProperty("profile_combo", profile_combo)
+        editor.setProperty("connection_status", connection_status)
+        editor.setProperty("connection_badge", connection_badge)
+        editor.setProperty("cursor_status", cursor_status)
+        editor.setProperty("history_combo", history_combo)
+        editor.setProperty("object_breadcrumb", breadcrumb)
+        editor.setProperty("workspace_status", workspace_status)
+        self._query_profile_combos.append(profile_combo)
+        self._history_combos.append(history_combo)
+        self._set_active_editor_widgets(editor)
+        return shell, result_table
+
+    def _set_active_editor_widgets(self, editor):
+        """Point compatibility aliases at the currently active SQL form."""
+        if editor is None:
+            return
+        self.query_profile_combo = editor.property("profile_combo")
+        self.query_connection_status = editor.property("connection_status")
+        self.connection_badge = editor.property("connection_badge")
+        self.query_cursor_status = editor.property("cursor_status")
+        self.history_combo = editor.property("history_combo")
+        self.object_breadcrumb = editor.property("object_breadcrumb")
+        self.workspace_status = editor.property("workspace_status")
+        self.workspace_connection = None
 
     def _create_sql_toolbar(self, editor):
         from PySide6.QtWidgets import QHBoxLayout, QPushButton, QToolButton, QWidget, QMenu
@@ -858,11 +902,12 @@ class MainWindow:
 
     def _new_sql_tab(self):
         from PySide6.QtWidgets import QTextEdit
+        selected_name = self.query_profile_combo.currentText() if self.query_profile_combo is not None else (self.profiles[0].name if self.profiles else "")
         editor = QTextEdit()
         self._configure_sql_editor(editor)
         document_tabs, result_table = self._create_sql_document_tabs(editor)
-        selected_name = self.query_profile_combo.currentText() if hasattr(self, "query_profile_combo") else ""
-        editor.setProperty("query_profile", selected_name or (self.profiles[0].name if self.profiles else ""))
+        editor.setProperty("query_profile", selected_name)
+        self.query_profile_combo.setCurrentText(selected_name)
         editor.setProperty("document_title", f"SQL {self.sql_tabs.count() + 1}")
         index = self.sql_documents.add(document_tabs, f"SQL {self.sql_tabs.count() + 1}", editor.property("query_profile") or "")
         sql_toolbar, transaction_controls = self._create_sql_toolbar(editor)
@@ -1053,12 +1098,13 @@ class MainWindow:
     def _refresh_query_history(self):
         import json
 
-        self.history_combo.blockSignals(True)
-        self.history_combo.clear()
-        for item in self.query_history:
-            label = " ".join(item.split())
-            self.history_combo.addItem(label[:120], item)
-        self.history_combo.blockSignals(False)
+        for combo in self._history_combos:
+            combo.blockSignals(True)
+            combo.clear()
+            for item in self.query_history:
+                label = " ".join(item.split())
+                combo.addItem(label[:120], item)
+            combo.blockSignals(False)
         self._settings.setValue("query_history", json.dumps(self.query_history, ensure_ascii=False))
         self._settings.sync()
 
@@ -1105,12 +1151,14 @@ class MainWindow:
         self.result_tabs.setCurrentWidget(self.backup_history_panel)
         self.status.setText(f"Histórico carregado: {len(self.backup_history)} operação(ões).")
 
-    def _load_history_query(self, index: int):
+    def _load_history_query(self, index: int, combo=None, editor=None):
         if index < 0:
             return
-        query = self.history_combo.itemData(index)
-        if query is not None and self.editor is not None:
-            self.editor.setPlainText(str(query))
+        combo = combo or self.history_combo
+        editor = editor or self.editor
+        query = combo.itemData(index) if combo is not None else None
+        if query is not None and editor is not None:
+            editor.setPlainText(str(query))
 
     def find_in_sql(self):
         from PySide6.QtWidgets import QInputDialog
@@ -1903,15 +1951,17 @@ class MainWindow:
             item.setExpanded(self._tree_expansion(profile.name, bool(objects)))
         self.target_profile.clear()
         self.target_profile.addItems([p.name for p in self.profiles])
-        current_query_name = self.editor.property("query_profile") if self.editor is not None else ""
-        self.query_profile_combo.blockSignals(True)
-        self.query_profile_combo.clear()
-        self.query_profile_combo.addItems([p.name for p in self.profiles])
-        if current_query_name:
-            index = self.query_profile_combo.findText(current_query_name)
-            if index >= 0:
-                self.query_profile_combo.setCurrentIndex(index)
-        self.query_profile_combo.blockSignals(False)
+        for combo in self._query_profile_combos:
+            editor = combo.property("sql_editor")
+            current_query_name = editor.property("query_profile") if editor is not None else ""
+            combo.blockSignals(True)
+            combo.clear()
+            combo.addItems([p.name for p in self.profiles])
+            if current_query_name:
+                index = combo.findText(current_query_name)
+                if index >= 0:
+                    combo.setCurrentIndex(index)
+            combo.blockSignals(False)
         self._filter_tree(self.tree_filter.text())
 
     def _tree_connected_filter_changed(self, checked: bool):
