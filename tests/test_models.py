@@ -20,10 +20,19 @@ from firebird_studio.diagnostics import create_support_package
 from firebird_studio.ui_logging import log_event
 from firebird_studio.sql_documents import SqlDocumentManager
 from firebird_studio.tree_utils import object_group_label
+from firebird_studio.sql_completion import completion_words
 from unittest.mock import patch
 
 
 class ProfileTests(unittest.TestCase):
+    def test_sql_completion_includes_reserved_system_and_loaded_objects(self):
+        table = SchemaObject("TABLE", "CLIENTES", "", columns=(("NOME", "VARCHAR", "20", "", "1"),))
+        words = completion_words({"demo": [table]})
+        self.assertIn("SELECT", words)
+        self.assertIn("RDB$DATABASE", words)
+        self.assertIn("CLIENTES", words)
+        self.assertIn("NOME", words)
+
     def test_tree_group_labels_are_stable(self):
         self.assertEqual(object_group_label("TABLE"), "Tabelas")
         self.assertEqual(object_group_label("CONSTRAINT"), "Restrições")

@@ -36,8 +36,9 @@ try:
             self._comment_format.setForeground(QColor("#6a737d"))
             self._number_format = QTextCharFormat()
             self._number_format.setForeground(QColor("#8b008b"))
-            self._keywords = {"SELECT", "FROM", "WHERE", "JOIN", "LEFT", "RIGHT", "FULL", "INNER", "OUTER", "ON", "GROUP", "BY", "ORDER", "HAVING", "UNION", "ALL", "DISTINCT", "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE", "MERGE", "CREATE", "ALTER", "DROP", "RECREATE", "TABLE", "VIEW", "PROCEDURE", "FUNCTION", "TRIGGER", "INDEX", "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "CONSTRAINT", "GRANT", "REVOKE", "EXECUTE", "PLAN", "ROWS", "FIRST", "SKIP", "NULL", "IS", "NOT", "AND", "OR", "AS", "CASE", "WHEN", "THEN", "ELSE", "END", "ASC", "DESC", "WITH", "RECURSIVE", "RETURNING"}
-            self._types = {"INTEGER", "SMALLINT", "BIGINT", "DECIMAL", "NUMERIC", "FLOAT", "DOUBLE", "DATE", "TIME", "TIMESTAMP", "CHAR", "VARCHAR", "BLOB", "BOOLEAN", "UUID", "DECFLOAT"}
+            from .sql_completion import FIREBIRD_RESERVED_WORDS, FIREBIRD_TYPES
+            self._keywords = FIREBIRD_RESERVED_WORDS
+            self._types = FIREBIRD_TYPES
 
         def highlightBlock(self, text):
             import re
@@ -531,6 +532,7 @@ class MainWindow:
         completer.setCompletionMode(QCompleter.PopupCompletion)
         completer.setWidget(editor)
         completer.activated.connect(lambda text, target=editor: self._insert_completion(target, text))
+        editor.textChanged.connect(lambda target=editor: self._auto_complete_sql(target))
         completion_shortcut = QShortcut(QKeySequence("Ctrl+Space"), editor)
         completion_shortcut.activated.connect(lambda target=editor: self._show_sql_completions(target))
         editor.setProperty("completion_model", completion_model)
@@ -572,21 +574,8 @@ class MainWindow:
         self.query_cursor_status.setText(f"Linha {cursor.blockNumber() + 1}, coluna {cursor.positionInBlock() + 1}")
 
     def _completion_words(self):
-        from PySide6.QtGui import QTextDocument
-        words = set()
-        highlighter = SqlHighlighter(QTextDocument()) if SqlHighlighter is not None else None
-        if highlighter is not None:
-            words.update(highlighter._keywords)
-            words.update(highlighter._types)
-        for objects in self.profile_objects.values():
-            for obj in objects:
-                name = str(getattr(obj, "name", ""))
-                if name:
-                    words.add(name)
-                for column in getattr(obj, "columns", ()):
-                    if column and column[0]:
-                        words.add(str(column[0]))
-        return sorted(words, key=str.casefold)
+        from .sql_completion import completion_words
+        return completion_words(self.profile_objects)
 
     def _refresh_sql_completer(self, editor=None):
         target = editor or self.editor
@@ -603,6 +592,23 @@ class MainWindow:
         cursor = editor.textCursor()
         cursor.select(cursor.WordUnderCursor)
         completer.setCompletionPrefix(cursor.selectedText())
+        rectangle = editor.cursorRect()
+        rectangle.setWidth(completer.popup().sizeHintForColumn(0) + completer.popup().verticalScrollBar().sizeHint().width())
+        completer.complete(rectangle)
+
+    def _auto_complete_sql(self, editor):
+        """Offer completion while typing, without interrupting short words."""
+        cursor = editor.textCursor()
+        cursor.select(cursor.WordUnderCursor)
+        prefix = cursor.selectedText()
+        if len(prefix) < 2 or not prefix.replace("_", "A").replace("$", "A").isalnum():
+            return
+        completer = editor.property("completion")
+        if completer is None:
+            return
+        completer.setCompletionPrefix(prefix)
+        if not completer.completionCount():
+            return
         rectangle = editor.cursorRect()
         rectangle.setWidth(completer.popup().sizeHintForColumn(0) + completer.popup().verticalScrollBar().sizeHint().width())
         completer.complete(rectangle)
