@@ -90,14 +90,23 @@ def load_schema(profile: ConnectionProfile, password: str | None = None, detaile
             WHERE COALESCE(RDB$SYSTEM_FLAG, 0) = 0 AND RDB$VIEW_BLR IS NULL
             ORDER BY RDB$RELATION_NAME
         """)
+        # Read all table columns in one catalog query. The old per-table query
+        # made schema comparison increasingly slow on databases with hundreds
+        # of tables.
+        column_rows = _rows(connection, """
+            SELECT TRIM(rf.RDB$RELATION_NAME), TRIM(rf.RDB$FIELD_NAME),
+                   f.RDB$FIELD_TYPE, f.RDB$FIELD_LENGTH, f.RDB$FIELD_SCALE,
+                   f.RDB$FIELD_PRECISION, rf.RDB$NULL_FLAG
+            FROM RDB$RELATION_FIELDS rf JOIN RDB$FIELDS f ON f.RDB$FIELD_NAME = rf.RDB$FIELD_SOURCE
+            JOIN RDB$RELATIONS r ON r.RDB$RELATION_NAME = rf.RDB$RELATION_NAME
+            WHERE COALESCE(r.RDB$SYSTEM_FLAG, 0) = 0 AND r.RDB$VIEW_BLR IS NULL
+            ORDER BY rf.RDB$RELATION_NAME, rf.RDB$FIELD_POSITION
+        """)
+        columns_by_table: dict[str, list[tuple]] = {}
+        for relation_name, field_name, field_type, length, scale, precision, null_flag in column_rows:
+            columns_by_table.setdefault(_text(relation_name), []).append((field_name, field_type, length, scale, precision, null_flag))
         for (table_name,) in table_rows:
-            columns = _rows(connection, f"""
-                SELECT TRIM(rf.RDB$FIELD_NAME), f.RDB$FIELD_TYPE, f.RDB$FIELD_LENGTH,
-                       f.RDB$FIELD_SCALE, f.RDB$FIELD_PRECISION, rf.RDB$NULL_FLAG
-                FROM RDB$RELATION_FIELDS rf JOIN RDB$FIELDS f ON f.RDB$FIELD_NAME = rf.RDB$FIELD_SOURCE
-                WHERE rf.RDB$RELATION_NAME = '{_text(table_name).replace("'", "''")}'
-                ORDER BY rf.RDB$FIELD_POSITION
-            """)
+            columns = columns_by_table.get(_text(table_name), [])
             definitions = []
             column_details = []
             for name, field_type, length, scale, precision, null_flag in columns:
