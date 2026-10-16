@@ -124,7 +124,7 @@ class MainWindow:
             QMenu,
             QFrame,
         )
-        from PySide6.QtCore import QObject, QThread, Signal, Slot, QSettings, Qt, QTimer
+        from PySide6.QtCore import QObject, QThread, Signal, Slot, QSettings, Qt, QTimer, QSize
         from PySide6.QtGui import QAction, QKeySequence, QShortcut
 
         self._window = QMainWindow()
@@ -164,6 +164,9 @@ class MainWindow:
         self.profile_list.setMinimumHeight(120)
         self.profile_list.setColumnCount(1)
         self.profile_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.profile_list.setIconSize(QSize(16, 16))
+        self.profile_list.setIndentation(20)
+        self.profile_list.setUniformRowHeights(True)
         self.profile_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.profile_list.customContextMenuRequested.connect(self._tree_context_menu)
         self.profile_list.itemExpanded.connect(lambda item: self._save_tree_expansion(item, True))
