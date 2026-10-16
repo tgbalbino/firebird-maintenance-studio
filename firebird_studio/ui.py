@@ -2206,6 +2206,28 @@ class MainWindow:
             message = f"Perfil salvo, mas não foi possível proteger a senha: {exc}"
         self.refresh_profiles(); self.status.setText(message)
 
+    def _show_connection_result(self, profile, result, details: str = ""):
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QFormLayout, QLabel, QPlainTextEdit, QVBoxLayout
+
+        dialog = QDialog(self._window)
+        dialog.setWindowTitle(f"Dados da conexão — {profile.name}")
+        dialog.setModal(True)
+        dialog.resize(650, 360)
+        form = QFormLayout()
+        status = QLabel("Conectado" if result.ok else "Falha na conexão")
+        status.setStyleSheet("color: #188038; font-weight: bold;" if result.ok else "color: #c5221f; font-weight: bold;")
+        form.addRow("Status", status)
+        form.addRow("Perfil", QLabel(profile.name))
+        form.addRow("Servidor", QLabel(f"{profile.host}:{profile.port}"))
+        form.addRow("Banco", QLabel(profile.database))
+        form.addRow("Firebird", QLabel(profile.version))
+        if result.server_version:
+            form.addRow("Versão detectada", QLabel(str(result.server_version)))
+        output = QPlainTextEdit(); output.setReadOnly(True); output.setPlainText(result.message + (f"\n\n{details}" if details else ""))
+        buttons = QDialogButtonBox(QDialogButtonBox.Close); buttons.rejected.connect(dialog.reject); buttons.accepted.connect(dialog.accept)
+        layout = QVBoxLayout(dialog); layout.addLayout(form); layout.addWidget(output, 1); layout.addWidget(buttons)
+        dialog.exec()
+
     def test_selected(self):
         from .connection import test_connection
 
@@ -2214,18 +2236,21 @@ class MainWindow:
         self._log_event("Teste de conexão", profile=profile.name, ok=result.ok, detail=result.message)
         self.status.setText(result.message)
         if not result.ok:
-            self._show_message("Falha ao testar conexão", result.message)
+            self._show_connection_result(profile, result)
             return
         if result.ok:
+            details = ""
             try:
                 from .catalog import load_schema
                 objects = load_schema(profile, self._password_for(profile))
                 self._populate_object_tree(objects)
+                details = f"Objetos carregados: {len(objects)}."
                 self.status.setText(f"{result.message} Objetos carregados: {len(objects)}.")
             except Exception as exc:
                 message = f"{result.message}\n\nConectado, mas não foi possível ler os objetos:\n{exc}"
+                details = f"Conectado, mas não foi possível ler os objetos:\n{exc}"
                 self.status.setText(message.replace("\n", " "))
-                self._show_message("Banco conectado com aviso", message, warning=True)
+            self._show_connection_result(profile, result, details)
             self._hide_profile_details()
 
     def execute_selected(self):
