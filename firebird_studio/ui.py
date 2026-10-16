@@ -154,6 +154,7 @@ class MainWindow:
         self._event_log_path = Path.home() / ".firebird-maintenance-studio" / "events.txt"
         self._log_event("Aplicação iniciada", executable=str(Path(__file__).resolve()))
         self._settings = QSettings("TGBalbino", "FirebirdMaintenanceStudio")
+        self._apply_theme(str(self._settings.value("theme", "light")))
         self.backup_history = self._restore_backup_history()
         self._open_thread = None
         self._open_worker = None
@@ -379,7 +380,8 @@ class MainWindow:
         database_button = menu_button("Banco", [("Backup", self.execute_backup), ("Restore", self.execute_restore), ("Exportar banco para SQL", self.export_database_sql), ("Histórico de backup/restore", self.show_backup_history)], "Operações de backup, restore e exportação SQL")
         security_button = menu_button("Segurança", [("Gestão de usuários", self.manage_users)], "Criar usuários e alterar senhas do Firebird")
         analysis_button = menu_button("Análise", [("Ler estrutura", self.inspect_schema), ("Ver plano", self.inspect_plan), ("Saúde", self.inspect_health), ("Banco e atividade", self.inspect_activity), ("Salvar relatório de saúde", self.save_health_report), ("Salvar saúde em HTML", self.save_health_html), ("Criar pacote de suporte", self.create_support_package), ("Sessões", self.inspect_sessions), ("Validar integridade", self.validate_database), ("Comparar estruturas", self.compare_selected), ("Salvar comparação", self.save_compare_report), ("Salvar comparação em HTML", self.save_compare_html)], "Estrutura, plano, saúde, atividade e comparação")
-        action_row.addWidget(sql_button); action_row.addWidget(window_button); action_row.addWidget(data_button); action_row.addWidget(database_button); action_row.addWidget(security_button); action_row.addWidget(analysis_button); action_row.addWidget(self.commit_changes); action_row.addWidget(self.read_only_mode); action_row.addStretch(); right_layout.addLayout(action_row)
+        theme_button = menu_button("Visual", [("Tema claro", lambda: self._set_theme("light")), ("Tema escuro", lambda: self._set_theme("dark"))], "Escolher o tema da interface")
+        action_row.addWidget(sql_button); action_row.addWidget(window_button); action_row.addWidget(data_button); action_row.addWidget(database_button); action_row.addWidget(security_button); action_row.addWidget(analysis_button); action_row.addWidget(theme_button); action_row.addWidget(self.commit_changes); action_row.addWidget(self.read_only_mode); action_row.addStretch(); right_layout.addLayout(action_row)
         pagination_row = QHBoxLayout()
         self.previous_data_button = QPushButton("Anterior")
         self.previous_data_button.setEnabled(False)
@@ -431,6 +433,24 @@ class MainWindow:
     def _save_splitter_state(self, splitter):
         self._settings.setValue("main_splitter_state", splitter.saveState())
         self._settings.sync()
+
+    def _apply_theme(self, theme: str):
+        from PySide6.QtWidgets import QApplication
+
+        app = QApplication.instance()
+        if app is None:
+            return
+        compact = "QToolButton, QPushButton { padding: 5px 9px; } QTabBar::tab { padding: 6px 12px; } QHeaderView::section { padding: 5px; font-weight: 600; }"
+        if theme == "dark":
+            app.setStyleSheet(compact + " QWidget { background: #202124; color: #e8eaed; } QLineEdit, QTextEdit, QTableWidget, QTreeWidget, QComboBox, QSpinBox { background: #292a2d; color: #f1f3f4; border: 1px solid #5f6368; } QPushButton, QToolButton { background: #303134; color: #f1f3f4; border: 1px solid #5f6368; border-radius: 3px; } QPushButton:hover, QToolButton:hover { background: #3c4043; } QTabBar::tab { background: #303134; color: #bdc1c6; } QTabBar::tab:selected { background: #8ab4f8; color: #202124; }")
+        else:
+            app.setStyleSheet(compact)
+
+    def _set_theme(self, theme: str):
+        self._settings.setValue("theme", theme)
+        self._settings.sync()
+        self._apply_theme(theme)
+        self.status.setText("Tema escuro aplicado." if theme == "dark" else "Tema claro aplicado.")
 
     def _log_event(self, message: str, **details):
         """Append a diagnostic event without passwords or SQL contents."""
