@@ -6,7 +6,7 @@ import os
 import subprocess
 
 from .models import ConnectionProfile
-from .process_utils import resolve_tool_path
+from .process_utils import resolve_tool_path, run_command
 
 
 @dataclass(slots=True)
@@ -67,25 +67,27 @@ def run_gbak(
     if operation == "restore" and not source.exists():
         return BackupResult(False, -1, "", f"Arquivo de backup não encontrado: {source}", operation)
     args = build_gbak_args(profile, operation, source, target, gbak_path)
-    try:
-        completed = subprocess.run(
-            args,
-            input="",
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout_seconds,
-            check=False,
-            cwd=str(gbak_path.parent),
-            env={**os.environ, "ISC_USER": profile.user, "ISC_PASSWORD": password or ""},
-        )
-    except subprocess.TimeoutExpired:
+    execution = run_command(
+        subprocess.run,
+        args,
+        input="",
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout_seconds,
+        check=False,
+        cwd=str(gbak_path.parent),
+        env={**os.environ, "ISC_USER": profile.user, "ISC_PASSWORD": password or ""},
+    )
+    if execution.timed_out:
         return BackupResult(False, -1, "", f"{operation} excedeu o limite de {timeout_seconds} segundos.", operation)
-    except OSError as exc:
+    if execution.error is not None:
+        exc = execution.error
         if getattr(exc, "winerror", None) == 5 or getattr(exc, "errno", None) == 13:
             return BackupResult(False, -1, "", f"Acesso negado ao gbak.exe: {gbak_path}. Verifique as permissões do arquivo e se o Windows não o bloqueou.", operation)
         return BackupResult(False, -1, "", f"Não foi possível iniciar o gbak: {exc}", operation)
+    completed = execution.completed
     output = completed.stdout or ""
     error = completed.stderr or ""
     ok = completed.returncode == 0

@@ -9,7 +9,7 @@ import subprocess
 from .connection import _dsn
 from .models import ConnectionProfile
 from .script_runner import _isql_error_text
-from .process_utils import resolve_tool_path
+from .process_utils import resolve_tool_path, run_command
 
 
 @dataclass(slots=True)
@@ -82,32 +82,34 @@ def explain_query(profile: ConnectionProfile, sql: str, password: str | None, is
     args = [str(isql_path), "-user", profile.user, "-ch", profile.charset, "-m2", _dsn(profile)]
     if profile.role:
         args.extend(["-role", profile.role])
-    try:
-        database = _dsn(profile).replace("'", "''")
-        user = profile.user.replace("'", "''")
-        secret = (password or "").replace("'", "''")
-        connect_command = f"CONNECT '{database}' USER '{user}' PASSWORD '{secret}';\n"
-        completed = subprocess.run(
-            args,
-            # Supplying CONNECT through stdin handles Firebird installations
-            # that ignore ISC_PASSWORD while keeping credentials out of the
-            # process command line and event log.
-            input=connect_command + build_plan_script(sql, profile.version),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout_seconds,
-            check=False,
-            cwd=str(isql_path.parent),
-            env={**os.environ, "ISC_USER": profile.user, "ISC_PASSWORD": password or ""},
-        )
-    except subprocess.TimeoutExpired:
+    database = _dsn(profile).replace("'", "''")
+    user = profile.user.replace("'", "''")
+    secret = (password or "").replace("'", "''")
+    connect_command = f"CONNECT '{database}' USER '{user}' PASSWORD '{secret}';\n"
+    # Supplying CONNECT through stdin handles Firebird installations that
+    # ignore ISC_PASSWORD while keeping credentials out of the process
+    # command line and event log.
+    execution = run_command(
+        subprocess.run,
+        args,
+        input=connect_command + build_plan_script(sql, profile.version),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout_seconds,
+        check=False,
+        cwd=str(isql_path.parent),
+        env={**os.environ, "ISC_USER": profile.user, "ISC_PASSWORD": password or ""},
+    )
+    if execution.timed_out:
         return PlanResult(False, "", None, [], "A análise do plano excedeu o limite de tempo.")
-    except OSError as exc:
+    if execution.error is not None:
+        exc = execution.error
         if getattr(exc, "winerror", None) == 5 or getattr(exc, "errno", None) == 13:
             return PlanResult(False, "", None, [], f"Acesso negado ao isql.exe: {isql_path}. Verifique as permissões do arquivo e se o Windows não o bloqueou.")
         return PlanResult(False, "", None, [], f"Não foi possível iniciar o isql: {exc}")
+    completed = execution.completed
     raw = (completed.stdout or "") + ("\n" + completed.stderr if completed.stderr else "")
     if completed.returncode != 0 or _isql_error_text(raw):
         return PlanResult(False, raw, None, [], "Falha ao obter o plano.")

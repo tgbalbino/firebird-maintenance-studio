@@ -7,7 +7,7 @@ import subprocess
 
 from .connection import _dsn
 from .models import ConnectionProfile
-from .process_utils import resolve_tool_path
+from .process_utils import resolve_tool_path, run_command
 
 
 @dataclass(slots=True)
@@ -26,10 +26,11 @@ def validate_database(profile: ConnectionProfile, password: str | None, gfix_pat
         return ValidationResult(False, "", f"Executável gfix não encontrado: {tool}")
     database = _dsn(profile)
     args = [str(tool), "-v", "-full", "-user", profile.user, database]
-    try:
-        completed = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout_seconds, cwd=str(tool.parent), env={**os.environ, "ISC_USER": profile.user, "ISC_PASSWORD": password or ""}, check=False)
-    except subprocess.TimeoutExpired:
+    execution = run_command(subprocess.run, args, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout_seconds, cwd=str(tool.parent), env={**os.environ, "ISC_USER": profile.user, "ISC_PASSWORD": password or ""}, check=False)
+    if execution.timed_out:
         return ValidationResult(False, "", "A validação excedeu o limite de tempo.")
-    except OSError as exc:
+    if execution.error is not None:
+        exc = execution.error
         return ValidationResult(False, "", f"Não foi possível iniciar o gfix: {exc}")
+    completed = execution.completed
     return ValidationResult(completed.returncode == 0, completed.stdout or "", completed.stderr or "")

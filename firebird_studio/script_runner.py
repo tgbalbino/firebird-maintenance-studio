@@ -7,7 +7,7 @@ import subprocess
 
 from .connection import _dsn
 from .models import ConnectionProfile
-from .process_utils import resolve_tool_path
+from .process_utils import resolve_tool_path, run_command
 
 
 @dataclass(slots=True)
@@ -58,25 +58,27 @@ def run_script(
     args = build_isql_args(profile, script, isql_path)
     # Credentials are supplied through Firebird's environment variables so
     # they do not appear in the process command line or SQL text.
-    try:
-        completed = subprocess.run(
-            args,
-            input="",
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout_seconds,
-            check=False,
-            cwd=str(isql_path.parent),
-            env={**os.environ, "ISC_USER": profile.user, "ISC_PASSWORD": password or ""},
-        )
-    except subprocess.TimeoutExpired:
+    execution = run_command(
+        subprocess.run,
+        args,
+        input="",
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout_seconds,
+        check=False,
+        cwd=str(isql_path.parent),
+        env={**os.environ, "ISC_USER": profile.user, "ISC_PASSWORD": password or ""},
+    )
+    if execution.timed_out:
         return ScriptResult(False, -1, "", f"Script excedeu o limite de {timeout_seconds} segundos.", "isql")
-    except OSError as exc:
+    if execution.error is not None:
+        exc = execution.error
         if getattr(exc, "winerror", None) == 5 or getattr(exc, "errno", None) == 13:
             return ScriptResult(False, -1, "", f"Acesso negado ao isql.exe: {isql_path}. Verifique as permissões do arquivo e se o Windows não o bloqueou.", "isql")
         return ScriptResult(False, -1, "", f"Não foi possível iniciar o isql: {exc}", "isql")
+    completed = execution.completed
     output = completed.stdout or ""
     error = completed.stderr or ""
     combined = output + ("\n" + error if error else "")
