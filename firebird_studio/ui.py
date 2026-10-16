@@ -178,7 +178,8 @@ class MainWindow:
         self.profile_list.itemExpanded.connect(lambda item: self._save_tree_expansion(item, True))
         self.profile_list.itemCollapsed.connect(lambda item: self._save_tree_expansion(item, False))
         self.tree_filter = QLineEdit()
-        self.tree_filter.setPlaceholderText("Filtrar bancos e objetos...")
+        self.tree_filter.setPlaceholderText("Filtrar...")
+        self.tree_filter.setToolTip("Filtrar bancos e objetos pelo nome")
         self.tree_filter.textChanged.connect(self._filter_tree)
         # A stale filter can make a restored profile look missing.  Start a
         # session with the complete catalog; the user can filter again as
@@ -186,7 +187,7 @@ class MainWindow:
         self.tree_filter.setText("")
         self._settings.setValue("tree_filter", "")
         self.tree_filter.textChanged.connect(lambda value: self._settings.setValue("tree_filter", value))
-        self.tree_connected_only = QCheckBox("Conectados")
+        self.tree_connected_only = QCheckBox("Ativos")
         self.tree_connected_only.setToolTip("Mostrar somente bancos conectados")
         # Connections are not restored between application sessions, so a
         # persisted "connected only" flag would hide every profile at start.
@@ -2400,7 +2401,8 @@ class MainWindow:
             populate_profile_children(item, objects)
             item.setExpanded(self._tree_expansion(profile.name, bool(objects)))
         connected_count = sum(profile.name in self.connected_profiles for profile in self.profiles)
-        self.sidebar_status.setText(f"{connected_count} banco(s) conectado(s) · {len(self.profiles)} cadastrado(s)")
+        self.sidebar_status.setText(f"Ativos: {connected_count} · Cadastros: {len(self.profiles)}")
+        self.sidebar_status.setToolTip(f"Bancos conectados: {connected_count}. Cadastros disponíveis: {len(self.profiles)}.")
         self.target_profile.clear()
         self.target_profile.addItems([p.name for p in self.profiles])
         for combo in self._query_profile_combos:
