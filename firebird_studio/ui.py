@@ -346,7 +346,7 @@ class MainWindow:
         data_button.menu().addAction(self.generate_delete_action)
         data_button.menu().addAction(self.apply_update_action)
         database_button = menu_button("Banco", [("Backup", self.execute_backup), ("Restore", self.execute_restore), ("Histórico de backup/restore", self.show_backup_history)], "Operações de backup e restore")
-        analysis_button = menu_button("Análise", [("Ler estrutura", self.inspect_schema), ("Ver plano", self.inspect_plan), ("Saúde", self.inspect_health), ("Banco e atividade", self.inspect_activity), ("Salvar relatório de saúde", self.save_health_report), ("Sessões", self.inspect_sessions), ("Validar integridade", self.validate_database), ("Comparar estruturas", self.compare_selected), ("Salvar comparação", self.save_compare_report)], "Estrutura, plano, saúde, atividade e comparação")
+        analysis_button = menu_button("Análise", [("Ler estrutura", self.inspect_schema), ("Ver plano", self.inspect_plan), ("Saúde", self.inspect_health), ("Banco e atividade", self.inspect_activity), ("Salvar relatório de saúde", self.save_health_report), ("Salvar saúde em HTML", self.save_health_html), ("Sessões", self.inspect_sessions), ("Validar integridade", self.validate_database), ("Comparar estruturas", self.compare_selected), ("Salvar comparação", self.save_compare_report)], "Estrutura, plano, saúde, atividade e comparação")
         action_row.addWidget(sql_button); action_row.addWidget(data_button); action_row.addWidget(database_button); action_row.addWidget(analysis_button); action_row.addWidget(self.commit_changes); action_row.addStretch(); right_layout.addLayout(action_row)
         pagination_row = QHBoxLayout()
         self.previous_data_button = QPushButton("Anterior")
@@ -1936,6 +1936,34 @@ class MainWindow:
             return
         self._log_event("Relatório de saúde salvo", target=str(filename), bytes=len(report.encode("utf-8")))
         self.status.setText(f"Relatório de saúde salvo: {filename}")
+
+    def save_health_html(self):
+        """Save a shareable HTML health report without credentials or database data."""
+        from PySide6.QtWidgets import QFileDialog
+        from html import escape
+
+        report = self.last_health_report.strip() or self.editor.toPlainText().strip()
+        if not report:
+            self._show_message("Salvar saúde em HTML", "Analise a saúde de um banco antes de salvar o relatório.", warning=True)
+            return
+        filename, _ = QFileDialog.getSaveFileName(
+            self._window,
+            "Salvar relatório de saúde em HTML",
+            "saude_firebird.html",
+            "HTML (*.html);;Todos (*.*)",
+        )
+        if not filename:
+            return
+        title = escape(self.name.text().strip() or "Banco Firebird")
+        document = f"<!doctype html><html lang='pt-BR'><head><meta charset='utf-8'><title>Saúde - {title}</title><style>body{{font-family:Segoe UI,Arial,sans-serif;margin:2rem;color:#202124}}pre{{white-space:pre-wrap;background:#f6f8fa;border:1px solid #d0d7de;border-radius:6px;padding:1rem}}h1{{font-size:1.4rem}}</style></head><body><h1>Relatório de saúde: {title}</h1><pre>{escape(report)}</pre></body></html>"
+        try:
+            Path(filename).write_text(document, encoding="utf-8")
+        except Exception as exc:
+            self._log_event("Falha ao salvar saúde HTML", target=str(filename), error=str(exc))
+            self._show_message("Falha ao salvar saúde HTML", str(exc))
+            return
+        self._log_event("Relatório de saúde HTML salvo", target=str(filename), bytes=len(document.encode("utf-8")))
+        self.status.setText(f"Relatório HTML salvo: {filename}")
 
     def inspect_sessions(self):
         from .health import list_sessions
