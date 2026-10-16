@@ -1,6 +1,39 @@
 # Revisão e plano de melhorias
 
-Data da revisão: 15/10/2026.
+Data da revisão: 16/10/2026.
+
+## Revisão visual validada com referências atuais
+
+Foram revisadas as documentações atuais do IBExpert, DBeaver Community e o material público do FlameRobin. Os padrões abaixo foram considerados somente quando combinam com o foco Firebird e com o MDI já existente no projeto.
+
+| Padrão observado | Referência | Situação no Studio | Decisão |
+|---|---|---|---|
+| Navegador em árvore com bancos, servidores e objetos | FlameRobin; IBExpert | Já existe árvore com vários perfis e grupos de objetos | Manter e melhorar contexto, filtro e largura persistida |
+| Editor ligado a uma conexão, com resultados em abas próximas | DBeaver | Cada consulta já tem perfil e abas SQL/Resultado | Manter; adicionar nome do banco no título e no cabeçalho |
+| Toolbar com ações personalizáveis e resultados separados | DBeaver | Toolbar existe, mas ainda pode ficar extensa em telas menores | Agrupar ações secundárias em menus e manter executar/resultado visíveis |
+| Plano em árvore, histórico e análise de desempenho | IBExpert; DBeaver | Plano em árvore e histórico básico já existem | Priorizar duração, linhas, banco e mensagem por execução |
+| Menu de contexto por conexão e objeto | FlameRobin; DBeaver | Parte das ações existe na árvore | Completar com abrir SQL, ler dados, copiar nome e desconectar |
+| Grade com navegação por páginas e filtros | DBeaver | Grid paginado e filtro global já existem | Evoluir para filtro por coluna e escolha de tamanho da página |
+
+### Melhorias visuais aprovadas para a próxima implementação
+
+1. **Cabeçalho da conexão ativa:** nome do perfil, Firebird, host, caminho/alias e estado conectado/desconectado.
+2. **Toolbar compacta:** manter Executar, Resultado e Plano visíveis; mover exportação, manutenção e administração para menus agrupados.
+3. **Árvore mais legível:** largura persistida, filtro no topo, ícones de estado e menu de contexto consistente.
+4. **Editor e resultado:** preservar as abas atuais e adicionar uma faixa de status com duração, quantidade de linhas e conexão usada.
+5. **Grid:** menu por coluna, copiar valor/célula/linha, filtro por coluna e limite de linhas configurável.
+6. **Estados visuais:** usar a mesma linguagem de cores para conectado, execução, sucesso, aviso e erro em árvore, status e diálogos.
+7. **Acessibilidade:** foco visível, contraste nos dois temas, atalhos exibidos nos menus e textos sem depender apenas de cor.
+
+### Ordem de validação visual
+
+1. Validar o cabeçalho e a toolbar em 1280×720 e 1920×1080.
+2. Abrir dois bancos e três consultas, verificando que o título e o estado de cada janela permanecem claros.
+3. Executar consulta, plano, backup e restore simulados, conferindo o mesmo padrão de status e erro.
+4. Reabrir o aplicativo e confirmar que larguras, tema e posição dos painéis continuam persistidos.
+5. Repetir a revisão nos temas claro e escuro com escala do Windows em 100%, 125% e 150%.
+
+As referências usadas nesta revisão são a [documentação do SQL Editor do DBeaver](https://dbeaver.com/docs/dbeaver/SQL-Editor/), a [documentação do SQL Editor do IBExpert](https://ibexpert.com/docu/doku.php?id=02-ibexpert%3A02-08-ibexpert-tools-menu%3Asql-editor) e o material público do [FlameRobin](https://flamerobin.sourceforge.net/flamerobin_paper.pdf).
 
 ## O que o projeto já oferece
 
