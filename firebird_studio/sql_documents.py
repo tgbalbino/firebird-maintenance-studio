@@ -29,20 +29,21 @@ class SqlDocumentManager:
     def titles(self) -> list[str]:
         return [self.tabs.tabText(index) for index in range(self.tabs.count())]
 
-    def close(self, index: int, create_editor) -> None:
+    def _remove_at(self, index: int) -> bool:
+        """Remove one document and release its Qt widget."""
         if index < 0 or index >= self.tabs.count():
-            return
+            return False
         widget = self.tabs.widget(index)
         self.tabs.removeTab(index)
         if widget is not None:
             widget.deleteLater()
-        if self.tabs.count() == 0:
+        return True
+
+    def close(self, index: int, create_editor) -> None:
+        if self._remove_at(index) and self.tabs.count() == 0:
             create_editor()
 
     def close_all(self, create_editor) -> None:
         while self.tabs.count() > 0:
-            widget = self.tabs.widget(0)
-            self.tabs.removeTab(0)
-            if widget is not None:
-                widget.deleteLater()
+            self._remove_at(0)
         create_editor()
