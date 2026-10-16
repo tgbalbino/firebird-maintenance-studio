@@ -1040,6 +1040,8 @@ class MainWindow:
         history_layout.addLayout(history_actions)
         history_layout.addWidget(history_list, 1)
         document_tabs.addTab(history_panel, "Histórico SQL")
+        history_list.setProperty("history_document_tabs", document_tabs)
+        history_list.setProperty("history_panel", history_panel)
         document_tabs.setCurrentWidget(editor)
         document_tabs.setProperty("sql_editor", editor)
         editor.setProperty("document_tabs", document_tabs)
@@ -1399,6 +1401,13 @@ class MainWindow:
             item.setData(Qt.UserRole, query)
             item.setToolTip(query)
             history_list.addItem(item)
+        document_tabs = history_list.property("history_document_tabs")
+        history_panel = history_list.property("history_panel")
+        if document_tabs is not None and history_panel is not None:
+            index = document_tabs.indexOf(history_panel)
+            if index >= 0:
+                count = history_list.count()
+                document_tabs.setTabText(index, f"Histórico SQL ({count})" if count else "Histórico SQL")
 
     def _restore_backup_history(self):
         import json
