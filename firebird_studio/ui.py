@@ -205,6 +205,7 @@ class MainWindow:
         self.history_combo.setMinimumWidth(260)
         self.history_combo.setPlaceholderText("Histórico SQL")
         self.history_combo.activated.connect(self._load_history_query)
+        self._restore_query_history()
         self.editor = None
         self._new_sql_tab()
         self.result_table = QTableWidget(); self.result_table.setMinimumHeight(180); self.result_table.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -564,12 +565,30 @@ class MainWindow:
         self.query_history = [item for item in self.query_history if item != text]
         self.query_history.insert(0, text)
         self.query_history = self.query_history[:50]
+        self._refresh_query_history()
+
+    def _restore_query_history(self):
+        import json
+
+        raw = self._settings.value("query_history", "")
+        try:
+            values = json.loads(str(raw)) if raw else []
+            self.query_history = [str(item).strip() for item in values if str(item).strip()][:50] if isinstance(values, list) else []
+        except (TypeError, ValueError, json.JSONDecodeError):
+            self.query_history = []
+        self._refresh_query_history()
+
+    def _refresh_query_history(self):
+        import json
+
         self.history_combo.blockSignals(True)
         self.history_combo.clear()
         for item in self.query_history:
             label = " ".join(item.split())
             self.history_combo.addItem(label[:120], item)
         self.history_combo.blockSignals(False)
+        self._settings.setValue("query_history", json.dumps(self.query_history, ensure_ascii=False))
+        self._settings.sync()
 
     def _load_history_query(self, index: int):
         if index < 0:
