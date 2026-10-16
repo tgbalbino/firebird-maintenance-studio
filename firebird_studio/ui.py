@@ -159,6 +159,7 @@ class MainWindow:
         self.profile_objects = {}
         self.profile_list = QTreeWidget()
         self.profile_list.setHeaderLabels(["Bancos e objetos"])
+        self.profile_list.setHeaderHidden(True)
         self.profile_list.setMinimumHeight(120)
         self.profile_list.setColumnCount(1)
         self.profile_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
