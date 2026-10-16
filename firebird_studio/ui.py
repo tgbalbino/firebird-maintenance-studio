@@ -197,6 +197,7 @@ class MainWindow:
         self.query_profile_combo = QComboBox()
         self.query_profile_combo.setMinimumWidth(240)
         self.query_profile_combo.currentTextChanged.connect(self._set_current_query_profile)
+        self.query_connection_status = QLabel("Perfil da aba: não definido")
         self.query_history = []
         self._transaction_session = None
         self._transaction_profile_name = ""
@@ -286,7 +287,7 @@ class MainWindow:
         right_layout = QVBoxLayout(right); right_layout.addLayout(profile_actions); right_layout.addWidget(box)
         history_row = QHBoxLayout(); history_row.addWidget(QLabel("Histórico SQL:")); history_row.addWidget(self.history_combo, 1)
         right_layout.addLayout(history_row)
-        connection_row = QHBoxLayout(); connection_row.addWidget(QLabel("Conexão desta janela:")); connection_row.addWidget(self.query_profile_combo, 1)
+        connection_row = QHBoxLayout(); connection_row.addWidget(QLabel("Conexão desta janela:")); connection_row.addWidget(self.query_profile_combo, 1); connection_row.addWidget(self.query_connection_status)
         right_layout.addLayout(connection_row)
         right_layout.addWidget(QLabel("Janelas SQL")); right_layout.addWidget(self.sql_tabs, 1)
         action_row = QHBoxLayout()
@@ -479,10 +480,17 @@ class MainWindow:
             combo_index = self.query_profile_combo.findText(profile_name)
             self.query_profile_combo.setCurrentIndex(combo_index if combo_index >= 0 else -1)
             self.query_profile_combo.blockSignals(False)
+            self._update_query_connection_status()
 
     def _set_current_query_profile(self, profile_name: str):
         if self.editor is not None and profile_name:
             self.editor.setProperty("query_profile", profile_name)
+        self._update_query_connection_status()
+
+    def _update_query_connection_status(self):
+        profile_name = self.editor.property("query_profile") if self.editor is not None else ""
+        transaction_open = self._transaction_session is not None and self._transaction_session.active
+        self.query_connection_status.setText(f"Perfil da aba: {profile_name or 'não definido'}" + (" · transação aberta" if transaction_open else ""))
 
     def _query_profile(self):
         name = self.editor.property("query_profile") if self.editor is not None else ""
@@ -743,6 +751,7 @@ class MainWindow:
             self._transaction_session = TransactionSession(profile, self._password_for(profile))
             self._transaction_profile_name = profile.name
             self._set_transaction_actions(True)
+            self._update_query_connection_status()
             self.status.setText(f"Transação iniciada para '{profile.name}'. Execute comandos e escolha Commit ou Rollback.")
             self._log_event("Transação iniciada", profile=profile.name)
         except Exception as exc:
@@ -804,6 +813,7 @@ class MainWindow:
         self._transaction_session = None
         self._transaction_profile_name = ""
         self._set_transaction_actions(False)
+        self._update_query_connection_status()
 
     def open_profile(self, selected_index: int | None = None):
         """Open the selected database, like opening a connection in IBExpert."""
