@@ -1151,7 +1151,7 @@ class MainWindow:
         self._hide_profile_details()
 
     def _populate_object_tree(self, objects, profile_index=-1):
-        from PySide6.QtWidgets import QTreeWidgetItem
+        from .tree_utils import populate_profile_children
 
         self.selected_object = None
         self._set_table_data_enabled(False)
@@ -1164,23 +1164,7 @@ class MainWindow:
         if profile_item is None:
             return
         profile_item.takeChildren()
-        groups = {}
-        for obj in objects:
-            label = {
-                "TABLE": "Tabelas", "VIEW": "Views", "PROCEDURE": "Procedures",
-                "FUNCTION": "Functions", "TRIGGER": "Triggers", "DOMAIN": "Domínios",
-                "INDEX": "Índices", "CONSTRAINT": "Restrições", "SEQUENCE": "Sequências",
-                "GENERATOR": "Generators", "EXCEPTION": "Exceções", "PACKAGE": "Packages",
-            }.get(obj.kind, obj.kind.title())
-            groups.setdefault(label, []).append(obj)
-        for label in sorted(groups):
-            parent = QTreeWidgetItem([f"{label} ({len(groups[label])})"])
-            profile_item.addChild(parent)
-            for obj in groups[label]:
-                item = QTreeWidgetItem([obj.name])
-                item.setData(0, 32, obj)
-                parent.addChild(item)
-            parent.setExpanded(True)
+        populate_profile_children(profile_item, objects)
         profile_item.setExpanded(True)
         for index in range(self.sql_tabs.count()):
             self._refresh_sql_completer(self.sql_tabs.widget(index))
