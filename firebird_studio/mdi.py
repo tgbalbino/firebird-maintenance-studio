@@ -108,6 +108,22 @@ try:
             if sub is not None:
                 sub.setToolTip(text)
 
+        def cascade_windows(self):
+            self.cascadeSubWindows()
+
+        def tile_windows(self):
+            self.tileSubWindows()
+
+        def maximize_current(self):
+            active = self.activeSubWindow()
+            if active is not None:
+                active.showMaximized()
+
+        def restore_windows(self):
+            for sub in self.subWindowList():
+                sub.showNormal()
+            self._on_activated(self.activeSubWindow())
+
         def _on_close_requested(self, sub):
             widget = sub.widget()
             index = self.indexOf(widget)
