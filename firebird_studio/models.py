@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 import json
 
@@ -47,8 +47,25 @@ class ProfileStore:
     def load(self) -> list[ConnectionProfile]:
         if not self.path.exists():
             return []
-        raw = json.loads(self.path.read_text(encoding="utf-8"))
-        return [ConnectionProfile(**{**item, "isql_path": item.get("isql_path", ""), "gbak_path": item.get("gbak_path", "")}) for item in raw]
+        try:
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return []
+        if not isinstance(raw, list):
+            return []
+        allowed = {item.name for item in fields(ConnectionProfile)}
+        profiles: list[ConnectionProfile] = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            data = {key: value for key, value in item.items() if key in allowed}
+            data.setdefault("isql_path", "")
+            data.setdefault("gbak_path", "")
+            try:
+                profiles.append(ConnectionProfile(**data))
+            except (TypeError, ValueError):
+                continue
+        return profiles
 
     def save(self, profiles: list[ConnectionProfile]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)

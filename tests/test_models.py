@@ -3,6 +3,7 @@ import sys
 import tempfile
 import types
 import unittest
+import json
 
 from firebird_studio.models import ConnectionProfile, ProfileStore
 from firebird_studio.sql import execute_sql, is_mutating_statement
@@ -29,6 +30,19 @@ class ProfileTests(unittest.TestCase):
     def test_invalid_profile_is_reported(self):
         errors = ConnectionProfile("", database="", version="6", port=0).validate()
         self.assertEqual(len(errors), 4)
+
+    def test_profile_store_survives_corrupt_json(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "profiles.json"
+            path.write_text("{not valid json", encoding="utf-8")
+            self.assertEqual(ProfileStore(path).load(), [])
+
+    def test_profile_store_ignores_unknown_fields_and_invalid_items(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "profiles.json"
+            path.write_text(json.dumps([{"name": "Local", "database": "sample.fdb", "future": True}, "invalid"]), encoding="utf-8")
+            profiles = ProfileStore(path).load()
+            self.assertEqual([profile.name for profile in profiles], ["Local"])
 
     def test_empty_sql_is_rejected_without_connection(self):
         result = execute_sql(ConnectionProfile("Local", database="sample.fdb"), " ")
