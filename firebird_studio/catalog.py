@@ -198,12 +198,20 @@ def load_schema(profile: ConnectionProfile, password: str | None = None, detaile
             """)
         except Exception:
             constraint_rows = []
+        try:
+            segment_rows = _rows(connection, """
+                SELECT TRIM(RDB$INDEX_NAME), TRIM(RDB$FIELD_NAME)
+                FROM RDB$INDEX_SEGMENTS
+                ORDER BY RDB$INDEX_NAME, RDB$FIELD_POSITION
+            """)
+        except Exception:
+            segment_rows = []
+        fields_by_index: dict[str, list[str]] = {}
+        for segment_index, segment_field in segment_rows:
+            fields_by_index.setdefault(_text(segment_index), []).append(_text(segment_field))
         for name, constraint_type, relation, index_name, referenced_name, referenced_relation in constraint_rows:
             clean_name, clean_relation, clean_index = _text(name), _text(relation), _text(index_name)
-            try:
-                fields = [_text(row[0]) for row in _rows(connection, f"SELECT TRIM(RDB$FIELD_NAME) FROM RDB$INDEX_SEGMENTS WHERE RDB$INDEX_NAME = '{clean_index.replace(chr(39), chr(39) * 2)}' ORDER BY RDB$FIELD_POSITION")]
-            except Exception:
-                fields = []
+            fields = fields_by_index.get(clean_index, [])
             quoted_fields = ", ".join(f'"{field}"' for field in fields)
             kind = _text(constraint_type).upper()
             if kind == "PRIMARY KEY":
