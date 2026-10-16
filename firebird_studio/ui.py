@@ -142,6 +142,7 @@ class MainWindow:
         self._event_log_path = Path.home() / ".firebird-maintenance-studio" / "events.txt"
         self._log_event("Aplicação iniciada", executable=str(Path(__file__).resolve()))
         self._settings = QSettings("TGBalbino", "FirebirdMaintenanceStudio")
+        self.backup_history = self._restore_backup_history()
         self._open_thread = None
         self._open_worker = None
         self._open_timeout_timer = None
@@ -245,7 +246,10 @@ class MainWindow:
         sessions_controls = QHBoxLayout(); sessions_controls.addWidget(self.sessions_filter, 1); sessions_controls.addWidget(self.disconnect_session_button)
         sessions_panel = QWidget(); sessions_layout = QVBoxLayout(sessions_panel); sessions_layout.addWidget(QLabel("Conexões ativas do banco")); sessions_layout.addLayout(sessions_controls); sessions_layout.addWidget(self.sessions_table, 1)
         self.sessions_panel = sessions_panel
-        self.result_tabs = QTabWidget(); self.result_tabs.addTab(self.result_table, "Resultado"); self.result_tabs.addTab(self.structure_table, "Estrutura"); self.result_tabs.addTab(plan_panel, "Plano e sugestões"); self.result_tabs.addTab(activity_panel, "Banco e atividade"); self.result_tabs.addTab(sessions_panel, "Sessões")
+        self.backup_history_table = QTableWidget(); self.backup_history_table.setEditTriggers(QAbstractItemView.NoEditTriggers); self.backup_history_table.setSelectionBehavior(QAbstractItemView.SelectRows); self.backup_history_table.setSortingEnabled(True)
+        backup_history_panel = QWidget(); backup_history_layout = QVBoxLayout(backup_history_panel); backup_history_layout.addWidget(QLabel("Histórico local de backup e restore")); backup_history_layout.addWidget(self.backup_history_table, 1)
+        self.backup_history_panel = backup_history_panel
+        self.result_tabs = QTabWidget(); self.result_tabs.addTab(self.result_table, "Resultado"); self.result_tabs.addTab(self.structure_table, "Estrutura"); self.result_tabs.addTab(plan_panel, "Plano e sugestões"); self.result_tabs.addTab(activity_panel, "Banco e atividade"); self.result_tabs.addTab(sessions_panel, "Sessões"); self.result_tabs.addTab(backup_history_panel, "Histórico de backup")
 
         left = QWidget(); left_layout = QVBoxLayout(left); left.setMinimumWidth(280)
         left_layout.addWidget(QLabel("Bancos e objetos (duplo clique para conectar/abrir)")); left_layout.addWidget(self.tree_filter); left_layout.addWidget(self.profile_list, 1)
@@ -341,7 +345,7 @@ class MainWindow:
         data_button.menu().addAction(self.generate_insert_action)
         data_button.menu().addAction(self.generate_delete_action)
         data_button.menu().addAction(self.apply_update_action)
-        database_button = menu_button("Banco", [("Backup", self.execute_backup), ("Restore", self.execute_restore)], "Operações de backup e restore")
+        database_button = menu_button("Banco", [("Backup", self.execute_backup), ("Restore", self.execute_restore), ("Histórico de backup/restore", self.show_backup_history)], "Operações de backup e restore")
         analysis_button = menu_button("Análise", [("Ler estrutura", self.inspect_schema), ("Ver plano", self.inspect_plan), ("Saúde", self.inspect_health), ("Banco e atividade", self.inspect_activity), ("Salvar relatório de saúde", self.save_health_report), ("Sessões", self.inspect_sessions), ("Validar integridade", self.validate_database), ("Comparar estruturas", self.compare_selected), ("Salvar comparação", self.save_compare_report)], "Estrutura, plano, saúde, atividade e comparação")
         action_row.addWidget(sql_button); action_row.addWidget(data_button); action_row.addWidget(database_button); action_row.addWidget(analysis_button); action_row.addWidget(self.commit_changes); action_row.addStretch(); right_layout.addLayout(action_row)
         pagination_row = QHBoxLayout()
@@ -596,6 +600,49 @@ class MainWindow:
         self.history_combo.blockSignals(False)
         self._settings.setValue("query_history", json.dumps(self.query_history, ensure_ascii=False))
         self._settings.sync()
+
+    def _restore_backup_history(self):
+        import json
+
+        raw = self._settings.value("backup_history", "")
+        try:
+            values = json.loads(str(raw)) if raw else []
+            return [item for item in values if isinstance(item, dict)][:100] if isinstance(values, list) else []
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return []
+
+    def _record_backup_history(self, operation: str, profile: ConnectionProfile, source: str, target: str, ok: bool, detail: str = ""):
+        import json
+        from datetime import datetime
+
+        self.backup_history.insert(0, {
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "operation": operation,
+            "profile": profile.name,
+            "source": source,
+            "target": target,
+            "result": "OK" if ok else "FALHA",
+            "detail": detail,
+        })
+        self.backup_history = self.backup_history[:100]
+        self._settings.setValue("backup_history", json.dumps(self.backup_history, ensure_ascii=False))
+        self._settings.sync()
+
+    def show_backup_history(self):
+        from PySide6.QtWidgets import QTableWidgetItem
+
+        headers = ["Data", "Operação", "Perfil", "Origem", "Destino", "Resultado", "Detalhe"]
+        self.backup_history_table.setSortingEnabled(False)
+        self.backup_history_table.clear()
+        self.backup_history_table.setColumnCount(len(headers)); self.backup_history_table.setRowCount(len(self.backup_history)); self.backup_history_table.setHorizontalHeaderLabels(headers)
+        for row, entry in enumerate(self.backup_history):
+            values = [entry.get(key, "") for key in ("date", "operation", "profile", "source", "target", "result", "detail")]
+            for column, value in enumerate(values):
+                self.backup_history_table.setItem(row, column, QTableWidgetItem(str(value)))
+        self.backup_history_table.resizeColumnsToContents()
+        self.backup_history_table.setSortingEnabled(True)
+        self.result_tabs.setCurrentWidget(self.backup_history_panel)
+        self.status.setText(f"Histórico carregado: {len(self.backup_history)} operação(ões).")
 
     def _load_history_query(self, index: int):
         if index < 0:
@@ -1605,6 +1652,7 @@ class MainWindow:
     def _finish_backup_operation(self, result, profile, filename):
         output, error = self._operation_result_text(result)
         ok = bool(getattr(result, "ok", False)) if not isinstance(result, Exception) else False
+        self._record_backup_history("Backup", profile, str(self.database.text()), str(filename), ok, error or output[-300:])
         self._log_event("Backup concluído" if ok else "Backup falhou", profile=profile.name, target=str(filename), ok=ok, error=error)
         self.editor.setPlainText(output + ("\n" + error if error else ""))
         if ok:
@@ -1637,6 +1685,7 @@ class MainWindow:
     def _finish_restore_operation(self, result, profile, source, target, password):
         output, error = self._operation_result_text(result)
         ok = bool(getattr(result, "ok", False)) if not isinstance(result, Exception) else False
+        self._record_backup_history("Restore", profile, str(source), str(target), ok, error or output[-300:])
         self._log_event("Restore concluído" if ok else "Restore falhou", profile=profile.name, source=str(source), target=str(target), ok=ok, error=error)
         self.editor.setPlainText(output + ("\n" + error if error else ""))
         if not ok:
