@@ -343,10 +343,6 @@ class MainWindow:
             button.setMenu(menu)
             return button
 
-        self.commit_changes = QCheckBox("Confirmar alterações")
-        self.commit_changes.setToolTip("Quando marcado, confirma DDL/DML. Desmarcado, alterações são desfeitas ao terminar a execução.")
-        self.read_only_mode = QCheckBox("Somente leitura")
-        self.read_only_mode.setToolTip("Bloqueia DML, DDL, EXECUTE, GRANT e REVOKE nesta sessão SQL.")
         self.open_data_action = QAction("Dados da tabela", self._window)
         self.open_data_action.setEnabled(False)
         self.open_data_action.triggered.connect(self.open_table_data)
@@ -409,7 +405,7 @@ class MainWindow:
         database_button = menu_button("Banco", [("Backup", self.execute_backup), ("Restore", self.execute_restore), ("Exportar banco para SQL", self.export_database_sql), ("Histórico de backup/restore", self.show_backup_history)], "Operações de backup, restore e exportação SQL")
         security_button = menu_button("Segurança", [("Gestão de usuários", self.manage_users)], "Criar usuários e alterar senhas do Firebird")
         analysis_button = menu_button("Análise", [("Ler estrutura", self.inspect_schema), ("Ver plano", self.inspect_plan), ("Saúde", self.inspect_health), ("Banco e atividade", self.inspect_activity), ("Salvar relatório de saúde", self.save_health_report), ("Salvar saúde em HTML", self.save_health_html), ("Criar pacote de suporte", self.create_support_package), ("Sessões", self.inspect_sessions), ("Validar integridade", self.validate_database), ("Comparar estruturas", self.compare_selected), ("Salvar comparação", self.save_compare_report), ("Salvar comparação em HTML", self.save_compare_html)], "Estrutura, plano, saúde, atividade e comparação")
-        action_row.addWidget(sql_button); action_row.addWidget(window_button); action_row.addWidget(data_button); action_row.addWidget(database_button); action_row.addWidget(security_button); action_row.addWidget(analysis_button); action_row.addWidget(self.commit_changes); action_row.addWidget(self.read_only_mode); action_row.addStretch(); right_layout.addLayout(action_row)
+        action_row.addWidget(sql_button); action_row.addWidget(window_button); action_row.addWidget(data_button); action_row.addWidget(database_button); action_row.addWidget(security_button); action_row.addWidget(analysis_button); action_row.addStretch(); right_layout.addLayout(action_row)
         pagination_row = QHBoxLayout()
         self.previous_data_button = QPushButton("Anterior")
         self.previous_data_button.setEnabled(False)
@@ -868,9 +864,12 @@ class MainWindow:
         self.object_breadcrumb = editor.property("object_breadcrumb")
         self.workspace_status = editor.property("workspace_status")
         self.workspace_connection = None
+        execution_controls = editor.property("execution_controls") or ()
+        self.commit_changes = execution_controls[0] if len(execution_controls) > 0 else None
+        self.read_only_mode = execution_controls[1] if len(execution_controls) > 1 else None
 
     def _create_sql_toolbar(self, editor):
-        from PySide6.QtWidgets import QHBoxLayout, QPushButton, QToolButton, QWidget, QMenu
+        from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QPushButton, QToolButton, QWidget, QMenu
         sql_toolbar = QWidget()
         toolbar_layout = QHBoxLayout(sql_toolbar)
         toolbar_layout.setContentsMargins(4, 4, 4, 4)
@@ -899,10 +898,14 @@ class MainWindow:
         rollback_action = more_menu.addAction("Rollback")
         rollback_action.triggered.connect(lambda: (self.sql_tabs.setCurrentWidget(editor), self._rollback_transaction()))
         more_button.setMenu(more_menu)
-        for button in (execute_button, result_button, more_button):
+        commit_changes = QCheckBox("Confirmar alterações")
+        commit_changes.setToolTip("Quando marcado, confirma DDL/DML. Desmarcado, alterações são desfeitas ao terminar a execução.")
+        read_only_mode = QCheckBox("Somente leitura")
+        read_only_mode.setToolTip("Bloqueia DML, DDL, EXECUTE, GRANT e REVOKE nesta sessão SQL.")
+        for button in (execute_button, result_button, more_button, commit_changes, read_only_mode):
             toolbar_layout.addWidget(button)
         toolbar_layout.addStretch()
-        return sql_toolbar, (commit_action, rollback_action)
+        return sql_toolbar, (commit_action, rollback_action), (commit_changes, read_only_mode)
 
     def _new_sql_tab(self):
         from PySide6.QtWidgets import QTextEdit
@@ -914,10 +917,12 @@ class MainWindow:
         self.query_profile_combo.setCurrentText(selected_name)
         editor.setProperty("document_title", f"SQL {self.sql_tabs.count() + 1}")
         index = self.sql_documents.add(document_tabs, f"SQL {self.sql_tabs.count() + 1}", editor.property("query_profile") or "")
-        sql_toolbar, transaction_controls = self._create_sql_toolbar(editor)
+        sql_toolbar, transaction_controls, execution_controls = self._create_sql_toolbar(editor)
         self.sql_tabs.add_toolbar(index, sql_toolbar)
         editor.setProperty("sql_toolbar_controls", transaction_controls)
+        editor.setProperty("execution_controls", execution_controls)
         self.editor = editor
+        self._set_active_editor_widgets(editor)
         self.result_table = result_table
         self._table_original_rows = []
         self._set_transaction_controls_enabled()
