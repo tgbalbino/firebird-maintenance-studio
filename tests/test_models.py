@@ -387,6 +387,38 @@ class ProfileTests(unittest.TestCase):
             obj = load_object_definition(ConnectionProfile("Local", database="sample.fdb", version="2.5"), "secret", "INDEX", "UNQ1_REGIAO")
         self.assertEqual(obj.ddl, 'CREATE UNIQUE DESCENDING INDEX "UNQ1_REGIAO" ON "CLIENTES" ("CODIGO", "UF");')
 
+    def test_check_constraint_definition_reads_trigger_source(self):
+        class Cursor:
+            def __init__(self):
+                self.query = ""
+
+            def execute(self, query):
+                self.query = query
+
+            def fetchall(self):
+                if "RDB$TRIGGER_SOURCE" in self.query:
+                    return [("CHECK (TIPO IN (1, 2))",)]
+                if "RDB$CONSTRAINT_TYPE" in self.query:
+                    return [("CHECK", "PEDIDOS", "INTEG_123", None)]
+                if "RDB$FIELD_NAME" in self.query:
+                    return []
+                return []
+
+        class Connection:
+            def cursor(self):
+                return Cursor()
+
+        class Database:
+            def __enter__(self):
+                return Connection()
+
+            def __exit__(self, *_args):
+                return False
+
+        with patch("firebird_studio.catalog.open_database", return_value=Database()):
+            obj = load_object_definition(ConnectionProfile("Local", database="sample.fdb", version="2.5"), "secret", "CONSTRAINT", "CK_CASHBACK_LANC_TIPO")
+        self.assertEqual(obj.ddl, 'ALTER TABLE "PEDIDOS" ADD CONSTRAINT "CK_CASHBACK_LANC_TIPO" CHECK (TIPO IN (1, 2));')
+
     def test_plan_is_plan_only_and_tree_has_nodes(self):
         script = build_plan_script("select * from CUSTOMER where ID = 1", "5")
         self.assertIn("SET PLANONLY ON", script)

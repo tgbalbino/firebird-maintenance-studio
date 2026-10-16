@@ -50,6 +50,14 @@ def _field_type(field_type: int, length: int, scale: int, precision: int | None,
     return name
 
 
+def _check_source_ddl(source: Any) -> str:
+    """Normalize a CHECK source stored by Firebird's system triggers."""
+    text = _text(source).rstrip(";").strip()
+    if not text:
+        return ""
+    return text if text.upper().startswith("CHECK ") else f"CHECK ({text})"
+
+
 def _append_catalog_objects(objects: list[SchemaObject], connection: Any, kind: str, query: str) -> None:
     """Append lightweight catalog entries while tolerating version gaps."""
     try:
@@ -213,6 +221,17 @@ def load_schema(profile: ConnectionProfile, password: str | None = None, detaile
         fields_by_index: dict[str, list[str]] = {}
         for segment_index, segment_field in segment_rows:
             fields_by_index.setdefault(_text(segment_index), []).append(_text(segment_field))
+        check_sources: dict[str, str] = {}
+        try:
+            check_rows = _rows(connection, """
+                SELECT TRIM(cc.RDB$CONSTRAINT_NAME), tr.RDB$TRIGGER_SOURCE
+                FROM RDB$CHECK_CONSTRAINTS cc
+                JOIN RDB$TRIGGERS tr ON tr.RDB$TRIGGER_NAME = cc.RDB$TRIGGER_NAME
+            """)
+            check_sources = {_text(name): _check_source_ddl(source) for name, source in check_rows if _text(name)}
+        except Exception:
+            # Keep the catalog usable for restricted users or older catalogs.
+            check_sources = {}
         for name, constraint_type, relation, index_name, referenced_name, referenced_relation in constraint_rows:
             clean_name, clean_relation, clean_index = _text(name), _text(relation), _text(index_name)
             fields = fields_by_index.get(clean_index, [])
@@ -228,7 +247,12 @@ def load_schema(profile: ConnectionProfile, password: str | None = None, detaile
                 if referenced_name:
                     ddl += f' /* references constraint { _text(referenced_name) } */'
             else:
-                ddl = f'-- CONSTRAINT {clean_name} ({kind})\n-- Review the check/source expression in the source database.'
+                check_source = check_sources.get(clean_name, "")
+                ddl = (
+                    f'ALTER TABLE "{clean_relation}" ADD CONSTRAINT "{clean_name}" {check_source};'
+                    if check_source else
+                    f'-- CONSTRAINT {clean_name} ({kind})\n-- Review the check/source expression in the source database.'
+                )
             objects.append(SchemaObject("CONSTRAINT", clean_name, ddl))
 
         try:
@@ -461,7 +485,21 @@ def load_object_definition(profile: ConnectionProfile, password: str | None, kin
                 elif kind_text == "FOREIGN KEY":
                     ddl = f'ALTER TABLE "{_text(relation)}" ADD CONSTRAINT "{name}" FOREIGN KEY ({cols}) REFERENCES "{_text(referenced_relation)}"'
                 else:
-                    ddl = f'-- CONSTRAINT {name} ({kind_text})\n-- Review the source expression in the source database.'
+                    try:
+                        check_rows = _rows(connection, f"""
+                            SELECT tr.RDB$TRIGGER_SOURCE
+                            FROM RDB$CHECK_CONSTRAINTS cc
+                            JOIN RDB$TRIGGERS tr ON tr.RDB$TRIGGER_NAME = cc.RDB$TRIGGER_NAME
+                            WHERE cc.RDB$CONSTRAINT_NAME = '{safe}'
+                        """)
+                    except Exception:
+                        check_rows = []
+                    check_source = _check_source_ddl(check_rows[0][0]) if check_rows else ""
+                    ddl = (
+                        f'ALTER TABLE "{_text(relation)}" ADD CONSTRAINT "{name}" {check_source};'
+                        if check_source else
+                        f'-- CONSTRAINT {name} ({kind_text})\n-- Review the source expression in the source database.'
+                    )
                 return SchemaObject(clean_kind, name, ddl)
         return SchemaObject(clean_kind, name, f"-- CONSTRAINT {name}\n-- Não foi possível obter a definição no catálogo.")
     if clean_kind not in queries:
