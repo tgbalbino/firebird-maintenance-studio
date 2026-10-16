@@ -18,6 +18,20 @@ def create_application():
 try:
     from PySide6.QtCore import QObject, Signal, Slot
 
+    class OperationWorker(QObject):
+        finished = Signal(object)
+
+        def __init__(self, operation):
+            super().__init__()
+            self.operation = operation
+
+        @Slot()
+        def run(self):
+            try:
+                self.finished.emit(self.operation())
+            except Exception as exc:  # keep worker failures visible in the UI
+                self.finished.emit(exc)
+
     class OpenConnectionWorker(QObject):
         finished = Signal(object, object, str)
         progress = Signal(str)
@@ -46,6 +60,7 @@ try:
                 self.finished.emit(result, [], str(exc))
 except ImportError:  # pragma: no cover - allows headless model tests
     OpenConnectionWorker = None
+    OperationWorker = None
 
 
 class MainWindow:
@@ -94,6 +109,9 @@ class MainWindow:
         self._open_worker = None
         self._open_timeout_timer = None
         self._opening_profile_name = None
+        self._operation_thread = None
+        self._operation_worker = None
+        self._operation_name = ""
         self.connected_profiles = set()
         self._last_tree_activation_key = None
         self._last_tree_activation_time = 0.0
@@ -1407,6 +1425,42 @@ class MainWindow:
             self.status.setText(f"Falha ao salvar SQL: {exc}")
             self._show_message("Falha ao salvar SQL", str(exc))
 
+    def _start_background_operation(self, name, operation, on_finished):
+        from PySide6.QtCore import QThread, Qt
+
+        if self._operation_thread is not None and self._operation_thread.isRunning():
+            self.status.setText(f"A operação '{self._operation_name}' ainda está em execução.")
+            return False
+        if OperationWorker is None:
+            self.status.setText("Não foi possível iniciar o executor em segundo plano.")
+            return False
+        thread = QThread(self._window)
+        worker = OperationWorker(operation)
+        worker.moveToThread(thread)
+        self._operation_name = name
+        self._operation_thread = thread
+        self._operation_worker = worker
+        thread.started.connect(worker.run)
+        worker.finished.connect(on_finished, Qt.QueuedConnection)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._clear_background_operation)
+        self.status.setText(f"{name} em execução...")
+        self._log_event("Operação iniciada", operation=name)
+        thread.start()
+        return True
+
+    def _clear_background_operation(self):
+        self._operation_thread = None
+        self._operation_worker = None
+        self._operation_name = ""
+
+    def _operation_result_text(self, result):
+        if isinstance(result, Exception):
+            return "", str(result)
+        return getattr(result, "output", "") or "", getattr(result, "error", "") or ""
+
     def execute_script_file(self):
         from .script_runner import run_script
         from PySide6.QtWidgets import QFileDialog
@@ -1419,10 +1473,20 @@ class MainWindow:
             self.status.setText("Configure o caminho do isql no perfil antes de executar um arquivo.")
             self._show_message("Executar script", "Configure o caminho do isql.exe no perfil antes de executar um arquivo.", warning=True)
             return
-        result = run_script(profile, Path(filename), self._password_for(profile), Path(profile.isql_path))
-        self._log_event("Script executado", profile=profile.name, file=str(filename), ok=result.ok, error=result.error)
-        self.editor.setPlainText(result.output + ("\n" + result.error if result.error else ""))
-        self.status.setText(("Script concluído. " if result.ok else "Script falhou. ") + result.error)
+        password = self._password_for(profile)
+        isql_path = Path(profile.isql_path)
+        self._start_background_operation(
+            "Script SQL",
+            lambda: run_script(profile, Path(filename), password, isql_path),
+            lambda result: self._finish_script_operation(result, profile, filename),
+        )
+
+    def _finish_script_operation(self, result, profile, filename):
+        output, error = self._operation_result_text(result)
+        ok = bool(getattr(result, "ok", False)) if not isinstance(result, Exception) else False
+        self._log_event("Script executado", profile=profile.name, file=str(filename), ok=ok, error=error)
+        self.editor.setPlainText(output + ("\n" + error if error else ""))
+        self.status.setText(("Script concluído. " if ok else "Script falhou. ") + error)
 
     def execute_backup(self):
         from .backup import run_gbak
@@ -1437,19 +1501,23 @@ class MainWindow:
         if not filename:
             return
         profile = self._profile_from_form()
-        from PySide6.QtWidgets import QApplication
-        from PySide6.QtCore import Qt
-        QApplication.setOverrideCursor(Qt.WaitCursor)
-        try:
-            result = run_gbak(profile, "backup", source, Path(filename), self._password_for(profile), Path(self.gbak_path.text()))
-        finally:
-            QApplication.restoreOverrideCursor()
-        self._log_event("Backup concluído" if result.ok else "Backup falhou", profile=profile.name, target=str(filename), ok=result.ok, error=result.error)
-        self.editor.setPlainText(result.output + ("\n" + result.error if result.error else ""))
-        if result.ok:
+        password = self._password_for(profile)
+        gbak_path = Path(self.gbak_path.text())
+        self._start_background_operation(
+            "Backup",
+            lambda: run_gbak(profile, "backup", source, Path(filename), password, gbak_path),
+            lambda result: self._finish_backup_operation(result, profile, filename),
+        )
+
+    def _finish_backup_operation(self, result, profile, filename):
+        output, error = self._operation_result_text(result)
+        ok = bool(getattr(result, "ok", False)) if not isinstance(result, Exception) else False
+        self._log_event("Backup concluído" if ok else "Backup falhou", profile=profile.name, target=str(filename), ok=ok, error=error)
+        self.editor.setPlainText(output + ("\n" + error if error else ""))
+        if ok:
             self.status.setText("Backup concluído.")
         else:
-            message = result.error or result.output or "O gbak retornou uma falha sem detalhes."
+            message = error or output or "O gbak retornou uma falha sem detalhes."
             self.status.setText(f"Backup falhou: {message}")
             self._show_message("Falha no backup", message)
 
@@ -1465,32 +1533,36 @@ class MainWindow:
         if not target:
             return
         profile = self._profile_from_form()
-        from PySide6.QtWidgets import QApplication
-        from PySide6.QtCore import Qt
-        QApplication.setOverrideCursor(Qt.WaitCursor)
-        try:
-            result = run_gbak(profile, "restore", Path(source), Path(target), self._password_for(profile), Path(self.gbak_path.text()))
-        finally:
-            QApplication.restoreOverrideCursor()
-        self._log_event("Restore concluído" if result.ok else "Restore falhou", profile=profile.name, source=str(source), target=str(target), ok=result.ok, error=result.error)
-        self.editor.setPlainText(result.output + ("\n" + result.error if result.error else ""))
-        if result.ok:
-            from dataclasses import replace
-            from .connection import test_connection
-            restored_profile = replace(profile, database=str(target), host="localhost", port=3050)
-            validation = test_connection(restored_profile, self._password_for(profile))
-            if validation.ok:
-                self.status.setText("Restore concluído e banco restaurado validado.")
-                self._log_event("Restore validado", target=str(target))
-            else:
-                message = f"Restore concluído, mas a validação falhou: {validation.message}"
-                self.status.setText(message)
-                self._show_message("Restore com aviso", message, warning=True)
-                self._log_event("Restore com falha na validação", target=str(target), error=validation.message)
-        else:
-            message = result.error or result.output or "O gbak retornou uma falha sem detalhes."
+        password = self._password_for(profile)
+        gbak_path = Path(self.gbak_path.text())
+        self._start_background_operation(
+            "Restore",
+            lambda: run_gbak(profile, "restore", Path(source), Path(target), password, gbak_path),
+            lambda result: self._finish_restore_operation(result, profile, source, target, password),
+        )
+
+    def _finish_restore_operation(self, result, profile, source, target, password):
+        output, error = self._operation_result_text(result)
+        ok = bool(getattr(result, "ok", False)) if not isinstance(result, Exception) else False
+        self._log_event("Restore concluído" if ok else "Restore falhou", profile=profile.name, source=str(source), target=str(target), ok=ok, error=error)
+        self.editor.setPlainText(output + ("\n" + error if error else ""))
+        if not ok:
+            message = error or output or "O gbak retornou uma falha sem detalhes."
             self.status.setText(f"Restore falhou: {message}")
             self._show_message("Falha no restore", message)
+            return
+        from dataclasses import replace
+        from .connection import test_connection
+        restored_profile = replace(profile, database=str(target), host="localhost", port=3050)
+        validation = test_connection(restored_profile, password)
+        if validation.ok:
+            self.status.setText("Restore concluído e banco restaurado validado.")
+            self._log_event("Restore validado", target=str(target))
+        else:
+            message = f"Restore concluído, mas a validação falhou: {validation.message}"
+            self.status.setText(message)
+            self._show_message("Restore com aviso", message, warning=True)
+            self._log_event("Restore com falha na validação", target=str(target), error=validation.message)
 
     def inspect_schema(self):
         from .catalog import load_schema
