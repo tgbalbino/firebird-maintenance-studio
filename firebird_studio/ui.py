@@ -957,6 +957,7 @@ class MainWindow:
         if bar is None:
             return
         count = self.sql_tabs.count()
+        bar.setVisible(count > 0)
         bar.blockSignals(True)
         try:
             while bar.count() > count:
