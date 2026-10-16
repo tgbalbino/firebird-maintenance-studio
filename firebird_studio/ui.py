@@ -2664,6 +2664,11 @@ class MainWindow:
         from PySide6.QtWidgets import QTableWidgetItem
         from .sql import execute_sql, is_mutating_statement
 
+        if not sql_text or not sql_text.strip():
+            self.status.setText("Digite uma instrução SQL antes de executar.")
+            if self.editor is not None:
+                self.editor.setFocus()
+            return
         statement = sql_text.lstrip().upper()
         changes_data = is_mutating_statement(sql_text)
         commit = bool(self.commit_changes.isChecked())
