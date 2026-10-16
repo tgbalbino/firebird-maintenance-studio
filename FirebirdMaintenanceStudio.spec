@@ -2,6 +2,7 @@
 from PyInstaller.utils.hooks import collect_submodules
 
 hiddenimports = []
+hiddenimports += ['PySide6', 'PySide6.QtCore', 'PySide6.QtGui', 'PySide6.QtWidgets']
 hiddenimports += collect_submodules('firebird')
 hiddenimports += collect_submodules('fdb')
 hiddenimports += collect_submodules('keyring')
