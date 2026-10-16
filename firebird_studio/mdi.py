@@ -37,6 +37,15 @@ try:
             self.setActivationOrder(QMdiArea.ActivationHistoryOrder)
             self.subWindowActivated.connect(self._on_activated)
 
+        def resizeEvent(self, event):
+            super().resizeEvent(event)
+            # Frameless SQL children do not receive the native MDI maximize
+            # relayout automatically. Fit every document to the new viewport
+            # whenever the main window is resized or maximized.
+            viewport_rect = self.viewport().rect()
+            for sub in self._sql_subwindows():
+                sub.setGeometry(viewport_rect)
+
         def setTabsClosable(self, _enabled):
             return None
 
@@ -61,6 +70,7 @@ try:
             sub.closed.connect(self._on_close_requested)
             sub.resize(760, 480)
             sub.showMaximized()
+            sub.setGeometry(self.viewport().rect())
             self.setActiveSubWindow(sub)
             # ``widget`` is the document tab container.  SQL indexes are
             # identified by the editor stored on that container, so returning
