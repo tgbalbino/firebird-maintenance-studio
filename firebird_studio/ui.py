@@ -324,7 +324,7 @@ class MainWindow:
         self.apply_update_action.setEnabled(False)
         self.apply_update_action.setToolTip("Executa somente o UPDATE que está no editor após confirmação explícita.")
         self.apply_update_action.triggered.connect(self._apply_update_preview)
-        sql_button = menu_button("SQL", [("Nova janela SQL", self._new_sql_tab), ("Localizar no SQL", self.find_in_sql), ("Executar SQL", self.execute_selected), ("Executar seleção", self.execute_selection), ("Executar arquivo SQL", self.execute_script_file), ("Salvar SQL", self.save_sql_file)], "Executar comandos e gerenciar janelas SQL")
+        sql_button = menu_button("SQL", [("Nova janela SQL", self._new_sql_tab), ("Localizar no SQL", self.find_in_sql), ("Substituir no SQL", self.replace_in_sql), ("Executar SQL", self.execute_selected), ("Executar seleção", self.execute_selection), ("Executar arquivo SQL", self.execute_script_file), ("Salvar SQL", self.save_sql_file)], "Executar comandos e gerenciar janelas SQL")
         sql_button.menu().addSeparator()
         self.begin_transaction_action = QAction("Iniciar transação", self._window)
         self.begin_transaction_action.triggered.connect(self._start_transaction)
@@ -670,6 +670,35 @@ class MainWindow:
                 self.status.setText(f"Texto não encontrado: {text}")
         else:
             self.status.setText(f"Texto localizado: {text}")
+
+    def replace_in_sql(self):
+        from PySide6.QtWidgets import QInputDialog, QMessageBox
+
+        if self.editor is None:
+            return
+        old_text, accepted = QInputDialog.getText(self._window, "Substituir no SQL", "Localizar:", text=getattr(self, "_find_text", ""))
+        if not accepted or not old_text:
+            return
+        new_text, accepted = QInputDialog.getText(self._window, "Substituir no SQL", "Substituir por:")
+        if not accepted:
+            return
+        source = self.editor.toPlainText()
+        count = source.count(old_text)
+        if count == 0:
+            self.status.setText(f"Texto não encontrado: {old_text}")
+            return
+        answer = QMessageBox.question(
+            self._window,
+            "Confirmar substituição",
+            f"Substituir {count} ocorrência(s) no editor SQL?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        self.editor.setPlainText(source.replace(old_text, new_text))
+        self._find_text = new_text
+        self.status.setText(f"{count} ocorrência(s) substituída(s) no editor.")
 
     def execute_selection(self):
         if self.editor is None:
