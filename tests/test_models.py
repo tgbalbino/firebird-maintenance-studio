@@ -9,7 +9,7 @@ from firebird_studio.backup import build_gbak_args, run_gbak
 from firebird_studio.schema import SchemaChange, SchemaObject, compare_schema, generate_migration
 from firebird_studio.catalog import _field_type
 from firebird_studio.plan import build_plan_script, parse_plan, suggest_improvements
-from firebird_studio.health import build_findings, inspect_health
+from firebird_studio.health import build_findings, inspect_health, _optional_database_values
 from unittest.mock import patch
 
 
@@ -148,3 +148,14 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(report.metrics["page_size"], 8192)
         self.assertEqual(report.metrics["pages"], 10)
         self.assertTrue(connection.closed)
+
+    def test_health_optional_metrics_use_one_projection(self):
+        connection = object()
+        values = (8192, 10, 13, 0, 0, 1, 20)
+        with patch("firebird_studio.health._fetch_one", return_value=values) as fetch, \
+             patch("firebird_studio.health._optional_database_value") as fallback:
+            result = _optional_database_values(connection)
+        self.assertEqual(result["page_size"], 8192)
+        self.assertEqual(result["sweep_interval"], 20)
+        fetch.assert_called_once()
+        fallback.assert_not_called()

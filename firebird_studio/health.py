@@ -42,6 +42,26 @@ def _optional_database_value(connection: Any, column: str) -> Any:
         return None
 
 
+def _optional_database_values(connection: Any) -> dict[str, Any]:
+    """Read optional monitoring columns in one round trip when available."""
+    columns = (
+        ("MON$PAGE_SIZE", "page_size"),
+        ("MON$PAGES", "pages"),
+        ("MON$ODS_MAJOR", "ods_major"),
+        ("MON$ODS_MINOR", "ods_minor"),
+        ("MON$READ_ONLY", "read_only"),
+        ("MON$FORCED_WRITES", "forced_writes"),
+        ("MON$SWEEP_INTERVAL", "sweep_interval"),
+    )
+    try:
+        row = _fetch_one(connection, "SELECT " + ", ".join(column for column, _key in columns) + " FROM MON$DATABASE")
+        return {key: (row[index] if index < len(row) else None) for index, (_column, key) in enumerate(columns)}
+    except Exception:
+        # Older Firebird versions may reject the whole projection when one
+        # monitoring column is unavailable; retain per-column compatibility.
+        return {key: _optional_database_value(connection, column) for column, key in columns}
+
+
 def build_findings(metrics: dict[str, Any]) -> list[HealthFinding]:
     findings: list[HealthFinding] = []
     oldest_active = metrics.get("oldest_active")
@@ -77,9 +97,7 @@ def inspect_health(profile: ConnectionProfile, password: str | None = None) -> H
             attachment = _fetch_one(connection, "SELECT COUNT(*) FROM MON$ATTACHMENTS")
         except Exception:
             attachment = (0,)
-        optional_values: dict[str, Any] = {}
-        for column, key in (("MON$PAGE_SIZE", "page_size"), ("MON$PAGES", "pages"), ("MON$ODS_MAJOR", "ods_major"), ("MON$ODS_MINOR", "ods_minor"), ("MON$READ_ONLY", "read_only"), ("MON$FORCED_WRITES", "forced_writes"), ("MON$SWEEP_INTERVAL", "sweep_interval")):
-            optional_values[key] = _optional_database_value(connection, column)
+        optional_values = _optional_database_values(connection)
     metrics = {
         "oldest_transaction": database[0] if len(database) > 0 else None,
         "oldest_active": database[1] if len(database) > 1 else None,
