@@ -588,14 +588,22 @@ class MainWindow:
         dialog.exec()
 
     def show_about(self):
-        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout, QFrame
         from PySide6.QtCore import Qt
 
         dialog = QDialog(self._window)
         dialog.setWindowTitle("Sobre o Firebird Maintenance Studio")
-        dialog.resize(520, 280)
+        dialog.resize(560, 330)
         layout = QVBoxLayout(dialog)
-        title = QLabel("<h2>Firebird Maintenance Studio</h2>")
+        header = QFrame()
+        header.setObjectName("appHeader")
+        header_layout = QVBoxLayout(header)
+        header_layout.setContentsMargins(16, 12, 16, 12)
+        title = QLabel("Firebird Maintenance Studio")
+        title.setObjectName("appTitle")
+        subtitle = QLabel("Workspace de manutenção · SQL, dados, diagnóstico e operações")
+        subtitle.setObjectName("appSubtitle")
+        header_layout.addWidget(title); header_layout.addWidget(subtitle)
         description = QLabel(
             "Ferramenta open source para manutenção de bancos Firebird 2.5, 3, 4 e 5.<br>"
             "Editor SQL, múltiplos bancos, catálogo de objetos, plano, saúde, sessões, backup, restore e comparação."
@@ -605,7 +613,7 @@ class MainWindow:
         details.setTextFormat(Qt.RichText)
         link = QLabel('<a href="https://github.com/tgbalbino/firebird-maintenance-studio">github.com/tgbalbino/firebird-maintenance-studio</a>')
         link.setOpenExternalLinks(True)
-        layout.addWidget(title); layout.addWidget(description); layout.addWidget(details); layout.addWidget(link)
+        layout.addWidget(header); layout.addWidget(description); layout.addWidget(details); layout.addWidget(link)
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
         buttons.rejected.connect(dialog.reject); layout.addWidget(buttons)
         dialog.exec()
