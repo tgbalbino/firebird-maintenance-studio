@@ -124,6 +124,12 @@ try:
                 sub.showNormal()
             self._on_activated(self.activeSubWindow())
 
+        def activate_next(self):
+            self.activateNextSubWindow()
+
+        def activate_previous(self):
+            self.activatePreviousSubWindow()
+
         def _on_close_requested(self, sub):
             widget = sub.widget()
             index = self.indexOf(widget)

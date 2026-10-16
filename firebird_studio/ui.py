@@ -107,7 +107,7 @@ class MainWindow:
             QMenu,
         )
         from PySide6.QtCore import QObject, QThread, Signal, Slot, QSettings, Qt, QTimer
-        from PySide6.QtGui import QAction
+        from PySide6.QtGui import QAction, QKeySequence, QShortcut
 
         self._window = QMainWindow()
         self.show = self._window.show
@@ -171,6 +171,10 @@ class MainWindow:
         from .sql_documents import SqlDocumentManager
         from .mdi import SqlMdiArea
         self.sql_tabs = SqlMdiArea(); self.sql_tabs.setMinimumHeight(320); self.sql_tabs.setTabsClosable(True); self.sql_tabs.tabCloseRequested.connect(self.close_sql_tab)
+        self._mdi_next_shortcut = QShortcut(QKeySequence("Ctrl+Tab"), self._window)
+        self._mdi_next_shortcut.activated.connect(self.sql_tabs.activate_next)
+        self._mdi_previous_shortcut = QShortcut(QKeySequence("Ctrl+Shift+Tab"), self._window)
+        self._mdi_previous_shortcut.activated.connect(self.sql_tabs.activate_previous)
         self.sql_documents = SqlDocumentManager(self.sql_tabs)
         self.sql_tabs.currentChanged.connect(self._sync_editor)
         self.query_profile_combo = QComboBox()
@@ -331,7 +335,7 @@ class MainWindow:
         sql_button.menu().addAction(self.begin_transaction_action)
         sql_button.menu().addAction(self.commit_transaction_action)
         sql_button.menu().addAction(self.rollback_transaction_action)
-        window_button = menu_button("Janelas", [("Selecionar consulta aberta", self._choose_sql_window), ("Fechar consulta atual", lambda: self.close_sql_tab(self.sql_tabs.currentIndex())), ("Fechar todas as consultas", self._close_all_sql_tabs)], "Alternar e fechar consultas SQL abertas")
+        window_button = menu_button("Janelas", [("Selecionar consulta aberta", self._choose_sql_window), ("Próxima consulta", self.sql_tabs.activate_next), ("Consulta anterior", self.sql_tabs.activate_previous), ("Fechar consulta atual", lambda: self.close_sql_tab(self.sql_tabs.currentIndex())), ("Fechar todas as consultas", self._close_all_sql_tabs)], "Alternar e fechar consultas SQL abertas")
         window_button.menu().addSeparator()
         window_button.menu().addAction("Organizar em cascata", self.sql_tabs.cascade_windows)
         window_button.menu().addAction("Organizar lado a lado", self.sql_tabs.tile_windows)
