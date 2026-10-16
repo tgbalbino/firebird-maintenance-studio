@@ -169,7 +169,8 @@ class MainWindow:
         self.object_tree.setMinimumWidth(240)
         self.object_tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         from .sql_documents import SqlDocumentManager
-        self.sql_tabs = QTabWidget(); self.sql_tabs.setMinimumHeight(320); self.sql_tabs.setTabsClosable(True); self.sql_tabs.tabCloseRequested.connect(self.close_sql_tab)
+        from .mdi import SqlMdiArea
+        self.sql_tabs = SqlMdiArea(); self.sql_tabs.setMinimumHeight(320); self.sql_tabs.setTabsClosable(True); self.sql_tabs.tabCloseRequested.connect(self.close_sql_tab)
         self.sql_documents = SqlDocumentManager(self.sql_tabs)
         self.sql_tabs.currentChanged.connect(self._sync_editor)
         self.query_profile_combo = QComboBox()
