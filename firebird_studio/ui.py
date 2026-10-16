@@ -142,6 +142,7 @@ class MainWindow:
         self._operation_thread = None
         self._operation_worker = None
         self._operation_name = ""
+        self._operation_started_at = 0.0
         self.connected_profiles = set()
         self._last_tree_activation_key = None
         self._last_tree_activation_time = 0.0
@@ -2008,6 +2009,7 @@ class MainWindow:
         worker = OperationWorker(operation)
         worker.moveToThread(thread)
         self._operation_name = name
+        self._operation_started_at = time.monotonic()
         self._operation_thread = thread
         self._operation_worker = worker
         thread.started.connect(worker.run)
@@ -2023,9 +2025,13 @@ class MainWindow:
         return True
 
     def _clear_background_operation(self):
+        elapsed = time.monotonic() - self._operation_started_at if self._operation_started_at else 0.0
+        if elapsed:
+            self.status.setText(f"{self.status.text()} · duração {elapsed:.1f}s")
         self._operation_thread = None
         self._operation_worker = None
         self._operation_name = ""
+        self._operation_started_at = 0.0
         if hasattr(self, "operation_progress"):
             self.operation_progress.setVisible(False)
 
