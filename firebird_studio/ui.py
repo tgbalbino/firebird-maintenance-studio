@@ -2178,7 +2178,7 @@ class MainWindow:
         self.next_data_button.setText(f"Próximas {page_size}")
         self.next_data_button.setEnabled(len(result.rows) == page_size)
         self.data_page_label.setText(f"Página {page + 1} · linhas {start}-{start + max(0, len(result.rows) - 1)}")
-        self.result_summary.setText(f"Dados: {len(result.rows)} linha(s) · página {page + 1} · {profile.name} · {profile.host}:{profile.port}")
+        self.result_summary.setText(f"Dados: {len(result.rows)} linha(s) · página {page + 1}")
         self.status.setText(f"Dados carregados: {len(result.rows)} linha(s).")
         return True
 
@@ -2497,8 +2497,7 @@ class MainWindow:
         self._add_query_history(sql_text)
         suffix = " Transação aberta; escolha Commit ou Rollback." if explicit_transaction and result.ok else (" Alterações confirmadas." if changes_data and commit and result.ok else (" Alterações desfeitas (modo seguro)." if changes_data and result.ok else ""))
         self.status.setText(f"{result.message} ({result.elapsed_ms:.1f} ms)." + suffix)
-        profile_state = f"{profile.name} · {profile.host}:{profile.port}"
-        self.result_summary.setText(f"Resultado: {'OK' if result.ok else 'falha'} · {len(result.rows)} linha(s) · {result.elapsed_ms:.1f} ms · {profile_state}")
+        self.result_summary.setText(f"Resultado: {'OK' if result.ok else 'falha'} · {len(result.rows)} linha(s) · {result.elapsed_ms:.1f} ms")
         self._show_sql_result()
         self._table_original_rows = []
         if hasattr(self, "edit_data_action"):
