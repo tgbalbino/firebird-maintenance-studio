@@ -39,7 +39,7 @@ def _exportable_columns(connection: Any, table_name: str) -> tuple[list[str], li
         cursor = connection.cursor()
         cursor.execute(f"""
             SELECT TRIM(rf.RDB$FIELD_NAME), COALESCE(rf.RDB$UPDATE_FLAG, 1),
-                   f.RDB$FIELD_COMPUTED_SOURCE, f.RDB$IDENTITY_TYPE
+                   f.RDB$COMPUTED_SOURCE, f.RDB$IDENTITY_TYPE
             FROM RDB$RELATION_FIELDS rf
             JOIN RDB$FIELDS f ON f.RDB$FIELD_NAME = rf.RDB$FIELD_SOURCE
             WHERE rf.RDB$RELATION_NAME = '{safe_name}'
@@ -50,7 +50,7 @@ def _exportable_columns(connection: Any, table_name: str) -> tuple[list[str], li
         cursor = connection.cursor()
         cursor.execute(f"""
             SELECT TRIM(rf.RDB$FIELD_NAME), COALESCE(rf.RDB$UPDATE_FLAG, 1),
-                   f.RDB$FIELD_COMPUTED_SOURCE
+                   f.RDB$COMPUTED_SOURCE
             FROM RDB$RELATION_FIELDS rf
             JOIN RDB$FIELDS f ON f.RDB$FIELD_NAME = rf.RDB$FIELD_SOURCE
             WHERE rf.RDB$RELATION_NAME = '{safe_name}'
