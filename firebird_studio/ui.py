@@ -1002,6 +1002,7 @@ class MainWindow:
             lambda position, table=result_table: self._result_header_context_menu(table, position)
         )
         document_tabs = QTabWidget()
+        document_tabs.setObjectName("sqlDocumentTabs")
         document_tabs.setDocumentMode(True)
         document_tabs.setUsesScrollButtons(True)
         document_tabs.addTab(editor, "SQL")
