@@ -1857,7 +1857,7 @@ class MainWindow:
         # that lookup can block in packaged Windows builds before the worker
         # starts. Only use the credential fallback when no profile item was
         # selected (for example when opening directly from the form).
-        password = self.password.text() if 0 <= selected < len(self.profiles) else self._password_for(profile)
+        password = self._stored_password(profile.name) if 0 <= selected < len(self.profiles) else self._password_for(profile)
         self._log_event("Senha preparada para abrir", profile=profile.name, password_present=bool(password), selected=selected)
         return (profile, password), ""
 
@@ -1871,7 +1871,7 @@ class MainWindow:
             self._log_event("Nenhuma janela SQL aberta; criando janela para conexão")
             self._new_sql_tab()
         current_item = self.profile_list.currentItem()
-        self._log_event("open_profile chamado", current_item=current_item.text(0) if current_item else "", form_name=self.name.text(), form_database=self.database.text())
+        self._log_event("open_profile chamado", current_item=current_item.text(0) if current_item else "", form_name=current_item.text(0) if current_item else "", form_database="")
         request, error = self._profile_open_request(selected_index)
         if request is None:
             self.status.setText(error)
@@ -2498,8 +2498,12 @@ class MainWindow:
         self.sidebar_status.setToolTip(f"Bancos conectados: {connected_count}. Cadastros disponíveis: {len(self.profiles)}.")
         self.target_profile.clear()
         self.target_profile.addItems([p.name for p in self.profiles])
+        live_combos = []
         for combo in self._query_profile_combos:
-            editor = combo.property("sql_editor")
+            try:
+                editor = combo.property("sql_editor")
+            except RuntimeError:
+                continue
             current_query_name = editor.property("query_profile") if editor is not None else ""
             combo.blockSignals(True)
             combo.clear()
@@ -2509,6 +2513,8 @@ class MainWindow:
                 if index >= 0:
                     combo.setCurrentIndex(index)
             combo.blockSignals(False)
+            live_combos.append(combo)
+        self._query_profile_combos = live_combos
         self._filter_tree(self.tree_filter.text())
 
     def _tree_connected_filter_changed(self, checked: bool):
@@ -2669,13 +2675,23 @@ class MainWindow:
     def select_profile(self, index: int):
         if index < 0 or index >= len(self.profiles): return
         p = self.profiles[index]
-        for widget, value in ((self.name, p.name), (self.host, p.host), (self.database, p.database), (self.user, p.user), (self.role, p.role), (self.charset, p.charset), (self.isql_path, p.isql_path), (self.gbak_path, p.gbak_path)):
-            widget.setText(value)
+        self._selected_profile_index = index
+        # These legacy fields are no longer displayed on the main window and
+        # may have been destroyed with an old SQL form.  Selecting a tree item
+        # must still work; the saved profile object is the source of truth.
+        fields = ((getattr(self, "name", None), p.name), (getattr(self, "host", None), p.host), (getattr(self, "database", None), p.database), (getattr(self, "user", None), p.user), (getattr(self, "role", None), p.role), (getattr(self, "charset", None), p.charset), (getattr(self, "isql_path", None), p.isql_path), (getattr(self, "gbak_path", None), p.gbak_path))
+        for widget, value in fields:
+            try:
+                if widget is not None:
+                    widget.setText(value)
+            except RuntimeError:
+                pass
         stored_password = self._stored_password(p.name)
-        self.password.setText(stored_password or "")
-        self.save_password.setChecked(bool(stored_password))
-        self.favorite.setChecked(bool(p.favorite))
-        self.port.setValue(p.port); self.version.setCurrentText(p.version)
+        for action in (lambda: self.password.setText(stored_password or ""), lambda: self.save_password.setChecked(bool(stored_password)), lambda: self.favorite.setChecked(bool(p.favorite)), lambda: self.port.setValue(p.port), lambda: self.version.setCurrentText(p.version)):
+            try:
+                action()
+            except RuntimeError:
+                pass
         self._update_query_connection_status()
 
     def _profile_from_form(self):
