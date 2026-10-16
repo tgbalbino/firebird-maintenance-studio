@@ -1074,7 +1074,7 @@ class MainWindow:
         self.read_only_mode = execution_controls[1] if len(execution_controls) > 1 else None
 
     def _create_sql_toolbar(self, editor):
-        from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QPushButton, QToolButton, QWidget, QMenu
+        from PySide6.QtWidgets import QCheckBox, QFrame, QHBoxLayout, QPushButton, QToolButton, QWidget, QMenu
         sql_toolbar = QWidget()
         toolbar_layout = QHBoxLayout(sql_toolbar)
         toolbar_layout.setContentsMargins(4, 4, 4, 4)
@@ -1113,8 +1113,15 @@ class MainWindow:
         read_only_mode = QCheckBox("Somente leitura")
         read_only_mode.setObjectName("toolbarOption")
         read_only_mode.setToolTip("Bloqueia DML, DDL, EXECUTE, GRANT e REVOKE nesta sessão SQL.")
-        for button in (execute_button, result_button, more_button, commit_changes, read_only_mode):
+        for button in (execute_button, result_button, more_button):
             toolbar_layout.addWidget(button)
+        separator = QFrame()
+        separator.setObjectName("toolbarSeparator")
+        separator.setFrameShape(QFrame.VLine)
+        separator.setFrameShadow(QFrame.Plain)
+        toolbar_layout.addWidget(separator)
+        toolbar_layout.addWidget(commit_changes)
+        toolbar_layout.addWidget(read_only_mode)
         toolbar_layout.addStretch()
         return sql_toolbar, (commit_action, rollback_action), (commit_changes, read_only_mode)
 
