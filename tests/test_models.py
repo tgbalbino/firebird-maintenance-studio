@@ -19,7 +19,7 @@ from firebird_studio.health import build_findings, inspect_health, _optional_dat
 from firebird_studio.diagnostics import create_support_package
 from firebird_studio.ui_logging import log_event
 from firebird_studio.sql_documents import SqlDocumentManager
-from firebird_studio.tree_utils import object_group_label
+from firebird_studio.tree_utils import group_objects, object_group_label
 from firebird_studio.sql_completion import completion_words
 from unittest.mock import patch
 
@@ -37,6 +37,11 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(object_group_label("TABLE"), "Tabelas")
         self.assertEqual(object_group_label("CONSTRAINT"), "Restrições")
         self.assertEqual(object_group_label("CUSTOM"), "Custom")
+
+    def test_tree_objects_are_sorted_by_name(self):
+        objects = [SchemaObject("TABLE", "zebra", ""), SchemaObject("TABLE", "Alpha", "")]
+        grouped = group_objects(objects)
+        self.assertEqual([item.name for item in grouped["Tabelas"]], ["Alpha", "zebra"])
 
     def test_sql_document_manager_titles_and_close(self):
         class Tabs:

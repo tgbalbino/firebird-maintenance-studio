@@ -12,6 +12,14 @@ def object_group_label(kind: str) -> str:
     return GROUP_LABELS.get(clean_kind, clean_kind.title())
 
 
+def group_objects(objects):
+    """Group schema objects by display label in stable name order."""
+    groups = {}
+    for obj in objects:
+        groups.setdefault(object_group_label(getattr(obj, "kind", "")), []).append(obj)
+    return {label: sorted(items, key=lambda item: str(getattr(item, "name", "")).casefold()) for label, items in groups.items()}
+
+
 def make_database_icon(connected: bool):
     from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 
@@ -29,9 +37,7 @@ def make_database_icon(connected: bool):
 def populate_profile_children(profile_item, objects) -> None:
     from PySide6.QtWidgets import QTreeWidgetItem
 
-    groups = {}
-    for obj in objects:
-        groups.setdefault(object_group_label(getattr(obj, "kind", "")), []).append(obj)
+    groups = group_objects(objects)
     for label in sorted(groups):
         parent = QTreeWidgetItem([f"{label} ({len(groups[label])})"])
         profile_item.addChild(parent)
