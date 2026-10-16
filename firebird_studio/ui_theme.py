@@ -18,6 +18,8 @@ LIGHT_STYLE += " QTableWidget { alternate-background-color: #f3f6fa; } QTableWid
 DARK_STYLE += " QTableWidget { alternate-background-color: #272d39; } QTableWidget::item:hover { background: #303b4e; }"
 LIGHT_STYLE += " QTabWidget::pane { border: 1px solid #b8c2d1; border-radius: 4px; top: -1px; }"
 DARK_STYLE += " QTabWidget::pane { border: 1px solid #667085; border-radius: 4px; top: -1px; }"
+LIGHT_STYLE += " QPushButton#primaryAction { background: #1d4ed8; color: #ffffff; border-color: #173ea5; font-weight: 700; } QPushButton#primaryAction:hover { background: #1e40af; } QPushButton#secondaryAction { background: #ffffff; } QProgressBar#operationProgress { border: none; border-radius: 4px; background: #dbe5f2; } QProgressBar#operationProgress::chunk { border-radius: 4px; background: #1d4ed8; }"
+DARK_STYLE += " QPushButton#primaryAction { background: #2563eb; color: #ffffff; border-color: #60a5fa; font-weight: 700; } QPushButton#primaryAction:hover { background: #1d4ed8; } QPushButton#secondaryAction { background: #2d3748; } QProgressBar#operationProgress { border: none; border-radius: 4px; background: #303b4e; } QProgressBar#operationProgress::chunk { border-radius: 4px; background: #60a5fa; }"
 
 
 def apply_theme(theme: str) -> None:
