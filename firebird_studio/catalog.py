@@ -50,6 +50,17 @@ def _field_type(field_type: int, length: int, scale: int, precision: int | None,
     return name
 
 
+def _append_catalog_objects(objects: list[SchemaObject], connection: Any, kind: str, query: str) -> None:
+    """Append lightweight catalog entries while tolerating version gaps."""
+    try:
+        rows = _rows(connection, query)
+    except Exception:
+        return
+    for row in rows:
+        clean_name = _text(row[0])
+        objects.append(SchemaObject(kind, clean_name, f"-- {kind} {clean_name}\n-- Use 'Ler estrutura' para carregar o DDL completo."))
+
+
 def load_schema(profile: ConnectionProfile, password: str | None = None, detailed: bool = True) -> list[SchemaObject]:
     """Extract a conservative schema snapshot using common Firebird catalog tables."""
     objects: list[SchemaObject] = []
@@ -67,25 +78,10 @@ def load_schema(profile: ConnectionProfile, password: str | None = None, detaile
                 ("EXCEPTION", "SELECT TRIM(RDB$EXCEPTION_NAME) FROM RDB$EXCEPTIONS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 ORDER BY RDB$EXCEPTION_NAME"),
             )
             for kind, query in queries:
-                try:
-                    for (name,) in _rows(connection, query):
-                        clean_name = _text(name)
-                        objects.append(SchemaObject(kind, clean_name, f"-- {kind} {clean_name}\n-- Use 'Ler estrutura' para carregar o DDL completo."))
-                except Exception:
-                    continue
+                _append_catalog_objects(objects, connection, kind, query)
             if profile.version != "2.5":
-                try:
-                    for (name,) in _rows(connection, "SELECT TRIM(RDB$FUNCTION_NAME) FROM RDB$FUNCTIONS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 ORDER BY RDB$FUNCTION_NAME"):
-                        clean_name = _text(name)
-                        objects.append(SchemaObject("FUNCTION", clean_name, f"-- FUNCTION {clean_name}\n-- Use 'Ler estrutura' para carregar o DDL completo."))
-                except Exception:
-                    pass
-                try:
-                    for (name,) in _rows(connection, "SELECT TRIM(RDB$PACKAGE_NAME) FROM RDB$PACKAGES ORDER BY RDB$PACKAGE_NAME"):
-                        clean_name = _text(name)
-                        objects.append(SchemaObject("PACKAGE", clean_name, f"-- PACKAGE {clean_name}\n-- Use 'Ler estrutura' para carregar o DDL completo."))
-                except Exception:
-                    pass
+                _append_catalog_objects(objects, connection, "FUNCTION", "SELECT TRIM(RDB$FUNCTION_NAME) FROM RDB$FUNCTIONS WHERE COALESCE(RDB$SYSTEM_FLAG,0)=0 ORDER BY RDB$FUNCTION_NAME")
+                _append_catalog_objects(objects, connection, "PACKAGE", "SELECT TRIM(RDB$PACKAGE_NAME) FROM RDB$PACKAGES ORDER BY RDB$PACKAGE_NAME")
             return objects
         try:
             table_rows = _rows(connection, """
