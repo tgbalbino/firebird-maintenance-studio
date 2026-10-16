@@ -60,7 +60,7 @@ try:
             sub.setWidget(container)
             sub.closed.connect(self._on_close_requested)
             sub.resize(760, 480)
-            sub.show()
+            sub.showMaximized()
             self.setActiveSubWindow(sub)
             # ``widget`` is the document tab container.  SQL indexes are
             # identified by the editor stored on that container, so returning
@@ -128,7 +128,7 @@ try:
             sub = self._subwindow(index)
             if sub is not None:
                 self.setActiveSubWindow(sub)
-                sub.showNormal()
+                sub.showMaximized()
                 sub.raise_()
 
         def setCurrentWidget(self, widget):
@@ -180,7 +180,8 @@ try:
 
         def restore_windows(self):
             for sub in self.subWindowList():
-                sub.showNormal()
+                if sub.property("sql_document"):
+                    sub.showMaximized()
             self._on_activated(self.activeSubWindow())
 
         def activate_next(self):
@@ -196,6 +197,8 @@ try:
                 self.tabCloseRequested.emit(index)
 
         def _on_activated(self, _sub):
+            if _sub is not None and _sub.property("sql_document"):
+                _sub.showMaximized()
             self.currentChanged.emit(self.currentIndex())
 
 except ImportError:  # pragma: no cover - allows headless model imports

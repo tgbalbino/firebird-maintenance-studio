@@ -589,11 +589,6 @@ class MainWindow:
         window_menu.addAction("Fechar consulta atual", lambda: self.close_sql_tab(self.sql_tabs.currentIndex()))
         window_menu.addAction("Fechar todas as consultas", self._close_all_sql_tabs)
         window_menu.addSeparator()
-        window_menu.addAction("Organizar em cascata", self.sql_tabs.cascade_windows)
-        window_menu.addAction("Organizar lado a lado", self.sql_tabs.tile_windows)
-        window_menu.addAction("Maximizar/restaurar consulta atual", self.sql_tabs.toggle_maximize_current)
-        window_menu.addAction("Restaurar consultas", self.sql_tabs.restore_windows)
-        window_menu.addSeparator()
         window_menu.addAction(self.menu_always_top_action)
 
         database_menu = menu_bar.addMenu("Banco")
