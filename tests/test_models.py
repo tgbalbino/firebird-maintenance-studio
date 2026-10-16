@@ -98,6 +98,25 @@ class ProfileTests(unittest.TestCase):
             self.assertFalse(result.ok)
             self.assertIn("já existe", result.error)
 
+    def test_backup_refuses_missing_destination_folder(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "sample.fdb"
+            database.write_text("db")
+            profile = ConnectionProfile("Local", database=str(database))
+            result = run_gbak(profile, "backup", database, root / "missing" / "sample.fbk", "secret", root / "gbak.exe")
+            self.assertFalse(result.ok)
+            self.assertIn("pasta de destino não existe", result.error)
+
+    def test_backup_refuses_same_source_and_destination(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "sample.fdb"
+            database.write_text("db")
+            profile = ConnectionProfile("Local", database=str(database))
+            result = run_gbak(profile, "backup", database, database, "secret", database.parent / "gbak.exe")
+            self.assertFalse(result.ok)
+            self.assertIn("diferente do banco", result.error)
+
     def test_schema_diff_and_migration_preview(self):
         source = [
             SchemaObject("TABLE", "CUSTOMER", "CREATE TABLE CUSTOMER (ID INTEGER NOT NULL)"),

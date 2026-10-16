@@ -52,6 +52,12 @@ def run_gbak(
         return BackupResult(False, -1, "", " ".join(errors), operation)
     if operation == "restore" and target.exists():
         return BackupResult(False, -1, "", "O destino já existe; escolha um novo arquivo para evitar substituição acidental.", operation)
+    if operation == "backup" and source.exists() and source.resolve() == target.resolve():
+        return BackupResult(False, -1, "", "O arquivo de backup deve ser diferente do banco de origem.", operation)
+    if not target.parent.exists():
+        return BackupResult(False, -1, "", f"A pasta de destino não existe: {target.parent}", operation)
+    if target.exists() and target.is_dir():
+        return BackupResult(False, -1, "", f"O destino precisa ser um arquivo, não uma pasta: {target}", operation)
     gbak_path = Path(str(gbak_path).strip().strip('"')).expanduser()
     if gbak_path.is_dir():
         gbak_path = gbak_path / "gbak.exe"
