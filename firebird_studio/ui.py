@@ -651,15 +651,15 @@ class MainWindow:
         self.profile_box.setVisible(True)
         self.profile_toggle.setText("Ocultar dados do cadastro")
 
-    def _show_profile_dialog(self, index: int):
-        """Edit one database profile from the tree context menu."""
-        if index < 0 or index >= len(self.profiles):
+    def _show_profile_dialog(self, index: int | None = None):
+        """Create or edit a profile in a modal configuration window."""
+        if index is not None and (index < 0 or index >= len(self.profiles)):
             return
-        from PySide6.QtWidgets import QCheckBox, QDialog, QDialogButtonBox, QFormLayout, QLineEdit, QSpinBox, QVBoxLayout
+        from PySide6.QtWidgets import QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QLineEdit, QSpinBox, QVBoxLayout
 
-        profile = self.profiles[index]
+        profile = self.profiles[index] if index is not None else ConnectionProfile(name="", version="5")
         dialog = QDialog(self._window)
-        dialog.setWindowTitle(f"Dados do cadastro — {profile.name}")
+        dialog.setWindowTitle(f"{'Novo perfil' if index is None else 'Dados do cadastro — ' + profile.name}")
         dialog.setModal(True)
         dialog.resize(560, 520)
         form = QFormLayout()
@@ -668,7 +668,7 @@ class MainWindow:
         host = QLineEdit(profile.host)
         port = QSpinBox(); port.setRange(1, 65535); port.setValue(profile.port)
         database = QLineEdit(profile.database)
-        version = QLineEdit(profile.version); version.setReadOnly(True)
+        version = QComboBox(); version.addItems(SUPPORTED_VERSIONS); version.setCurrentText(profile.version)
         user = QLineEdit(profile.user)
         role = QLineEdit(profile.role)
         password = QLineEdit(self._stored_password(profile.name) or ""); password.setEchoMode(QLineEdit.Password)
@@ -691,10 +691,14 @@ class MainWindow:
 
         # Feed the existing validation and credential handling path so the
         # modal and the normal profile workflow behave identically.
-        self.profile_list.setCurrentItem(self.profile_list.topLevelItem(index))
+        if index is None:
+            self.profile_list.clearSelection()
+            self.profile_list.setCurrentItem(None)
+        else:
+            self.profile_list.setCurrentItem(self.profile_list.topLevelItem(index))
         for widget, value in ((self.name, name.text()), (self.host, host.text()), (self.database, database.text()), (self.user, user.text()), (self.role, role.text()), (self.charset, charset.text()), (self.isql_path, isql_path.text()), (self.gbak_path, gbak_path.text())):
             widget.setText(value)
-        self.port.setValue(port.value()); self.version.setCurrentText(version.text()); self.password.setText(password.text()); self.save_password.setChecked(save_password.isChecked()); self.favorite.setChecked(favorite.isChecked())
+        self.port.setValue(port.value()); self.version.setCurrentText(version.currentText()); self.password.setText(password.text()); self.save_password.setChecked(save_password.isChecked()); self.favorite.setChecked(favorite.isChecked())
         self.save_profile()
 
     def _set_table_data_enabled(self, enabled: bool):
@@ -2127,7 +2131,7 @@ class MainWindow:
         self.status.setText("Objetos dos bancos recolhidos.")
 
     def new_profile(self):
-        self._show_profile_details(); self.profile_list.clearSelection(); self.name.clear(); self.database.clear(); self.role.clear(); self.password.clear(); self.save_password.setChecked(False); self.favorite.setChecked(False); self.status.setText("Novo perfil.")
+        self._show_profile_dialog()
         if hasattr(self, "welcome_banner"):
             self.welcome_banner.setVisible(False)
 
