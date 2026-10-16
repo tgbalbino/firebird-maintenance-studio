@@ -451,11 +451,11 @@ class MainWindow:
         self.operation_progress.setVisible(False)
         right_layout.addWidget(self.operation_progress)
         right_layout.addWidget(self.status)
-        splitter = QSplitter(Qt.Horizontal); splitter.addWidget(left); splitter.addWidget(right)
+        splitter = QSplitter(Qt.Horizontal); splitter.addWidget(left); splitter.addWidget(right); splitter.setObjectName("mainSplitter")
         self.main_splitter = splitter
         splitter.setChildrenCollapsible(False)
         splitter.setHandleWidth(10)
-        splitter.setStyleSheet("QSplitter::handle:horizontal { background-color: #9aa3ad; border-left: 1px solid #606872; border-right: 1px solid #606872; }")
+        splitter.setStyleSheet("QSplitter#mainSplitter::handle:horizontal { border-left: 1px solid transparent; border-right: 1px solid transparent; }")
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
         splitter.splitterMoved.connect(lambda _position, _index: self._save_splitter_state(splitter))
