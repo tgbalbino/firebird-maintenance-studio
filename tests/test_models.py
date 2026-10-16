@@ -353,6 +353,23 @@ class ProfileTests(unittest.TestCase):
         self.assertIn("CHECK (VALUE <> '')", obj.ddl)
         self.assertIn("NOT NULL", obj.ddl)
 
+    def test_index_definition_includes_unique_direction_and_segments(self):
+        class Cursor:
+            def __init__(self): self.query = ""
+            def execute(self, query): self.query = query
+            def fetchall(self):
+                if "RDB$EXPRESSION_SOURCE" in self.query:
+                    return [("CLIENTES", 1, 1, None)]
+                return [("CODIGO",), ("UF",)]
+        class Connection:
+            def cursor(self): return Cursor()
+        class Database:
+            def __enter__(self): return Connection()
+            def __exit__(self, *_args): return False
+        with patch("firebird_studio.catalog.open_database", return_value=Database()):
+            obj = load_object_definition(ConnectionProfile("Local", database="sample.fdb", version="2.5"), "secret", "INDEX", "UNQ1_REGIAO")
+        self.assertEqual(obj.ddl, 'CREATE UNIQUE DESCENDING INDEX "UNQ1_REGIAO" ON "CLIENTES" ("CODIGO", "UF");')
+
     def test_plan_is_plan_only_and_tree_has_nodes(self):
         script = build_plan_script("select * from CUSTOMER where ID = 1", "5")
         self.assertIn("SET PLANONLY ON", script)

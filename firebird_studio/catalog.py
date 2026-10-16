@@ -371,6 +371,49 @@ def load_object_definition(profile: ConnectionProfile, password: str | None, kin
                     clauses.append("NOT NULL")
                 return SchemaObject(clean_kind, name, " ".join(clauses) + ";")
         return SchemaObject(clean_kind, name, f'-- DOMAIN {name}\n-- Não foi possível obter a definição no catálogo.')
+    if clean_kind == "INDEX":
+        with open_database(profile, password) as connection:
+            try:
+                rows = _rows(connection, f"""
+                    SELECT TRIM(RDB$RELATION_NAME), COALESCE(RDB$UNIQUE_FLAG, 0),
+                           COALESCE(RDB$INDEX_TYPE, 0), RDB$EXPRESSION_SOURCE
+                    FROM RDB$INDICES
+                    WHERE RDB$INDEX_NAME = '{safe_name}'
+                """)
+            except Exception:
+                try:
+                    rows = _rows(connection, f"""
+                        SELECT TRIM(RDB$RELATION_NAME), COALESCE(RDB$UNIQUE_FLAG, 0),
+                               COALESCE(RDB$INDEX_TYPE, 0), NULL
+                        FROM RDB$INDICES
+                        WHERE RDB$INDEX_NAME = '{safe_name}'
+                    """)
+                except Exception:
+                    rows = []
+            if rows:
+                relation, unique_flag, index_type, expression = rows[0]
+                relation = _text(relation)
+                try:
+                    fields = [_text(row[0]) for row in _rows(connection, f"""
+                        SELECT TRIM(RDB$FIELD_NAME)
+                        FROM RDB$INDEX_SEGMENTS
+                        WHERE RDB$INDEX_NAME = '{safe_name}'
+                        ORDER BY RDB$FIELD_POSITION
+                    """) if row[0]]
+                except Exception:
+                    fields = []
+                unique_prefix = "UNIQUE " if unique_flag else ""
+                direction = "DESCENDING " if int(index_type or 0) else ""
+                if expression:
+                    expression_text = _text(expression).rstrip(";")
+                    ddl = f'CREATE {unique_prefix}INDEX "{name}" ON "{relation}" COMPUTED BY ({expression_text});'
+                elif fields:
+                    quoted_fields = ", ".join(f'"{field}"' for field in fields)
+                    ddl = f'CREATE {unique_prefix}{direction}INDEX "{name}" ON "{relation}" ({quoted_fields});'
+                else:
+                    ddl = f'-- INDEX {name}\n-- Não foi possível obter os segmentos do índice no catálogo.'
+                return SchemaObject(clean_kind, name, ddl)
+        return SchemaObject(clean_kind, name, f'-- INDEX {name}\n-- Não foi possível obter a definição no catálogo.')
     if clean_kind == "EXCEPTION":
         with open_database(profile, password) as connection:
             try:
