@@ -1616,14 +1616,15 @@ class MainWindow:
 
     def inspect_health(self):
         from .health import inspect_health
+        profile = self._profile_from_form()
+        password = self._password_for(profile)
+        self._start_background_operation("Saúde", lambda: inspect_health(profile, password), lambda result: self._finish_health_operation(result, profile))
 
-        try:
-            profile = self._profile_from_form()
-            report = inspect_health(profile, self._password_for(profile))
-        except Exception as exc:
-            self._log_event("Falha ao analisar saúde", profile=profile.name, error=str(exc))
-            self.status.setText(f"Falha ao ler saúde: {exc}")
-            self._show_message("Falha ao analisar saúde", str(exc))
+    def _finish_health_operation(self, report, profile):
+        if isinstance(report, Exception):
+            self._log_event("Falha ao analisar saúde", profile=profile.name, error=str(report))
+            self.status.setText(f"Falha ao ler saúde: {report}")
+            self._show_message("Falha ao analisar saúde", str(report))
             return
         lines = ["INDICADORES", ""] + [f"{key}: {value}" for key, value in report.metrics.items()]
         lines.extend(["", "RECOMENDAÇÕES", ""])
@@ -1661,13 +1662,15 @@ class MainWindow:
 
     def inspect_sessions(self):
         from .health import list_sessions
-        try:
-            profile = self._profile_from_form()
-            sessions = list_sessions(profile, self._password_for(profile))
-        except Exception as exc:
-            self._log_event("Falha ao ler sessões", profile=profile.name, error=str(exc))
-            self.status.setText(f"Falha ao ler sessões: {exc}")
-            self._show_message("Falha ao ler sessões", str(exc))
+        profile = self._profile_from_form()
+        password = self._password_for(profile)
+        self._start_background_operation("Sessões", lambda: list_sessions(profile, password), lambda result: self._finish_sessions_operation(result, profile))
+
+    def _finish_sessions_operation(self, sessions, profile):
+        if isinstance(sessions, Exception):
+            self._log_event("Falha ao ler sessões", profile=profile.name, error=str(sessions))
+            self.status.setText(f"Falha ao ler sessões: {sessions}")
+            self._show_message("Falha ao ler sessões", str(sessions))
             return
         lines = ["SESSÕES ATIVAS", ""]
         for session in sessions:
@@ -1678,14 +1681,15 @@ class MainWindow:
 
     def validate_database(self):
         from .maintenance import validate_database
-        try:
-            profile = self._profile_from_form()
-            gfix_path = Path(self.gbak_path.text()).with_name("gfix.exe")
-            self.status.setText("Validando integridade com gfix...")
-            result = validate_database(profile, self._password_for(profile), gfix_path)
-        except Exception as exc:
-            self.status.setText(f"Falha ao validar banco: {exc}")
-            self._show_message("Falha ao validar banco", str(exc))
+        profile = self._profile_from_form()
+        password = self._password_for(profile)
+        gfix_path = Path(self.gbak_path.text()).with_name("gfix.exe")
+        self._start_background_operation("Validação gfix", lambda: validate_database(profile, password, gfix_path), lambda result: self._finish_validation_operation(result, profile))
+
+    def _finish_validation_operation(self, result, profile):
+        if isinstance(result, Exception):
+            self.status.setText(f"Falha ao validar banco: {result}")
+            self._show_message("Falha ao validar banco", str(result))
             return
         self.editor.setPlainText(result.output + ("\n" + result.error if result.error else ""))
         self._log_event("Validação gfix concluída", ok=result.ok, error=result.error)
@@ -1705,16 +1709,30 @@ class MainWindow:
         if target is None or target.name == source.name:
             self.status.setText("Cadastre e selecione um perfil de destino diferente da origem.")
             return
-        try:
-            password = self._password_for(source)
-            target_password = self._stored_password(target.name) or password
-            source_objects = load_schema(source, password)
-            target_objects = load_schema(target, target_password)
-            changes = compare_schema(source_objects, target_objects)
-        except Exception as exc:
-            self._log_event("Falha ao comparar estruturas", source=source.name, target=target.name, error=str(exc))
-            self.status.setText(f"Falha ao comparar estruturas: {exc}")
-            self._show_message("Falha ao comparar estruturas", str(exc))
+        password = self._password_for(source)
+        target_password = self._stored_password(target.name) or password
+        self._start_background_operation(
+            "Comparação de estruturas",
+            lambda: self._compare_profiles(source, target, password, target_password),
+            lambda result: self._finish_compare_operation(result, source, target),
+        )
+
+    @staticmethod
+    def _compare_profiles(source, target, password, target_password):
+        from .catalog import load_schema
+        from .schema import compare_schema
+
+        source_objects = load_schema(source, password)
+        target_objects = load_schema(target, target_password)
+        return compare_schema(source_objects, target_objects)
+
+    def _finish_compare_operation(self, changes, source, target):
+        from .schema import generate_migration
+
+        if isinstance(changes, Exception):
+            self._log_event("Falha ao comparar estruturas", source=source.name, target=target.name, error=str(changes))
+            self.status.setText(f"Falha ao comparar estruturas: {changes}")
+            self._show_message("Falha ao comparar estruturas", str(changes))
             return
         lines = [f"ORIGEM: {source.name}", f"DESTINO: {target.name}", "", f"Diferenças: {len(changes)}", ""]
         for change in changes:
