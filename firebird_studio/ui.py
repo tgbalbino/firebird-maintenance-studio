@@ -1108,7 +1108,6 @@ class MainWindow:
         shell_layout = QVBoxLayout(shell)
         shell_layout.setContentsMargins(0, 0, 0, 0)
         shell_layout.addLayout(connection_row)
-        shell_layout.addLayout(context_row)
         shell_layout.addWidget(document_tabs, 1)
         editor_footer = QHBoxLayout()
         editor_footer.addStretch()
