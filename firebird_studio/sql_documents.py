@@ -41,10 +41,8 @@ class SqlDocumentManager:
         return True
 
     def close(self, index: int, create_editor) -> None:
-        if self._remove_at(index) and self.tabs.count() == 0:
-            create_editor()
+        self._remove_at(index)
 
     def close_all(self, create_editor) -> None:
         while self.tabs.count() > 0:
             self._remove_at(0)
-        create_editor()

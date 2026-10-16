@@ -405,7 +405,7 @@ class MainWindow:
             button.setPopupMode(QToolButton.InstantPopup)
             menu = QMenu(button)
             menu.setMinimumWidth(340)
-            menu.setStyleSheet("QMenu::item { padding: 6px 130px 6px 12px; }")
+            menu.setStyleSheet("QMenu::item { padding: 6px 48px 6px 12px; }")
             for text, callback in entries:
                 action = menu.addAction(text)
                 action.triggered.connect(callback)
@@ -1188,7 +1188,7 @@ class MainWindow:
         more_button.setPopupMode(QToolButton.InstantPopup)
         more_menu = QMenu(more_button)
         more_menu.setMinimumWidth(340)
-        more_menu.setStyleSheet("QMenu::item { padding: 6px 130px 6px 12px; }")
+        more_menu.setStyleSheet("QMenu::item { padding: 6px 48px 6px 12px; }")
         execute_action = more_menu.addAction("Executar SQL")
         execute_action.triggered.connect(lambda: (self.sql_tabs.setCurrentWidget(editor), self._execute_sql_text(editor.toPlainText())))
         selection_action = more_menu.addAction("Executar seleção")
@@ -1253,7 +1253,8 @@ class MainWindow:
 
     def _close_all_sql_tabs(self):
         self.sql_documents.close_all(self._new_sql_tab)
-        self.status.setText("Todas as consultas foram fechadas; uma nova consulta vazia foi criada.")
+        self.editor = None
+        self.status.setText("Todas as janelas SQL foram fechadas.")
 
     def _choose_sql_window(self):
         from PySide6.QtWidgets import QInputDialog
@@ -2483,6 +2484,8 @@ class MainWindow:
         if item is None:
             return
         menu = QMenu(self._window)
+        menu.setMinimumWidth(260)
+        menu.setStyleSheet("QMenu::item { padding: 6px 18px 6px 12px; }")
         profile_index = self._profile_index_for_item(item)
         if item.parent() is None and 0 <= profile_index < len(self.profiles):
             profile = self.profiles[profile_index]
