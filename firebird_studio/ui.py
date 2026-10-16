@@ -5,6 +5,7 @@ import time
 import traceback
 
 from .models import ConnectionProfile, ProfileStore, SUPPORTED_VERSIONS
+from . import __version__
 
 
 def create_application():
@@ -493,6 +494,8 @@ class MainWindow:
     def _setup_main_menu(self):
         """Create the compact application menu for global commands."""
         menu_bar = self._window.menuBar()
+        menu_bar.setMinimumHeight(28)
+        menu_bar.setStyleSheet("QMenuBar::item { padding: 4px 8px; }")
         app_menu = menu_bar.addMenu("Aplicação")
         settings_action = app_menu.addAction("Configurações...")
         settings_action.setShortcut("Ctrl+," )
@@ -542,7 +545,8 @@ class MainWindow:
         database_menu.addAction("Restore", self.execute_restore)
 
         help_menu = menu_bar.addMenu("Ajuda")
-        help_menu.addAction("Sobre o Firebird Maintenance Studio", self.show_about)
+        help_menu.addAction("Sobre", self.show_about)
+        help_menu.addAction("Verificar atualizações...", self.check_for_updates)
 
     def _choose_history_query(self):
         if self.history_combo.count() == 0:
@@ -599,7 +603,11 @@ class MainWindow:
             "Editor SQL, múltiplos bancos, catálogo de objetos, plano, saúde, sessões, backup, restore e comparação."
         )
         description.setWordWrap(True)
-        details = QLabel("Tecnologias: Python + PySide6<br>Distribuição: Windows x64<br>Licença: MIT")
+        import sys
+        from datetime import datetime
+        build_path = Path(sys.executable if getattr(sys, "frozen", False) else __file__)
+        build_date = datetime.fromtimestamp(build_path.stat().st_mtime).strftime("%d/%m/%Y %H:%M")
+        details = QLabel(f"Versão: {__version__}<br>Compilado em: {build_date}<br>Tecnologias: Python + PySide6<br>Distribuição: Windows x64<br>Licença: MIT")
         details.setTextFormat(Qt.RichText)
         link = QPushButton("Abrir projeto no GitHub")
         link.setObjectName("aboutLink")
@@ -612,6 +620,38 @@ class MainWindow:
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
         buttons.rejected.connect(dialog.reject); layout.addWidget(buttons)
         dialog.exec()
+
+    def check_for_updates(self):
+        from PySide6.QtWidgets import QMessageBox
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+        import json
+        from urllib.request import Request, urlopen
+        from urllib.error import HTTPError, URLError
+
+        current = __version__
+        api_url = "https://api.github.com/repos/tgbalbino/firebird-maintenance-studio/releases/latest"
+        try:
+            request = Request(api_url, headers={"Accept": "application/vnd.github+json", "User-Agent": "FirebirdMaintenanceStudio"})
+            with urlopen(request, timeout=5) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            tag = str(payload.get("tag_name", "")).strip()
+            latest = tag[1:] if tag.lower().startswith("v") else tag
+            release_url = str(payload.get("html_url", "https://github.com/tgbalbino/firebird-maintenance-studio/releases"))
+            if not latest:
+                raise ValueError("A release não informou uma versão.")
+            current_key = tuple(int(part) for part in current.split(".")[:3])
+            latest_key = tuple(int(part) for part in latest.split(".")[:3])
+        except (OSError, ValueError, TypeError, json.JSONDecodeError, HTTPError, URLError) as exc:
+            self._log_event("Falha ao verificar atualização", error=str(exc))
+            self._show_message("Atualizações", f"Não foi possível consultar o GitHub.\n\nVersão instalada: {current}\n\n{exc}", warning=True)
+            return
+        if latest_key <= current_key:
+            self._show_message("Atualizações", f"Você já está usando a versão mais recente ({current}).")
+            return
+        answer = QMessageBox.question(self._window, "Atualização disponível", f"Versão instalada: {current}\nNova versão: {latest}\n\nAbrir a página de download?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if answer == QMessageBox.Yes:
+            QDesktopServices.openUrl(QUrl(release_url))
 
     def _set_always_on_top(self, enabled: bool):
         from PySide6.QtCore import Qt
