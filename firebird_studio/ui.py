@@ -1741,7 +1741,7 @@ class MainWindow:
 
     def manage_users(self):
         from PySide6.QtWidgets import QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QInputDialog, QLineEdit, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout
-        from .users import change_user_password, create_user, delete_user, list_users
+        from .users import change_user_password, create_role, create_user, delete_user, grant_role, list_users, revoke_role
 
         profile = self._profile_from_form()
         admin_password = self._password_for(profile)
@@ -1763,6 +1763,13 @@ class MainWindow:
         remove = QPushButton("Excluir usuário")
         actions.addWidget(refresh); actions.addWidget(create); actions.addWidget(change); actions.addWidget(sysdba); actions.addWidget(remove)
         layout.addLayout(actions)
+        role_row = QHBoxLayout()
+        role_name = QLineEdit(); role_name.setPlaceholderText("Nome da role")
+        create_role_button = QPushButton("Criar role")
+        grant_role_button = QPushButton("Conceder role ao usuário selecionado")
+        revoke_role_button = QPushButton("Remover role do usuário selecionado")
+        role_row.addWidget(role_name); role_row.addWidget(create_role_button); role_row.addWidget(grant_role_button); role_row.addWidget(revoke_role_button)
+        layout.addLayout(role_row)
         close = QDialogButtonBox(QDialogButtonBox.Close)
         close.rejected.connect(dialog.reject)
         layout.addWidget(close)
@@ -1790,6 +1797,32 @@ class MainWindow:
                 for column, value in enumerate((user.name, user.first_name, user.last_name, "Sim" if user.active in (None, 1, "1", True) else "Não")):
                     table.setItem(row, column, QTableWidgetItem(str(value)))
             table.resizeColumnsToContents()
+
+        def role_value() -> str:
+            return role_name.text().strip()
+
+        def create_role_action():
+            target = role_value()
+            if not target:
+                self._show_message("Criar role", "Informe o nome da role.", warning=True); return
+            try:
+                create_role(profile, admin_password, target)
+                self._log_event("Role criada", profile=profile.name, role=target)
+                self.status.setText(f"Role {target} criada.")
+            except Exception as exc:
+                self._show_message("Criar role", str(exc), warning=True)
+
+        def change_role_action(revoke: bool):
+            target_user = selected_user(); target_role = role_value()
+            if not target_user or not target_role:
+                self._show_message("Permissão de role", "Selecione um usuário e informe a role.", warning=True); return
+            try:
+                (revoke_role if revoke else grant_role)(profile, admin_password, target_role, target_user)
+                action = "removida" if revoke else "concedida"
+                self._log_event("Role alterada", profile=profile.name, role=target_role, user=target_user, action=action)
+                self.status.setText(f"Role {target_role} {action} para {target_user}.")
+            except Exception as exc:
+                self._show_message("Permissão de role", str(exc), warning=True)
 
         def create_user_action():
             username, accepted = QInputDialog.getText(dialog, "Criar usuário", "Nome do usuário:")
@@ -1839,6 +1872,7 @@ class MainWindow:
                 self._show_message("Excluir usuário", str(exc), warning=True)
 
         refresh.clicked.connect(reload_users); create.clicked.connect(create_user_action); change.clicked.connect(lambda: change_user_action()); sysdba.clicked.connect(change_sysdba_action); remove.clicked.connect(delete_user_action)
+        create_role_button.clicked.connect(create_role_action); grant_role_button.clicked.connect(lambda: change_role_action(False)); revoke_role_button.clicked.connect(lambda: change_role_action(True))
         reload_users()
         dialog.exec()
 

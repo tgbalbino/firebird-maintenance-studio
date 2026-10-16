@@ -16,6 +16,18 @@ class UserAccount:
     active: Any = None
 
 
+@dataclass(slots=True)
+class RoleAccount:
+    name: str
+
+
+def list_roles(profile: ConnectionProfile, password: str | None = None) -> list[RoleAccount]:
+    with open_database(profile, password) as connection:
+        cursor = connection.cursor()
+        cursor.execute("SELECT TRIM(RDB$ROLE_NAME) FROM RDB$ROLES WHERE COALESCE(RDB$SYSTEM_FLAG, 0)=0 ORDER BY RDB$ROLE_NAME")
+        return [RoleAccount(str(row[0]).strip()) for row in cursor.fetchall() if row and row[0]]
+
+
 def _identifier(value: str) -> str:
     clean = value.strip()
     if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_$]{0,62}", clean):
@@ -80,3 +92,15 @@ def delete_user(profile: ConnectionProfile, admin_password: str | None, username
     if username.strip().upper() == "SYSDBA":
         raise ValueError("O usuário SYSDBA não pode ser excluído.")
     _execute_security(profile, admin_password, f"DROP USER {_identifier(username)}")
+
+
+def create_role(profile: ConnectionProfile, admin_password: str | None, role_name: str) -> None:
+    _execute_security(profile, admin_password, f"CREATE ROLE {_identifier(role_name)}")
+
+
+def grant_role(profile: ConnectionProfile, admin_password: str | None, role_name: str, username: str) -> None:
+    _execute_security(profile, admin_password, f"GRANT {_identifier(role_name)} TO USER {_identifier(username)}")
+
+
+def revoke_role(profile: ConnectionProfile, admin_password: str | None, role_name: str, username: str) -> None:
+    _execute_security(profile, admin_password, f"REVOKE {_identifier(role_name)} FROM USER {_identifier(username)}")
