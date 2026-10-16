@@ -1303,7 +1303,8 @@ class MainWindow:
         self._configure_sql_editor(editor)
         document_tabs, result_table = self._create_sql_document_tabs(editor)
         editor.setProperty("query_profile", selected_name)
-        self.query_profile_combo.setCurrentText(selected_name)
+        if self.query_profile_combo is not None:
+            self.query_profile_combo.setCurrentText(selected_name)
         editor.setProperty("document_title", f"SQL {self.sql_tabs.count() + 1}")
         index = self.sql_documents.add(document_tabs, f"SQL {self.sql_tabs.count() + 1}", editor.property("query_profile") or "")
         sql_toolbar, transaction_controls, execution_controls = self._create_sql_toolbar(editor)
