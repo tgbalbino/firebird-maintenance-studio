@@ -2385,7 +2385,7 @@ class MainWindow:
             self._show_message("Falha ao salvar SQL", str(exc))
 
     def _start_background_operation(self, name, operation, on_finished):
-        from PySide6.QtCore import QThread, Qt
+        from PySide6.QtCore import QThread, QTimer, Qt
 
         if self._operation_thread is not None and self._operation_thread.isRunning():
             self.status.setText(f"A operação '{self._operation_name}' ainda está em execução.")
@@ -2409,7 +2409,13 @@ class MainWindow:
                 self.status.setText(f"{name} terminou com erro na interface: {exc}")
                 self._show_message(f"Falha em {name}", str(exc), warning=True)
 
-        worker.finished.connect(finish_safely, Qt.QueuedConnection)
+        # A plain Python callback does not reliably carry a Qt receiver
+        # context. Queue the UI callback explicitly on the main window so a
+        # worker never touches widgets from its own thread.
+        def queue_finished(result):
+            QTimer.singleShot(0, self._window, lambda: finish_safely(result))
+
+        worker.finished.connect(queue_finished, Qt.DirectConnection)
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)
