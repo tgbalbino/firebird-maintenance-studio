@@ -2704,6 +2704,7 @@ class MainWindow:
             self._log_event("Falha inesperada na execução SQL", profile=profile.name, statement=statement.split(None, 1)[0] if statement else "", error=detail)
             self.status.setText(f"Falha ao executar SQL: {detail}")
             self.result_summary.setText("Resultado: falha na execução")
+            self._show_message("Falha ao executar SQL", detail, warning=True)
             return
         finally:
             while QApplication.overrideCursor() is not None:
