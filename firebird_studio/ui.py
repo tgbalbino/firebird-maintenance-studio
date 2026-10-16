@@ -220,7 +220,13 @@ class MainWindow:
         self.plan_panel = plan_panel
         self.activity_metrics = QTextEdit(); self.activity_metrics.setReadOnly(True); self.activity_metrics.setMaximumHeight(150)
         self.activity_table = QTableWidget(); self.activity_table.setEditTriggers(QTableWidget.NoEditTriggers); self.activity_table.setSelectionMode(QAbstractItemView.ExtendedSelection); self.activity_table.setSortingEnabled(True)
-        activity_panel = QWidget(); activity_layout = QVBoxLayout(activity_panel); activity_layout.addWidget(self.activity_metrics); activity_layout.addWidget(self.activity_table, 1)
+        self.activity_refresh_button = QPushButton("Atualizar agora")
+        self.activity_refresh_button.clicked.connect(self.inspect_activity)
+        self.activity_auto_refresh = QCheckBox("Atualizar a cada 5 segundos")
+        self.activity_auto_refresh.toggled.connect(self._toggle_activity_auto_refresh)
+        activity_controls = QHBoxLayout(); activity_controls.addWidget(self.activity_refresh_button); activity_controls.addWidget(self.activity_auto_refresh); activity_controls.addStretch()
+        self.activity_refresh_timer = QTimer(self._window); self.activity_refresh_timer.setInterval(5000); self.activity_refresh_timer.timeout.connect(self.inspect_activity)
+        activity_panel = QWidget(); activity_layout = QVBoxLayout(activity_panel); activity_layout.addLayout(activity_controls); activity_layout.addWidget(self.activity_metrics); activity_layout.addWidget(self.activity_table, 1)
         self.activity_panel = activity_panel
         self.result_tabs = QTabWidget(); self.result_tabs.addTab(self.result_table, "Resultado"); self.result_tabs.addTab(self.structure_table, "Estrutura"); self.result_tabs.addTab(plan_panel, "Plano e sugestões"); self.result_tabs.addTab(activity_panel, "Banco e atividade")
 
@@ -1699,6 +1705,15 @@ class MainWindow:
             lambda: (inspect_health(profile, password), list_statements(profile, password)),
             lambda result: self._finish_activity_operation(result, profile),
         )
+
+    def _toggle_activity_auto_refresh(self, enabled: bool):
+        if enabled:
+            self.activity_refresh_timer.start()
+            self.inspect_activity()
+            self.status.setText("Atualização automática do painel ativada.")
+        else:
+            self.activity_refresh_timer.stop()
+            self.status.setText("Atualização automática do painel desativada.")
 
     def _finish_activity_operation(self, result, profile):
         if isinstance(result, Exception):
