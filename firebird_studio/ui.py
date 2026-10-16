@@ -2109,7 +2109,7 @@ class MainWindow:
         profile_index = self._profile_index_for_item(item)
         if item.parent() is None and 0 <= profile_index < len(self.profiles):
             profile = self.profiles[profile_index]
-            show_details = menu.addAction("Mostrar dados do cadastro")
+            show_details = menu.addAction("Alterar cadastro...")
             show_details.triggered.connect(lambda _checked=False, selected=profile_index: self._show_profile_dialog(selected))
             menu.addSeparator()
             if profile.name in self.connected_profiles:
