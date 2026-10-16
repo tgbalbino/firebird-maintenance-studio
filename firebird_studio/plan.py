@@ -83,9 +83,16 @@ def explain_query(profile: ConnectionProfile, sql: str, password: str | None, is
     if profile.role:
         args.extend(["-role", profile.role])
     try:
+        database = _dsn(profile).replace("'", "''")
+        user = profile.user.replace("'", "''")
+        secret = (password or "").replace("'", "''")
+        connect_command = f"CONNECT '{database}' USER '{user}' PASSWORD '{secret}';\n"
         completed = subprocess.run(
             args,
-            input=build_plan_script(sql, profile.version),
+            # Supplying CONNECT through stdin handles Firebird installations
+            # that ignore ISC_PASSWORD while keeping credentials out of the
+            # process command line and event log.
+            input=connect_command + build_plan_script(sql, profile.version),
             capture_output=True,
             text=True,
             encoding="utf-8",

@@ -1,10 +1,13 @@
 import sys
 import types
 import unittest
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 from firebird_studio.models import ConnectionProfile
 from firebird_studio.transaction import TransactionSession
+from firebird_studio.plan import explain_query
 
 
 class _Cursor:
@@ -69,6 +72,19 @@ class TransactionTests(unittest.TestCase):
             session.close(rollback=False)
         self.assertEqual(connection.rollbacks, 1)
         self.assertTrue(connection.closed)
+
+    def test_plan_supplies_connect_through_stdin(self):
+        completed = types.SimpleNamespace(returncode=0, stdout="PLAN (T NATURAL)", stderr="")
+        profile = ConnectionProfile("Local", database="sample.fdb", version="5")
+        with tempfile.TemporaryDirectory() as directory:
+            isql = Path(directory) / "isql.exe"
+            isql.write_text("stub")
+            with patch("firebird_studio.plan.subprocess.run", return_value=completed) as run:
+                result = explain_query(profile, "SELECT * FROM T", "secret", isql)
+        self.assertTrue(result.ok)
+        stdin = run.call_args.kwargs["input"]
+        self.assertIn("CONNECT 'localhost:sample.fdb' USER 'SYSDBA' PASSWORD 'secret';", stdin)
+        self.assertIn("SET PLANONLY ON", stdin)
 
 
 if __name__ == "__main__":
