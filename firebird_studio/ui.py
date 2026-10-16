@@ -494,8 +494,16 @@ class MainWindow:
     def _setup_main_menu(self):
         """Create the compact application menu for global commands."""
         menu_bar = self._window.menuBar()
-        menu_bar.setMinimumHeight(28)
-        menu_bar.setStyleSheet("QMenuBar::item { padding: 4px 8px; }")
+        # Keep the top level labels readable when the window is restored to a
+        # smaller size.  The previous compact padding made adjacent labels
+        # look joined together and could clip the last menu name.
+        menu_bar.setMinimumHeight(32)
+        menu_bar.setStyleSheet(
+            "QMenuBar { spacing: 2px; }"
+            " QMenuBar::item { padding: 6px 12px; margin: 0 1px; }"
+            " QMenu { padding: 4px 0; }"
+            " QMenu::item { padding: 6px 28px 6px 12px; }"
+        )
         app_menu = menu_bar.addMenu("Aplicação")
         settings_action = app_menu.addAction("Configurações...")
         settings_action.setShortcut("Ctrl+," )
