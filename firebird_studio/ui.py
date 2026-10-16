@@ -209,6 +209,7 @@ class MainWindow:
         self.query_profile_combo.setMinimumWidth(240)
         self.query_profile_combo.currentTextChanged.connect(self._set_current_query_profile)
         self.query_connection_status = QLabel("Perfil da aba: não definido")
+        self.query_cursor_status = QLabel("Linha 1, coluna 1")
         self.query_history = []
         self._transaction_session = None
         self._transaction_profile_name = ""
@@ -301,6 +302,7 @@ class MainWindow:
         history_row = QHBoxLayout(); history_row.addWidget(QLabel("Histórico SQL:")); history_row.addWidget(self.history_combo, 1)
         right_layout.addLayout(history_row)
         connection_row = QHBoxLayout(); connection_row.addWidget(QLabel("Conexão desta janela:")); connection_row.addWidget(self.query_profile_combo, 1); connection_row.addWidget(self.query_connection_status)
+        connection_row.addWidget(self.query_cursor_status)
         right_layout.addLayout(connection_row)
         right_layout.addWidget(QLabel("Janelas SQL")); right_layout.addWidget(self.sql_tabs, 1)
         action_row = QHBoxLayout()
@@ -492,6 +494,7 @@ class MainWindow:
         self.editor = self.sql_tabs.widget(index) if index >= 0 else None
         if self.editor is not None:
             self._refresh_sql_completer(self.editor)
+            self._update_cursor_status(self.editor)
             self.query_profile_combo.blockSignals(True)
             profile_name = self.editor.property("query_profile") or ""
             combo_index = self.query_profile_combo.findText(profile_name)
@@ -546,7 +549,16 @@ class MainWindow:
         index = self.sql_tabs.addTab(editor, f"SQL {self.sql_tabs.count() + 1}")
         self.sql_tabs.setCurrentIndex(index)
         self.editor = editor
+        editor.cursorPositionChanged.connect(lambda target=editor: self._update_cursor_status(target))
+        self._update_cursor_status(editor)
         self._refresh_sql_completer(editor)
+
+    def _update_cursor_status(self, editor=None):
+        target = editor or self.editor
+        if target is None or not hasattr(self, "query_cursor_status"):
+            return
+        cursor = target.textCursor()
+        self.query_cursor_status.setText(f"Linha {cursor.blockNumber() + 1}, coluna {cursor.positionInBlock() + 1}")
 
     def _completion_words(self):
         from PySide6.QtGui import QTextDocument
