@@ -2,6 +2,46 @@
 
 Data da revisão: 16/10/2026.
 
+## Validação visual adicional
+
+Data da validação: 16/10/2026.
+
+Foram comparados os fluxos atuais com as documentações oficiais do IBExpert e do DBeaver e com a abordagem leve do FlameRobin. A conclusão é manter o foco Firebird e tornar a tela principal mais parecida com uma estação de trabalho: navegador lateral persistente, cabeçalho da conexão ativa, editor central e resultados em abas.
+
+| Referência | Padrão confirmado | Aplicação no Studio |
+|---|---|---|
+| IBExpert Database Explorer | Duplo clique conecta o banco; bancos conectados exibem uma árvore lógica de objetos; o painel auxiliar mostra detalhes do objeto. | Manter a árvore multi-banco, ícones de conexão, grupos expansíveis, filtro e menu contextual. |
+| IBExpert SQL Editor | Histórico, plano em árvore, análise de desempenho e resultados no próprio editor. | Manter abas SQL/Resultado/Plano e dar destaque permanente a duração, conexão e quantidade de linhas. |
+| DBeaver SQL Editor | Editor, toolbar, painel de resultados e várias consultas por conexão; layout pode alternar entre editor e resultado. | Priorizar três ações visíveis: executar, resultado e plano; agrupar ações administrativas em menus. |
+| DBeaver Database Navigator | Cor da conexão, estado expandido persistido, filtro salvo, abrir SQL por conexão e ações distintas para duplo clique. | Persistir estado da árvore e manter o duplo clique como ação de conexão/abertura. |
+| FlameRobin | Interface leve, árvore direta, operações assíncronas e poucos controles no caminho principal. | Evitar uma fileira extensa de botões e mostrar progresso/status sem bloquear a janela. |
+
+### Melhorias visuais priorizadas após a validação
+
+1. **Cabeçalho da estação de trabalho:** nome do aplicativo, banco ativo, versão, host, porta e estado da conexão.
+2. **Navegador lateral:** título curto, busca sempre visível, largura persistida, ícone de conectado/desconectado e menu contextual.
+3. **Área SQL:** abas de consulta, resultado e diagnóstico; toolbar curta com executar, resultado e menu de ações.
+4. **Feedback de operação:** barra de progresso, duração, quantidade de linhas e mensagens copiáveis.
+5. **Grade:** paginação configurável, filtro geral, filtro por coluna, cabeçalho fixo e menu de contexto.
+6. **Acessibilidade:** contraste nos dois temas, foco visível, atalhos exibidos e significado sem depender somente da cor.
+
+### Critérios de aceite visual
+
+- Em 1280×720, os nomes dos menus, abas e banco ativo permanecem legíveis sem sobreposição.
+- Em 150% de escala do Windows, a árvore continua utilizável e o editor conserva espaço para SQL.
+- Ao conectar dois bancos, cada item da árvore mantém seu estado e a consulta mostra claramente a conexão escolhida.
+- Ao executar uma consulta, o usuário consegue identificar a duração, o número de linhas e a aba de resultado sem abrir outro diálogo.
+- A troca de tema mantém contraste suficiente no cabeçalho, editor, grade, árvore, menus e mensagens.
+
+### Referências consultadas
+
+- [IBExpert SQL Editor](https://ibexpert.com/docu/doku.php?id=02-ibexpert%3A02-08-ibexpert-tools-menu%3Asql-editor)
+- [IBExpert Database Explorer](https://ibexpert.com/docu/doku.php?id=02-ibexpert%3A02-01-getting-started%3Aibexpert-screen%3Adatabase-explorer)
+- [DBeaver SQL Editor](https://dbeaver.com/docs/dbeaver/SQL-Editor/)
+- [DBeaver Database Navigator](https://dbeaver.com/docs/dbeaver/Database-Navigator/)
+- [DBeaver Toolbar Customization](https://dbeaver.com/docs/dbeaver/Toolbar-Customization/)
+- [FlameRobin](https://flamerobin.sourceforge.net/flamerobin_paper.pdf)
+
 ## Revisão visual validada com referências atuais
 
 Foram revisadas as documentações atuais do IBExpert, DBeaver Community e o material público do FlameRobin. Os padrões abaixo foram considerados somente quando combinam com o foco Firebird e com o MDI já existente no projeto.
