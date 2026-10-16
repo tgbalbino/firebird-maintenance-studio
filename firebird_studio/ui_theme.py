@@ -26,6 +26,8 @@ LIGHT_STYLE += " QLabel#connectionStatus { color: #526173; } QLabel#connectionBa
 DARK_STYLE += " QLabel#connectionStatus { color: #b6c2d2; } QLabel#connectionBadge { background: #263a58; border: 1px solid #5f86c6; border-radius: 9px; padding: 3px 8px; }"
 LIGHT_STYLE += " QLabel#connectionBadge[connectionState=\"connected\"] { color: #188038; background: #e8f5e9; border-color: #a8d5ad; font-weight: 600; } QLabel#connectionBadge[connectionState=\"disconnected\"] { color: #b3261e; background: #fef1f0; border-color: #e5aaa5; font-weight: 600; }"
 DARK_STYLE += " QLabel#connectionBadge[connectionState=\"connected\"] { color: #98d89c; background: #1f3d2b; border-color: #4d8a60; font-weight: 600; } QLabel#connectionBadge[connectionState=\"disconnected\"] { color: #ffb4ab; background: #4b2730; border-color: #a95862; font-weight: 600; }"
+LIGHT_STYLE += " QCheckBox#toolbarOption { background: #eef3f9; border: 1px solid #c5d0df; border-radius: 4px; padding: 5px 8px; }"
+DARK_STYLE += " QCheckBox#toolbarOption { background: #202631; border: 1px solid #4f5d72; border-radius: 4px; padding: 5px 8px; }"
 
 
 def apply_theme(theme: str) -> None:
