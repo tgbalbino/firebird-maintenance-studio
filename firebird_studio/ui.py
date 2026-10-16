@@ -41,13 +41,24 @@ try:
         def highlightBlock(self, text):
             import re
 
+            protected: list[tuple[int, int]] = []
             for match in re.finditer(r"--[^\n]*|/\*.*?\*/", text):
                 self.setFormat(match.start(), match.end() - match.start(), self._comment_format)
+                protected.append((match.start(), match.end()))
             for match in re.finditer(r"'(?:''|[^'])*'", text):
                 self.setFormat(match.start(), match.end() - match.start(), self._string_format)
+                protected.append((match.start(), match.end()))
+
+            def is_protected(start: int, end: int) -> bool:
+                return any(start < protected_end and end > protected_start for protected_start, protected_end in protected)
+
             for match in re.finditer(r"\b\d+(?:\.\d+)?\b", text):
+                if is_protected(match.start(), match.end()):
+                    continue
                 self.setFormat(match.start(), match.end() - match.start(), self._number_format)
             for match in re.finditer(r"\b[A-Za-z_][A-Za-z0-9_$]*\b", text):
+                if is_protected(match.start(), match.end()):
+                    continue
                 word = match.group(0).upper()
                 if word in self._keywords:
                     self.setFormat(match.start(), match.end() - match.start(), self._keyword_format)
