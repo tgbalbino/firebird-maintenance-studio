@@ -16,6 +16,8 @@ LIGHT_STYLE += " QTreeWidget::item { padding: 3px 4px; } QTreeWidget::item:hover
 DARK_STYLE += " QTreeWidget::item { padding: 3px 4px; } QTreeWidget::item:hover { background: #303b4e; }"
 LIGHT_STYLE += " QTableWidget { alternate-background-color: #f3f6fa; } QTableWidget::item:hover { background: #e1ebf8; }"
 DARK_STYLE += " QTableWidget { alternate-background-color: #272d39; } QTableWidget::item:hover { background: #303b4e; }"
+LIGHT_STYLE += " QTabWidget::pane { border: 1px solid #b8c2d1; border-radius: 4px; top: -1px; }"
+DARK_STYLE += " QTabWidget::pane { border: 1px solid #667085; border-radius: 4px; top: -1px; }"
 
 
 def apply_theme(theme: str) -> None:

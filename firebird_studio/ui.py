@@ -275,7 +275,7 @@ class MainWindow:
         compare_controls = QHBoxLayout(); compare_controls.addWidget(self.compare_filter, 1); compare_controls.addWidget(self.compare_action_filter)
         compare_panel = QWidget(); compare_layout = QVBoxLayout(compare_panel); compare_layout.addLayout(compare_controls); compare_layout.addWidget(self.compare_table, 1)
         self.compare_panel = compare_panel
-        self.result_tabs = QTabWidget(); self.result_tabs.addTab(self.structure_table, "Estrutura"); self.result_tabs.addTab(self.index_table, "Índices"); self.result_tabs.addTab(self.constraint_table, "Restrições"); self.result_tabs.addTab(plan_panel, "Plano e sugestões"); self.result_tabs.addTab(activity_panel, "Banco e atividade"); self.result_tabs.addTab(sessions_panel, "Sessões"); self.result_tabs.addTab(backup_history_panel, "Histórico de backup"); self.result_tabs.addTab(compare_panel, "Comparação")
+        self.result_tabs = QTabWidget(); self.result_tabs.setDocumentMode(True); self.result_tabs.setUsesScrollButtons(True); self.result_tabs.addTab(self.structure_table, "Estrutura"); self.result_tabs.addTab(self.index_table, "Índices"); self.result_tabs.addTab(self.constraint_table, "Restrições"); self.result_tabs.addTab(plan_panel, "Plano e sugestões"); self.result_tabs.addTab(activity_panel, "Banco e atividade"); self.result_tabs.addTab(sessions_panel, "Sessões"); self.result_tabs.addTab(backup_history_panel, "Histórico de backup"); self.result_tabs.addTab(compare_panel, "Comparação")
         self.result_mdi_window = self.sql_tabs.add_panel(self.result_tabs, "Resultados e diagnóstico", width=860, height=330)
         self.result_tabs.currentChanged.connect(lambda _index: self._show_result_window())
         self.sql_tabs.setCurrentIndex(0)
@@ -928,6 +928,8 @@ class MainWindow:
             lambda position, table=result_table: self._result_header_context_menu(table, position)
         )
         document_tabs = QTabWidget()
+        document_tabs.setDocumentMode(True)
+        document_tabs.setUsesScrollButtons(True)
         document_tabs.addTab(editor, "SQL")
         document_tabs.addTab(result_table, "Resultado")
         document_tabs.setCurrentWidget(editor)
