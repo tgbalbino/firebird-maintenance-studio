@@ -444,6 +444,9 @@ class MainWindow:
         self.previous_data_button.setEnabled(False)
         self.previous_data_button.clicked.connect(lambda: self._load_table_page(self.table_page - 1))
         self.data_page_label = QLabel("Dados: nenhuma tabela selecionada")
+        self.result_summary = QLabel("Resultado: nenhum")
+        self.result_summary.setObjectName("resultSummary")
+        self.result_summary.setToolTip("Resumo da última execução exibida na grade")
         self.data_filter = QLineEdit()
         self.data_filter.setPlaceholderText("Filtrar linhas...")
         self.data_filter.setToolTip("Filtra as linhas carregadas nesta página; não altera o banco.")
@@ -458,7 +461,7 @@ class MainWindow:
         self.next_data_button = QPushButton("Próximas 200")
         self.next_data_button.setEnabled(False)
         self.next_data_button.clicked.connect(lambda: self._load_table_page(self.table_page + 1))
-        pagination_row.addWidget(self.previous_data_button); pagination_row.addWidget(self.data_page_label, 1); pagination_row.addWidget(QLabel("Linhas:")); pagination_row.addWidget(self.data_page_size); pagination_row.addWidget(self.data_filter); pagination_row.addWidget(self.next_data_button)
+        pagination_row.addWidget(self.previous_data_button); pagination_row.addWidget(self.data_page_label, 1); pagination_row.addWidget(self.result_summary); pagination_row.addWidget(QLabel("Linhas:")); pagination_row.addWidget(self.data_page_size); pagination_row.addWidget(self.data_filter); pagination_row.addWidget(self.next_data_button)
         right_layout.addLayout(pagination_row)
         self.operation_progress = QProgressBar()
         self.operation_progress.setRange(0, 0)
@@ -1873,6 +1876,7 @@ class MainWindow:
         self.next_data_button.setText(f"Próximas {page_size}")
         self.next_data_button.setEnabled(len(result.rows) == page_size)
         self.data_page_label.setText(f"Página {page + 1} · linhas {start}-{start + max(0, len(result.rows) - 1)}")
+        self.result_summary.setText(f"Dados: {len(result.rows)} linha(s) · página {page + 1} · {profile.name} · {profile.host}:{profile.port}")
         self.status.setText(f"Dados carregados: {len(result.rows)} linha(s).")
         return True
 
@@ -2147,6 +2151,8 @@ class MainWindow:
         self._add_query_history(sql_text)
         suffix = " Transação aberta; escolha Commit ou Rollback." if explicit_transaction and result.ok else (" Alterações confirmadas." if changes_data and commit and result.ok else (" Alterações desfeitas (modo seguro)." if changes_data and result.ok else ""))
         self.status.setText(f"{result.message} ({result.elapsed_ms:.1f} ms)." + suffix)
+        profile_state = f"{profile.name} · {profile.host}:{profile.port}"
+        self.result_summary.setText(f"Resultado: {'OK' if result.ok else 'falha'} · {len(result.rows)} linha(s) · {result.elapsed_ms:.1f} ms · {profile_state}")
         self._show_sql_result()
         self._table_original_rows = []
         if hasattr(self, "edit_data_action"):
