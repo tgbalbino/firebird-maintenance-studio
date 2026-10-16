@@ -920,15 +920,6 @@ class MainWindow:
                 self.workspace_status.setText("Ctrl+Tab alterna as janelas")
         elif self.workspace_status is not None:
             self.workspace_status.setText("Resultados e diagnóstico · use o menu Janelas para voltar ao SQL")
-            self.query_profile_combo = None
-            self.query_connection_status = None
-            self.connection_badge = None
-            self.query_cursor_status = None
-            self.history_combo = None
-            self.object_breadcrumb = None
-            self.workspace_status = None
-            self.commit_changes = None
-            self.read_only_mode = None
 
     def _sync_sql_window_bar(self, active_index: int | None = None):
         """Keep the local SQL document bar aligned with the MDI windows."""
@@ -1266,7 +1257,16 @@ class MainWindow:
         from PySide6.QtWidgets import QTextEdit
         if getattr(self, "result_mdi_window", None) is not None:
             self.result_mdi_window.hide()
-        selected_name = self.query_profile_combo.currentText() if self.query_profile_combo is not None else (self.profiles[0].name if self.profiles else "")
+        try:
+            selected_name = self.query_profile_combo.currentText() if self.query_profile_combo is not None else ""
+        except RuntimeError:
+            # The previous editor owns this combo; closing the last SQL
+            # document also destroys it.  Recreate the binding for the new
+            # editor instead of calling a deleted Qt object.
+            self.query_profile_combo = None
+            selected_name = ""
+        if not selected_name and self.profiles:
+            selected_name = self.profiles[0].name
         editor = QTextEdit()
         self._configure_sql_editor(editor)
         document_tabs, result_table = self._create_sql_document_tabs(editor)
@@ -1297,8 +1297,13 @@ class MainWindow:
     def _close_all_sql_tabs(self):
         self.sql_documents.close_all(self._new_sql_tab)
         self.editor = None
+        # Keep the auxiliary document bar and workspace state synchronized
+        # after the last MDI child is removed.
+        self._sync_sql_window_bar(-1)
         if self.result_mdi_window is not None:
             self.result_mdi_window.hide()
+        if self.workspace_status is not None:
+            self.workspace_status.setText("Nenhuma consulta SQL aberta")
         self.status.setText("Todas as janelas SQL foram fechadas.")
 
     def _choose_sql_window(self):
@@ -1452,6 +1457,11 @@ class MainWindow:
         self.sql_documents.close(index, self._new_sql_tab)
         if self.sql_tabs.count() == 0 and self.result_mdi_window is not None:
             self.result_mdi_window.hide()
+        if self.sql_tabs.count() == 0:
+            self.editor = None
+            self._sync_sql_window_bar(-1)
+            if self.workspace_status is not None:
+                self.workspace_status.setText("Nenhuma consulta SQL aberta")
 
     def _add_query_history(self, sql: str):
         text = sql.strip()
