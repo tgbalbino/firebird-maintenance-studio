@@ -136,7 +136,7 @@ class MainWindow:
 
         self._window = QMainWindow()
         self.show = self._window.show
-        self._window.setWindowTitle("Firebird Maintenance Studio")
+        self._window.setWindowTitle(f"Firebird Maintenance Studio v{__version__}")
         self._window.resize(1100, 700)
         self.store = store
         self._event_log_path = Path.home() / ".firebird-maintenance-studio" / "events.txt"
@@ -653,7 +653,7 @@ class MainWindow:
         from PySide6.QtGui import QDesktopServices
 
         dialog = QDialog(self._window)
-        dialog.setWindowTitle("Sobre o Firebird Maintenance Studio")
+        dialog.setWindowTitle(f"Sobre o Firebird Maintenance Studio v{__version__}")
         dialog.resize(560, 330)
         layout = QVBoxLayout(dialog)
         header = QFrame()
@@ -715,6 +715,11 @@ class MainWindow:
             with urlopen(request, timeout=5) as response:
                 return json.loads(response.read().decode("utf-8"))
 
+        def load_text(url):
+            request = Request(url, headers={"User-Agent": "FirebirdMaintenanceStudio"})
+            with urlopen(request, timeout=5) as response:
+                return response.read().decode("utf-8")
+
         def version_key(value):
             match = re.search(r"(\d+)(?:\.(\d+))?(?:\.(\d+))?", str(value or ""))
             if not match:
@@ -730,13 +735,27 @@ class MainWindow:
                     raise
                 # A public repository can exist before its first Release is
                 # published.  Tags are still a useful update source.
-                tags = load_json(tags_url)
-                if not isinstance(tags, list) or not tags:
-                    self._log_event("Nenhuma versão publicada no GitHub", repository=repository_url)
-                    self._show_message("Atualizações", f"O GitHub ainda não publicou uma versão para atualização.\n\nVersão instalada: {current}\n\nPublique uma Release ou uma tag no projeto para disponibilizar atualizações.")
-                    return
-                payload = tags[0]
-                source = "tag"
+                try:
+                    tags = load_json(tags_url)
+                except HTTPError as tags_error:
+                    if tags_error.code != 404:
+                        raise
+                    tags = []
+                if isinstance(tags, list) and tags:
+                    payload = tags[0]
+                    source = "tag"
+                else:
+                    # Before the first Release/tag, use the public version
+                    # module as a lightweight update manifest.
+                    raw_url = "https://raw.githubusercontent.com/tgbalbino/firebird-maintenance-studio/main/firebird_studio/__init__.py"
+                    source_text = load_text(raw_url)
+                    match = re.search(r'__version__\s*=\s*[\"\']([^\"\']+)', source_text)
+                    if not match:
+                        self._log_event("Nenhuma versão publicada no GitHub", repository=repository_url)
+                        self._show_message("Atualizações", f"Não foi encontrada uma versão publicada.\n\nVersão instalada: {current}")
+                        return
+                    payload = {"tag_name": match.group(1), "html_url": repository_url}
+                    source = "arquivo de versão"
             tag = str(payload.get("tag_name", "")).strip()
             if not tag:
                 tag = str(payload.get("name", "")).strip()
