@@ -94,4 +94,8 @@ def run_gbak(
         if not target.exists() or target.stat().st_size == 0:
             ok = False
             error = "O gbak terminou sem erro, mas o arquivo de backup não foi criado ou está vazio."
+    if ok and operation == "restore":
+        if not target.exists() or target.stat().st_size == 0:
+            ok = False
+            error = "O gbak terminou sem erro, mas o banco restaurado não foi criado ou está vazio."
     return BackupResult(ok, completed.returncode, output, error, operation)

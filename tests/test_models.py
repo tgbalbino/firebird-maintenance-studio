@@ -125,6 +125,21 @@ class ProfileTests(unittest.TestCase):
             self.assertFalse(result.ok)
             self.assertIn("gfix não encontrado", result.error)
 
+    def test_restore_requires_created_database_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            backup = root / "sample.fbk"
+            gbak = root / "gbak.exe"
+            backup.write_text("backup")
+            gbak.write_text("tool")
+            target = root / "restored.fdb"
+            profile = ConnectionProfile("Local", database=str(target))
+            completed = types.SimpleNamespace(returncode=0, stdout="", stderr="")
+            with patch("firebird_studio.backup.subprocess.run", return_value=completed):
+                result = run_gbak(profile, "restore", backup, target, "secret", gbak)
+            self.assertFalse(result.ok)
+            self.assertIn("banco restaurado não foi criado", result.error)
+
     def test_schema_diff_and_migration_preview(self):
         source = [
             SchemaObject("TABLE", "CUSTOMER", "CREATE TABLE CUSTOMER (ID INTEGER NOT NULL)"),
