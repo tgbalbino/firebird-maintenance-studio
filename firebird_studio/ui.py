@@ -283,7 +283,18 @@ class MainWindow:
         compare_controls = QHBoxLayout(); compare_controls.addWidget(self.compare_filter, 1); compare_controls.addWidget(self.compare_action_filter)
         compare_panel = QWidget(); compare_layout = QVBoxLayout(compare_panel); compare_layout.addLayout(compare_controls); compare_layout.addWidget(self.compare_table, 1)
         self.compare_panel = compare_panel
-        self.result_tabs = QTabWidget(); self.result_tabs.setDocumentMode(True); self.result_tabs.setUsesScrollButtons(True); self.result_tabs.addTab(self.structure_table, "Estrutura"); self.result_tabs.addTab(self.index_table, "Índices"); self.result_tabs.addTab(self.constraint_table, "Restrições"); self.result_tabs.addTab(plan_panel, "Plano e sugestões"); self.result_tabs.addTab(activity_panel, "Banco e atividade"); self.result_tabs.addTab(sessions_panel, "Sessões"); self.result_tabs.addTab(backup_history_panel, "Histórico de backup"); self.result_tabs.addTab(compare_panel, "Comparação")
+        self.result_tabs = QTabWidget(); self.result_tabs.setDocumentMode(True); self.result_tabs.setUsesScrollButtons(True); self.result_tabs.addTab(self.structure_table, "Estrutura"); self.result_tabs.addTab(self.index_table, "Índices"); self.result_tabs.addTab(self.constraint_table, "Restrições"); self.result_tabs.addTab(plan_panel, "Plano"); self.result_tabs.addTab(activity_panel, "Atividade"); self.result_tabs.addTab(sessions_panel, "Sessões"); self.result_tabs.addTab(backup_history_panel, "Backups"); self.result_tabs.addTab(compare_panel, "Comparar")
+        for index, tooltip in enumerate((
+            "Estrutura e DDL dos objetos",
+            "Índices e campos indexados",
+            "Restrições e chaves",
+            "Plano de execução e sugestões",
+            "Atividade e tamanho do banco",
+            "Sessões e conexões ativas",
+            "Histórico de backup e restore",
+            "Comparação de estruturas",
+        )):
+            self.result_tabs.setTabToolTip(index, tooltip)
         self.result_mdi_window = self.sql_tabs.add_panel(self.result_tabs, "Resultados e diagnóstico", width=860, height=330)
         self.result_tabs.currentChanged.connect(lambda _index: self._show_result_window())
         self.sql_tabs.setCurrentIndex(0)
