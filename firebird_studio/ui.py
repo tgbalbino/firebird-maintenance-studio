@@ -1026,6 +1026,10 @@ class MainWindow:
         history_list.setAlternatingRowColors(True)
         history_list.setToolTip("Duplo clique em uma consulta para restaurá-la no editor SQL")
         history_list.itemDoubleClicked.connect(lambda item, target=editor: self._restore_history_item(item, target))
+        history_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        history_list.customContextMenuRequested.connect(
+            lambda position, listing=history_list, target=editor: self._history_context_menu(listing, position, target)
+        )
         remove_history = QAction("Remover consulta selecionada", history_list)
         remove_history.setShortcut(QKeySequence.Delete)
         remove_history.setShortcutContext(Qt.WidgetShortcut)
@@ -1520,6 +1524,24 @@ class MainWindow:
             return
         QApplication.clipboard().setText(str(query))
         self.status.setText("Consulta do histórico copiada para a área de transferência.")
+
+    def _history_context_menu(self, history_list, position, editor=None):
+        from PySide6.QtWidgets import QMenu
+
+        item = history_list.itemAt(position) if history_list is not None else None
+        if item is not None:
+            history_list.setCurrentItem(item)
+        menu = QMenu(history_list)
+        restore = menu.addAction("Restaurar no editor")
+        copy = menu.addAction("Copiar SQL")
+        remove = menu.addAction("Remover do histórico")
+        chosen = menu.exec(history_list.viewport().mapToGlobal(position))
+        if chosen is restore:
+            self._restore_selected_history_item(history_list, editor)
+        elif chosen is copy:
+            self._copy_selected_history_item(history_list)
+        elif chosen is remove:
+            self._remove_selected_history_item(history_list)
 
     def _remove_selected_history_item(self, history_list):
         from PySide6.QtCore import Qt
