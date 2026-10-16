@@ -15,6 +15,9 @@ class SchemaObject:
     columns: tuple[tuple[str, str, str, str, str], ...] = ()
     # TABLE objects may expose their primary-key fields for safe row edits.
     primary_key: tuple[str, ...] = ()
+    # Additional table metadata loaded on demand by the object inspector.
+    indexes: tuple[tuple[str, str, str], ...] = ()
+    constraints: tuple[tuple[str, str, str], ...] = ()
 
     @property
     def key(self) -> tuple[str, str]:

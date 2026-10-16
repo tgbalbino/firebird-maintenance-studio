@@ -282,6 +282,25 @@ def load_table_metadata(profile: ConnectionProfile, password: str | None, table_
         except Exception:
             # Keep table browsing available for restricted users/catalogs.
             primary_key_rows = []
+        try:
+            index_rows = _rows(connection, f"""
+                SELECT TRIM(i.RDB$INDEX_NAME), COALESCE(i.RDB$UNIQUE_FLAG, 0), TRIM(s.RDB$FIELD_NAME)
+                FROM RDB$INDICES i
+                LEFT JOIN RDB$INDEX_SEGMENTS s ON s.RDB$INDEX_NAME = i.RDB$INDEX_NAME
+                WHERE i.RDB$RELATION_NAME = '{safe_name}' AND COALESCE(i.RDB$SYSTEM_FLAG, 0) = 0
+                ORDER BY i.RDB$INDEX_NAME, s.RDB$FIELD_POSITION
+            """)
+        except Exception:
+            index_rows = []
+        try:
+            constraint_rows = _rows(connection, f"""
+                SELECT TRIM(rc.RDB$CONSTRAINT_NAME), TRIM(rc.RDB$CONSTRAINT_TYPE), TRIM(rc.RDB$INDEX_NAME)
+                FROM RDB$RELATION_CONSTRAINTS rc
+                WHERE rc.RDB$RELATION_NAME = '{safe_name}'
+                ORDER BY rc.RDB$CONSTRAINT_NAME
+            """)
+        except Exception:
+            constraint_rows = []
     columns = []
     definitions = []
     for name, field_type, length, scale, precision, null_flag in rows:
@@ -290,7 +309,17 @@ def load_table_metadata(profile: ConnectionProfile, password: str | None, table_
         definitions.append(f'  "{_text(name)}" {type_name}')
     ddl = f'CREATE TABLE "{_text(table_name)}" (\n' + ",\n".join(definitions) + "\n)"
     primary_key = tuple(_text(row[0]) for row in primary_key_rows if row and _text(row[0]))
-    return SchemaObject("TABLE", _text(table_name), ddl, columns=tuple(columns), primary_key=primary_key)
+    indexes_by_name: dict[str, list[str]] = {}
+    unique_by_name: dict[str, bool] = {}
+    for index_name, unique_flag, field_name in index_rows:
+        clean_index = _text(index_name)
+        indexes_by_name.setdefault(clean_index, [])
+        unique_by_name[clean_index] = bool(unique_flag)
+        if field_name:
+            indexes_by_name[clean_index].append(_text(field_name))
+    indexes = tuple((name, "SIM" if unique_by_name.get(name) else "NÃO", ", ".join(fields) or "expressão") for name, fields in indexes_by_name.items())
+    constraints = tuple((_text(name), _text(kind), _text(index_name)) for name, kind, index_name in constraint_rows)
+    return SchemaObject("TABLE", _text(table_name), ddl, columns=tuple(columns), primary_key=primary_key, indexes=indexes, constraints=constraints)
 
 
 def load_object_definition(profile: ConnectionProfile, password: str | None, kind: str, object_name: str) -> SchemaObject:

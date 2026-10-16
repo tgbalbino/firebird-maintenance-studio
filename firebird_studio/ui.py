@@ -229,6 +229,8 @@ class MainWindow:
         self.structure_table = QTableWidget(); self.structure_table.setMinimumHeight(180); self.structure_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.structure_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.structure_table.setSortingEnabled(True)
+        self.index_table = QTableWidget(); self.index_table.setEditTriggers(QTableWidget.NoEditTriggers); self.index_table.setSelectionBehavior(QAbstractItemView.SelectRows); self.index_table.setSortingEnabled(True)
+        self.constraint_table = QTableWidget(); self.constraint_table.setEditTriggers(QTableWidget.NoEditTriggers); self.constraint_table.setSelectionBehavior(QAbstractItemView.SelectRows); self.constraint_table.setSortingEnabled(True)
         self.plan_output = QTextEdit(); self.plan_output.setReadOnly(True); self.plan_output.setPlaceholderText("O plano de acesso e as sugestões aparecerão aqui.")
         self.plan_tree = QTreeWidget(); self.plan_tree.setHeaderLabels(["Árvore do plano"])
         plan_panel = QWidget(); plan_layout = QVBoxLayout(plan_panel); plan_layout.addWidget(self.plan_tree); plan_layout.addWidget(self.plan_output, 1)
@@ -268,7 +270,7 @@ class MainWindow:
         compare_controls = QHBoxLayout(); compare_controls.addWidget(self.compare_filter, 1); compare_controls.addWidget(self.compare_action_filter)
         compare_panel = QWidget(); compare_layout = QVBoxLayout(compare_panel); compare_layout.addLayout(compare_controls); compare_layout.addWidget(self.compare_table, 1)
         self.compare_panel = compare_panel
-        self.result_tabs = QTabWidget(); self.result_tabs.addTab(self.result_table, "Resultado"); self.result_tabs.addTab(self.structure_table, "Estrutura"); self.result_tabs.addTab(plan_panel, "Plano e sugestões"); self.result_tabs.addTab(activity_panel, "Banco e atividade"); self.result_tabs.addTab(sessions_panel, "Sessões"); self.result_tabs.addTab(backup_history_panel, "Histórico de backup"); self.result_tabs.addTab(compare_panel, "Comparação")
+        self.result_tabs = QTabWidget(); self.result_tabs.addTab(self.result_table, "Resultado"); self.result_tabs.addTab(self.structure_table, "Estrutura"); self.result_tabs.addTab(self.index_table, "Índices"); self.result_tabs.addTab(self.constraint_table, "Restrições"); self.result_tabs.addTab(plan_panel, "Plano e sugestões"); self.result_tabs.addTab(activity_panel, "Banco e atividade"); self.result_tabs.addTab(sessions_panel, "Sessões"); self.result_tabs.addTab(backup_history_panel, "Histórico de backup"); self.result_tabs.addTab(compare_panel, "Comparação")
 
         left = QWidget(); left_layout = QVBoxLayout(left); left.setMinimumWidth(280)
         left_layout.addWidget(QLabel("Bancos e objetos (duplo clique para conectar/abrir)")); left_layout.addWidget(self.tree_filter); left_layout.addWidget(self.profile_list, 1)
@@ -1115,11 +1117,29 @@ class MainWindow:
                     self.structure_table.setItem(row, column, QTableWidgetItem(str(value)))
             self.structure_table.resizeColumnsToContents()
             self.structure_table.setSortingEnabled(True)
+            self.index_table.clear()
+            self.index_table.setColumnCount(3)
+            self.index_table.setHorizontalHeaderLabels(["Índice", "Único", "Campos"])
+            self.index_table.setRowCount(len(getattr(obj, "indexes", ())))
+            for row, values in enumerate(getattr(obj, "indexes", ())):
+                for column, value in enumerate(values):
+                    self.index_table.setItem(row, column, QTableWidgetItem(str(value)))
+            self.index_table.resizeColumnsToContents()
+            self.constraint_table.clear()
+            self.constraint_table.setColumnCount(3)
+            self.constraint_table.setHorizontalHeaderLabels(["Restrição", "Tipo", "Índice"])
+            self.constraint_table.setRowCount(len(getattr(obj, "constraints", ())))
+            for row, values in enumerate(getattr(obj, "constraints", ())):
+                for column, value in enumerate(values):
+                    self.constraint_table.setItem(row, column, QTableWidgetItem(str(value)))
+            self.constraint_table.resizeColumnsToContents()
             self.result_tabs.setCurrentWidget(self.structure_table)
             data_loaded = bool(load_data and self._load_table_page(0))
         else:
             data_loaded = False
             self.data_filter.clear()
+            self.index_table.clear(); self.index_table.setRowCount(0)
+            self.constraint_table.clear(); self.constraint_table.setRowCount(0)
             self.structure_table.clear()
             self.structure_table.setColumnCount(2)
             self.structure_table.setHorizontalHeaderLabels(["Objeto", "Tipo"])
