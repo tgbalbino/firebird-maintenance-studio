@@ -586,11 +586,12 @@ class MainWindow:
             model.setStringList(self._completion_words())
 
     def _show_sql_completions(self, editor):
+        from PySide6.QtGui import QTextCursor
         completer = editor.property("completion")
         if completer is None:
             return
         cursor = editor.textCursor()
-        cursor.select(cursor.WordUnderCursor)
+        cursor.select(QTextCursor.WordUnderCursor)
         completer.setCompletionPrefix(cursor.selectedText())
         rectangle = editor.cursorRect()
         rectangle.setWidth(completer.popup().sizeHintForColumn(0) + completer.popup().verticalScrollBar().sizeHint().width())
@@ -598,8 +599,9 @@ class MainWindow:
 
     def _auto_complete_sql(self, editor):
         """Offer completion while typing, without interrupting short words."""
+        from PySide6.QtGui import QTextCursor
         cursor = editor.textCursor()
-        cursor.select(cursor.WordUnderCursor)
+        cursor.select(QTextCursor.WordUnderCursor)
         prefix = cursor.selectedText()
         if len(prefix) < 2 or not prefix.replace("_", "A").replace("$", "A").isalnum():
             return
@@ -614,8 +616,9 @@ class MainWindow:
         completer.complete(rectangle)
 
     def _insert_completion(self, editor, text):
+        from PySide6.QtGui import QTextCursor
         cursor = editor.textCursor()
-        cursor.select(cursor.WordUnderCursor)
+        cursor.select(QTextCursor.WordUnderCursor)
         cursor.insertText(text)
         editor.setTextCursor(cursor)
 
