@@ -1200,6 +1200,46 @@ class MainWindow:
         self.editor.setProperty("document_title", obj.name)
         self._update_sql_tab_title()
 
+    def _load_preview_object(self, obj):
+        """Load missing DDL and table metadata before rendering an object."""
+        from PySide6.QtWidgets import QApplication
+        from .catalog import load_object_definition
+
+        needs_definition = (
+            not obj.columns
+            or (obj.kind.upper() == "TABLE" and not getattr(obj, "primary_key", ()))
+            or "Use 'Ler estrutura'" in obj.ddl
+        )
+        if needs_definition:
+            try:
+                profile = self._profile_from_form()
+                self.status.setText(f"Lendo DDL de {obj.kind.lower()} {obj.name}...")
+                QApplication.processEvents()
+                obj = load_object_definition(profile, self._password_for(profile), obj.kind, obj.name)
+                self.selected_object = obj
+                self._log_event("DDL de objeto carregado", kind=obj.kind, name=obj.name)
+            except Exception as exc:
+                self._log_event("Falha ao ler DDL de objeto", kind=obj.kind, name=obj.name, error=str(exc))
+                self.status.setText(f"Falha ao ler DDL: {exc}")
+                self._show_message("Falha ao ler DDL", str(exc), warning=True)
+                return None
+
+        if obj.kind.upper() == "TABLE" and not obj.columns:
+            from .catalog import load_table_metadata
+            try:
+                profile = self._profile_from_form()
+                self.status.setText(f"Lendo estrutura da tabela {obj.name}...")
+                QApplication.processEvents()
+                obj = load_table_metadata(profile, self._password_for(profile), obj.name)
+                self.selected_object = obj
+                self._log_event("Metadados de tabela carregados", table=obj.name, columns=len(obj.columns))
+            except Exception as exc:
+                self._log_event("Falha ao ler metadados de tabela", table=obj.name, error=str(exc))
+                self.status.setText(f"Falha ao ler estrutura: {exc}")
+                self._show_message("Falha ao ler estrutura da tabela", str(exc), warning=True)
+                return None
+        return obj
+
     def preview_object(self, item, _column=0, load_data=False):
         """Show metadata/DDL; optionally load the first table data page."""
         from PySide6.QtWidgets import QTableWidgetItem
@@ -1211,37 +1251,10 @@ class MainWindow:
             return
         self.selected_object = obj
         self._set_table_data_enabled(obj.kind.upper() == "TABLE")
-        if not obj.columns or (obj.kind.upper() == "TABLE" and not getattr(obj, "primary_key", ()) ) or "Use 'Ler estrutura'" in obj.ddl:
-            from .catalog import load_object_definition
-            try:
-                profile = self._profile_from_form()
-                self.status.setText(f"Lendo DDL de {obj.kind.lower()} {obj.name}...")
-                from PySide6.QtWidgets import QApplication
-                QApplication.processEvents()
-                obj = load_object_definition(profile, self._password_for(profile), obj.kind, obj.name)
-                self.selected_object = obj
-                self._log_event("DDL de objeto carregado", kind=obj.kind, name=obj.name)
-            except Exception as exc:
-                self._log_event("Falha ao ler DDL de objeto", kind=obj.kind, name=obj.name, error=str(exc))
-                self.status.setText(f"Falha ao ler DDL: {exc}")
-                self._show_message("Falha ao ler DDL", str(exc), warning=True)
-                return
+        obj = self._load_preview_object(obj)
+        if obj is None:
+            return
         if obj.kind.upper() == "TABLE":
-            if not obj.columns:
-                from .catalog import load_table_metadata
-                try:
-                    profile = self._profile_from_form()
-                    self.status.setText(f"Lendo estrutura da tabela {obj.name}...")
-                    from PySide6.QtWidgets import QApplication
-                    QApplication.processEvents()
-                    obj = load_table_metadata(profile, self._password_for(profile), obj.name)
-                    self.selected_object = obj
-                    self._log_event("Metadados de tabela carregados", table=obj.name, columns=len(obj.columns))
-                except Exception as exc:
-                    self._log_event("Falha ao ler metadados de tabela", table=obj.name, error=str(exc))
-                    self.status.setText(f"Falha ao ler estrutura: {exc}")
-                    self._show_message("Falha ao ler estrutura da tabela", str(exc), warning=True)
-                    return
             self.table_page = 0
             self.data_filter.clear()
             self.data_page_label.setText("Dados: tabela selecionada; clique em Dados da tabela")
