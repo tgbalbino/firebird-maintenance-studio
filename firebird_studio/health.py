@@ -103,6 +103,17 @@ def list_sessions(profile: ConnectionProfile, password: str | None = None) -> li
     return sessions
 
 
+def terminate_session(profile: ConnectionProfile, password: str | None, attachment_id: int) -> None:
+    """Disconnect one monitored attachment; the server checks administrative rights."""
+    with open_database(profile, password) as connection:
+        cursor = connection.cursor()
+        try:
+            cursor.execute("DELETE FROM MON$ATTACHMENTS WHERE MON$ATTACHMENT_ID = ?", (int(attachment_id),))
+            connection.commit()
+        finally:
+            cursor.close()
+
+
 def list_statements(profile: ConnectionProfile, password: str | None = None) -> list[dict[str, Any]]:
     """Return currently active statements with a best-effort elapsed time."""
     with open_database(profile, password) as connection:

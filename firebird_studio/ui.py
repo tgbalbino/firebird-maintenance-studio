@@ -240,7 +240,10 @@ class MainWindow:
         self.activity_panel = activity_panel
         self.sessions_table = QTableWidget(); self.sessions_table.setEditTriggers(QTableWidget.NoEditTriggers); self.sessions_table.setSelectionBehavior(QAbstractItemView.SelectRows); self.sessions_table.setSortingEnabled(True)
         self.sessions_filter = QLineEdit(); self.sessions_filter.setPlaceholderText("Filtrar usuário, endereço ou processo..."); self.sessions_filter.textChanged.connect(self._filter_session_rows)
-        sessions_panel = QWidget(); sessions_layout = QVBoxLayout(sessions_panel); sessions_layout.addWidget(QLabel("Conexões ativas do banco")); sessions_layout.addWidget(self.sessions_filter); sessions_layout.addWidget(self.sessions_table, 1)
+        self.disconnect_session_button = QPushButton("Desconectar selecionada")
+        self.disconnect_session_button.clicked.connect(self.terminate_selected_session)
+        sessions_controls = QHBoxLayout(); sessions_controls.addWidget(self.sessions_filter, 1); sessions_controls.addWidget(self.disconnect_session_button)
+        sessions_panel = QWidget(); sessions_layout = QVBoxLayout(sessions_panel); sessions_layout.addWidget(QLabel("Conexões ativas do banco")); sessions_layout.addLayout(sessions_controls); sessions_layout.addWidget(self.sessions_table, 1)
         self.sessions_panel = sessions_panel
         self.result_tabs = QTabWidget(); self.result_tabs.addTab(self.result_table, "Resultado"); self.result_tabs.addTab(self.structure_table, "Estrutura"); self.result_tabs.addTab(plan_panel, "Plano e sugestões"); self.result_tabs.addTab(activity_panel, "Banco e atividade"); self.result_tabs.addTab(sessions_panel, "Sessões")
 
@@ -1890,6 +1893,43 @@ class MainWindow:
         profile = self._profile_from_form()
         password = self._password_for(profile)
         self._start_background_operation("Sessões", lambda: list_sessions(profile, password), lambda result: self._finish_sessions_operation(result, profile))
+
+    def terminate_selected_session(self):
+        from PySide6.QtWidgets import QMessageBox
+        row = self.sessions_table.currentRow()
+        if row < 0:
+            self._show_message("Desconectar sessão", "Selecione uma sessão primeiro.", warning=True)
+            return
+        item = self.sessions_table.item(row, 0)
+        if item is None:
+            return
+        attachment_id = item.text().strip()
+        profile = self._profile_from_form()
+        answer = QMessageBox.question(
+            self._window,
+            "Confirmar desconexão",
+            f"Desconectar a sessão {attachment_id} do banco '{profile.name}'?\nA operação pode interromper o trabalho do usuário.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        password = self._password_for(profile)
+        from .health import terminate_session
+        self._start_background_operation(
+            "Desconectar sessão",
+            lambda: terminate_session(profile, password, int(attachment_id)),
+            lambda result: self._finish_terminate_session(result, profile, attachment_id),
+        )
+
+    def _finish_terminate_session(self, result, profile, attachment_id):
+        if isinstance(result, Exception):
+            self._log_event("Falha ao desconectar sessão", profile=profile.name, attachment_id=attachment_id, error=str(result))
+            self._show_message("Falha ao desconectar sessão", str(result))
+            return
+        self._log_event("Sessão desconectada", profile=profile.name, attachment_id=attachment_id)
+        self.status.setText(f"Sessão {attachment_id} desconectada.")
+        self.inspect_sessions()
 
     def _finish_sessions_operation(self, sessions, profile):
         from PySide6.QtWidgets import QTableWidgetItem

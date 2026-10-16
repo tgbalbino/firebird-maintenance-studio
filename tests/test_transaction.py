@@ -10,7 +10,7 @@ from unittest.mock import patch
 from firebird_studio.models import ConnectionProfile
 from firebird_studio.transaction import TransactionSession
 from firebird_studio.plan import explain_query
-from firebird_studio.health import list_statements
+from firebird_studio.health import list_statements, terminate_session
 
 
 class _Cursor:
@@ -113,6 +113,39 @@ class TransactionTests(unittest.TestCase):
         self.assertEqual(statements[0]["id"], 7)
         self.assertEqual(statements[0]["user"], "SYSDBA")
         self.assertGreaterEqual(statements[0]["elapsed_seconds"], 3)
+
+    def test_terminate_session_uses_attachment_id_and_commits(self):
+        class Cursor:
+            def execute(self, query, params):
+                self.query = query
+                self.params = params
+
+            def close(self):
+                pass
+
+        class Connection:
+            def __init__(self):
+                self.cursor_instance = Cursor()
+                self.committed = False
+
+            def cursor(self):
+                return self.cursor_instance
+
+            def commit(self):
+                self.committed = True
+
+        connection = Connection()
+
+        @contextmanager
+        def fake_database(*_args, **_kwargs):
+            yield connection
+
+        profile = ConnectionProfile("Local", database="sample.fdb", version="5")
+        with patch("firebird_studio.health.open_database", fake_database):
+            terminate_session(profile, None, 42)
+        self.assertIn("MON$ATTACHMENTS", connection.cursor_instance.query)
+        self.assertEqual(connection.cursor_instance.params, (42,))
+        self.assertTrue(connection.committed)
 
 
 if __name__ == "__main__":
