@@ -32,6 +32,45 @@ def _literal(value: Any) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
 
+def _exportable_columns(connection: Any, table_name: str) -> tuple[list[str], list[str]]:
+    """Return writable columns and the computed/identity columns skipped."""
+    safe_name = table_name.replace("'", "''")
+    try:
+        cursor = connection.cursor()
+        cursor.execute(f"""
+            SELECT TRIM(rf.RDB$FIELD_NAME), COALESCE(rf.RDB$UPDATE_FLAG, 1),
+                   f.RDB$FIELD_COMPUTED_SOURCE, f.RDB$IDENTITY_TYPE
+            FROM RDB$RELATION_FIELDS rf
+            JOIN RDB$FIELDS f ON f.RDB$FIELD_NAME = rf.RDB$FIELD_SOURCE
+            WHERE rf.RDB$RELATION_NAME = '{safe_name}'
+            ORDER BY rf.RDB$FIELD_POSITION
+        """)
+        rows = cursor.fetchall()
+    except Exception:
+        cursor = connection.cursor()
+        cursor.execute(f"""
+            SELECT TRIM(rf.RDB$FIELD_NAME), COALESCE(rf.RDB$UPDATE_FLAG, 1),
+                   f.RDB$FIELD_COMPUTED_SOURCE
+            FROM RDB$RELATION_FIELDS rf
+            JOIN RDB$FIELDS f ON f.RDB$FIELD_NAME = rf.RDB$FIELD_SOURCE
+            WHERE rf.RDB$RELATION_NAME = '{safe_name}'
+            ORDER BY rf.RDB$FIELD_POSITION
+        """)
+        rows = [(*row, None) for row in cursor.fetchall()]
+    columns: list[str] = []
+    skipped: list[str] = []
+    for name, update_flag, computed_source, identity_type in rows:
+        clean_name = _text(name)
+        identity = str(identity_type or "").upper()
+        computed = bool(computed_source) or update_flag in (0, "0", False)
+        always_identity = identity in {"1", "ALWAYS"}
+        if computed or always_identity:
+            skipped.append(clean_name)
+        else:
+            columns.append(clean_name)
+    return columns, skipped
+
+
 def export_database_sql(
     profile: ConnectionProfile,
     password: str | None,
@@ -77,20 +116,18 @@ def export_database_sql(
                 total_rows = 0
                 for table_name in table_names:
                     safe_table = table_name.replace('"', '""')
-                    columns_cursor = connection.cursor()
-                    columns_cursor.execute(f"""
-                        SELECT TRIM(RDB$FIELD_NAME)
-                        FROM RDB$RELATION_FIELDS
-                        WHERE RDB$RELATION_NAME = '{table_name.replace("'", "''")}'
-                        ORDER BY RDB$FIELD_POSITION
-                    """)
-                    columns = [_text(row[0]) for row in columns_cursor.fetchall()]
+                    columns, skipped_columns = _exportable_columns(connection, table_name)
                     if not columns:
+                        if skipped_columns:
+                            output.write(f"-- TABELA {table_name}: somente colunas calculadas/identity ALWAYS; dados não exportados.\n\n")
                         continue
                     cursor = connection.cursor()
-                    cursor.execute(f'SELECT "{safe_table}".* FROM "{safe_table}"')
+                    select_columns = ", ".join(f'"{column.replace(chr(34), chr(34) * 2)}"' for column in columns)
+                    cursor.execute(f'SELECT {select_columns} FROM "{safe_table}"')
                     quoted_columns = ", ".join(f'"{column.replace(chr(34), chr(34) * 2)}"' for column in columns)
                     output.write(f"-- DADOS: {table_name}\n")
+                    if skipped_columns:
+                        output.write(f"-- Colunas calculadas/identity ALWAYS ignoradas: {', '.join(skipped_columns)}\n")
                     while True:
                         batch = cursor.fetchmany(batch_size)
                         if not batch:

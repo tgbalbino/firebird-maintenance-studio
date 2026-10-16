@@ -10,7 +10,7 @@ from firebird_studio.sql import execute_sql, is_mutating_statement
 from firebird_studio.script_runner import build_isql_args, run_script
 from firebird_studio.backup import build_gbak_args, run_gbak
 from firebird_studio.maintenance import validate_database
-from firebird_studio.export_sql import export_database_sql, _literal
+from firebird_studio.export_sql import export_database_sql, _exportable_columns, _literal
 from firebird_studio.schema import SchemaChange, SchemaObject, compare_schema, generate_migration
 from firebird_studio.catalog import _field_type
 from firebird_studio.plan import build_plan_script, parse_plan, suggest_improvements
@@ -53,6 +53,22 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(_literal(None), "NULL")
         self.assertEqual(_literal("O'Reilly"), "'O''Reilly'")
         self.assertEqual(_literal(True), "TRUE")
+
+    def test_sql_export_skips_computed_and_always_identity_columns(self):
+        class Cursor:
+            def execute(self, _query):
+                pass
+
+            def fetchall(self):
+                return [("ID", 1, None, "ALWAYS"), ("NAME", 1, None, None), ("TOTAL", 0, "PRICE * QTY", None)]
+
+        class Connection:
+            def cursor(self):
+                return Cursor()
+
+        columns, skipped = _exportable_columns(Connection(), "ORDERS")
+        self.assertEqual(columns, ["NAME"])
+        self.assertEqual(skipped, ["ID", "TOTAL"])
 
     def test_empty_sql_is_rejected_without_connection(self):
         result = execute_sql(ConnectionProfile("Local", database="sample.fdb"), " ")
