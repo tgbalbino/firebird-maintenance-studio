@@ -13,7 +13,7 @@ from firebird_studio.maintenance import validate_database
 from firebird_studio.export_sql import export_database_sql, _exportable_columns, _literal
 from firebird_studio.users import PRIVILEGES, _identifier, _password, delete_user, grant_privilege
 from firebird_studio.schema import SchemaChange, SchemaObject, compare_schema, generate_migration
-from firebird_studio.catalog import _field_type
+from firebird_studio.catalog import _field_type, load_object_definition
 from firebird_studio.plan import build_plan_script, parse_plan, suggest_improvements
 from firebird_studio.health import build_findings, inspect_health, _optional_database_values
 from firebird_studio.diagnostics import create_support_package
@@ -335,6 +335,22 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(_field_type(8, 4, 0, None), "INTEGER")
         self.assertEqual(_field_type(14, 20, 0, None), "CHAR(20)")
         self.assertEqual(_field_type(261, 0, 0, None), "BLOB")
+
+    def test_domain_definition_includes_default_check_and_nullability(self):
+        class Cursor:
+            def execute(self, _query): pass
+            def fetchall(self): return [(37, 20, 0, None, 1, "DEFAULT 'BR'", "CHECK (VALUE <> '')")]
+        class Connection:
+            def cursor(self): return Cursor()
+        class Database:
+            def __enter__(self): return Connection()
+            def __exit__(self, *_args): return False
+        with patch("firebird_studio.catalog.open_database", return_value=Database()):
+            obj = load_object_definition(ConnectionProfile("Local", database="sample.fdb", version="2.5"), "secret", "DOMAIN", "DOM_CELULAR")
+        self.assertIn('CREATE DOMAIN "DOM_CELULAR" AS VARCHAR(20)', obj.ddl)
+        self.assertIn("DEFAULT 'BR'", obj.ddl)
+        self.assertIn("CHECK (VALUE <> '')", obj.ddl)
+        self.assertIn("NOT NULL", obj.ddl)
 
     def test_plan_is_plan_only_and_tree_has_nodes(self):
         script = build_plan_script("select * from CUSTOMER where ID = 1", "5")

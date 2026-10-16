@@ -343,6 +343,32 @@ def load_object_definition(profile: ConnectionProfile, password: str | None, kin
     }
     if clean_kind == "TABLE":
         return load_table_metadata(profile, password, name)
+    if clean_kind == "DOMAIN":
+        with open_database(profile, password) as connection:
+            try:
+                rows = _rows(connection, f"""
+                    SELECT RDB$FIELD_TYPE, RDB$FIELD_LENGTH, RDB$FIELD_SCALE,
+                           RDB$FIELD_PRECISION, RDB$NULL_FLAG,
+                           RDB$DEFAULT_SOURCE, RDB$VALIDATION_SOURCE
+                    FROM RDB$FIELDS
+                    WHERE RDB$FIELD_NAME = '{safe_name}'
+                """)
+            except Exception:
+                rows = []
+            if rows:
+                field_type, length, scale, precision, null_flag, default_source, validation_source = rows[0]
+                type_name = _field_type(int(field_type), int(length or 0), int(scale or 0), int(precision) if precision is not None else None)
+                clauses = [f'CREATE DOMAIN "{name}" AS {type_name}']
+                if default_source:
+                    default_text = _text(default_source).rstrip(";")
+                    clauses.append(default_text if default_text.upper().startswith("DEFAULT ") else f"DEFAULT {default_text}")
+                if validation_source:
+                    validation_text = _text(validation_source).rstrip(";")
+                    clauses.append(validation_text if validation_text.upper().startswith("CHECK ") else f"CHECK ({validation_text})")
+                if null_flag:
+                    clauses.append("NOT NULL")
+                return SchemaObject(clean_kind, name, " ".join(clauses) + ";")
+        return SchemaObject(clean_kind, name, f'-- DOMAIN {name}\n-- Não foi possível obter a definição no catálogo.')
     if clean_kind == "EXCEPTION":
         with open_database(profile, password) as connection:
             try:
