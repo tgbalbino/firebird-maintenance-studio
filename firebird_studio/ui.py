@@ -1080,8 +1080,9 @@ class MainWindow:
         # Per-document context stays inside the MDI child so multiple SQL
         # windows never appear to share one connection or cursor status.
         profile_combo = QComboBox()
-        profile_combo.setMinimumWidth(220)
-        profile_combo.setPlaceholderText("Selecionar banco")
+        profile_combo.setMinimumWidth(200)
+        profile_combo.setPlaceholderText("Selecionar conexão")
+        profile_combo.setToolTip("Conexão usada por esta janela SQL")
         profile_combo.addItems([profile.name for profile in self.profiles])
         profile_combo.setProperty("sql_editor", editor)
         profile_combo.currentTextChanged.connect(lambda name, target=editor: self._set_current_query_profile(name, target))
@@ -1111,7 +1112,6 @@ class MainWindow:
         context_row.addWidget(workspace_status, 1)
         connection_row = QHBoxLayout()
         connection_row.setSpacing(8)
-        connection_row.addWidget(QLabel("Banco"))
         connection_row.addWidget(profile_combo)
         connection_row.addWidget(connection_status)
         connection_row.addWidget(connection_badge)
