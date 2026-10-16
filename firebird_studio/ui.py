@@ -521,6 +521,10 @@ class MainWindow:
             pass
         else:
             splitter.setSizes([360, 1040])
+        # Check once after the UI is ready so startup never waits for the
+        # network.  Failures remain silent; the manual menu command still
+        # reports them to the user.
+        QTimer.singleShot(1800, self._check_updates_on_startup)
 
     def _save_splitter_state(self, splitter):
         self._settings.setValue("main_splitter_state", splitter.saveState())
@@ -636,7 +640,9 @@ class MainWindow:
         page_size.setCurrentText(str(self._settings.value("data_page_size", "200")))
         always_top = QCheckBox("Manter a janela sempre no topo")
         always_top.setChecked(bool(self._settings.value("always_on_top", False, type=bool)))
-        form.addRow("Tema", theme); form.addRow("Linhas por página", page_size); form.addRow("Janela", always_top)
+        auto_updates = QCheckBox("Verificar atualizações ao iniciar")
+        auto_updates.setChecked(bool(self._settings.value("auto_update_check", True, type=bool)))
+        form.addRow("Tema", theme); form.addRow("Linhas por página", page_size); form.addRow("Janela", always_top); form.addRow("Atualizações", auto_updates)
         layout.addLayout(form)
         layout.addWidget(QLabel("As preferências de tamanho, posição, árvore e filtro são salvas automaticamente."))
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
@@ -645,6 +651,7 @@ class MainWindow:
         theme.currentIndexChanged.connect(lambda index: self._set_theme(theme.itemData(index)))
         page_size.currentTextChanged.connect(self._page_size_changed)
         always_top.toggled.connect(self._set_always_on_top)
+        auto_updates.toggled.connect(lambda enabled: self._settings.setValue("auto_update_check", bool(enabled)))
         dialog.exec()
 
     def show_about(self):
@@ -697,25 +704,34 @@ class MainWindow:
         dialog.exec()
 
     def check_for_updates(self):
-        from PySide6.QtWidgets import QMessageBox
         self.status.setText("Verificando atualizações...")
+        self._start_update_check(silent=False)
+
+    def _check_updates_on_startup(self):
+        if not bool(self._settings.value("auto_update_check", True, type=bool)):
+            return
+        self._start_update_check(silent=True)
+
+    def _start_update_check(self, silent=False):
         self._start_background_operation(
             "Verificação de atualizações",
             lambda: __import__("firebird_studio.updates", fromlist=["check_latest"]).check_latest(__version__),
-            self._finish_update_check,
+            lambda result: self._finish_update_check(result, silent=silent),
         )
 
-    def _finish_update_check(self, result):
+    def _finish_update_check(self, result, silent=False):
         from PySide6.QtCore import QUrl
         from PySide6.QtGui import QDesktopServices
         from PySide6.QtWidgets import QMessageBox
         if isinstance(result, Exception):
             self._log_event("Falha ao verificar atualização", error=str(result))
-            self._show_message("Atualizações", f"Não foi possível consultar o GitHub.\n\nVersão instalada: {__version__}\n\n{result}", warning=True)
+            if not silent:
+                self._show_message("Atualizações", f"Não foi possível consultar o GitHub.\n\nVersão instalada: {__version__}\n\n{result}", warning=True)
             return
         current, latest = result["current"], result["latest"]
         if not result["is_newer"]:
-            self._show_message("Atualizações", f"Você já está usando a versão mais recente ({current}).")
+            if not silent:
+                self._show_message("Atualizações", f"Você já está usando a versão mais recente ({current}).")
             return
         answer = QMessageBox.question(self._window, "Atualização disponível", f"Versão instalada: {current}\nNova versão: {latest} ({result['source']})\n\nAbrir a página de download?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
         if answer == QMessageBox.Yes:
