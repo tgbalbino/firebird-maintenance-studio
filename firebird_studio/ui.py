@@ -155,6 +155,7 @@ class MainWindow:
         self._table_original_rows = []
         self.table_page = 0
         self.profiles = store.load()
+        self._log_event("Perfis carregados", path=str(store.path), count=len(self.profiles))
         self.profile_objects = {}
         self.profile_list = QTreeWidget()
         self.profile_list.setHeaderLabels(["Bancos e objetos"])
@@ -2088,6 +2089,7 @@ class MainWindow:
             return
         self.profiles.pop(selected)
         self.store.save(self.profiles)
+        self._log_event("Cadastro excluído", profile=profile.name, remaining=len(self.profiles), path=str(self.store.path))
         from .credentials import CredentialStore
         try:
             CredentialStore().delete(profile.name)
@@ -2132,6 +2134,7 @@ class MainWindow:
         if 0 <= selected < len(self.profiles): self.profiles[selected] = profile
         else: self.profiles.append(profile)
         self.store.save(self.profiles)
+        self._log_event("Perfil salvo", profile=profile.name, count=len(self.profiles), path=str(self.store.path))
         from .credentials import CredentialStore
         try:
             credentials = CredentialStore()

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 import json
+import shutil
 
 
 SUPPORTED_VERSIONS = ("2.5", "3", "4", "5")
@@ -80,7 +81,10 @@ class ProfileStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = [asdict(profile) for profile in profiles]
         temporary = self._temporary_path()
+        backup = self.path.with_suffix(self.path.suffix + ".bak")
         try:
+            if self.path.exists():
+                shutil.copy2(self.path, backup)
             temporary.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
             temporary.replace(self.path)
         finally:

@@ -130,6 +130,20 @@ class ProfileTests(unittest.TestCase):
             self.assertEqual(len(profiles), 1)
             self.assertEqual(profiles[0].database, "first.fdb")
 
+    def test_profile_store_keeps_backup_before_replacing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "profiles.json"
+            store = ProfileStore(path)
+            first = ConnectionProfile(name="First", database="first.fdb")
+            second = ConnectionProfile(name="Second", database="second.fdb")
+
+            store.save([first])
+            store.save([second])
+
+            backup = json.loads(path.with_suffix(".json.bak").read_text(encoding="utf-8"))
+            self.assertEqual(backup[0]["name"], "First")
+            self.assertEqual(store.load()[0].name, "Second")
+
     def test_sql_export_validates_mode_and_literals(self):
         with tempfile.TemporaryDirectory() as directory:
             result = export_database_sql(ConnectionProfile("Local", database="sample.fdb"), "secret", Path(directory) / "export.sql", "unknown")
