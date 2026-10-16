@@ -211,6 +211,8 @@ class MainWindow:
         self.query_profile_combo.setMinimumWidth(240)
         self.query_profile_combo.currentTextChanged.connect(self._set_current_query_profile)
         self.query_connection_status = QLabel("Perfil da aba: não definido")
+        self.connection_badge = QLabel("● Desconectado")
+        self.connection_badge.setToolTip("Estado da conexão do banco desta consulta")
         self.query_cursor_status = QLabel("Linha 1, coluna 1")
         self.query_history = []
         self._transaction_session = None
@@ -307,7 +309,7 @@ class MainWindow:
         right_layout = QVBoxLayout(right); right_layout.addLayout(profile_actions); right_layout.addWidget(box)
         history_row = QHBoxLayout(); history_row.addWidget(QLabel("Histórico SQL:")); history_row.addWidget(self.history_combo, 1)
         right_layout.addLayout(history_row)
-        connection_row = QHBoxLayout(); connection_row.addWidget(QLabel("Conexão desta janela:")); connection_row.addWidget(self.query_profile_combo, 1); connection_row.addWidget(self.query_connection_status)
+        connection_row = QHBoxLayout(); connection_row.addWidget(QLabel("Conexão desta janela:")); connection_row.addWidget(self.query_profile_combo, 1); connection_row.addWidget(self.query_connection_status); connection_row.addWidget(self.connection_badge)
         connection_row.addWidget(self.query_cursor_status)
         right_layout.addLayout(connection_row)
         right_layout.addWidget(QLabel("Janelas SQL")); right_layout.addWidget(self.sql_tabs, 1)
@@ -539,6 +541,9 @@ class MainWindow:
         profile_name = self.editor.property("query_profile") if self.editor is not None else ""
         transaction_open = self._transaction_session is not None and self._transaction_session.active
         self.query_connection_status.setText(f"Perfil da aba: {profile_name or 'não definido'}" + (" · transação aberta" if transaction_open else ""))
+        connected = bool(profile_name and profile_name in self.connected_profiles)
+        self.connection_badge.setText("● Conectado" if connected else "● Desconectado")
+        self.connection_badge.setStyleSheet("color: #188038; font-weight: 600;" if connected else "color: #b3261e; font-weight: 600;")
 
     def _query_profile(self):
         name = self.editor.property("query_profile") if self.editor is not None else ""
@@ -1068,11 +1073,13 @@ class MainWindow:
             if self._opening_profile_name:
                 self.connected_profiles.discard(self._opening_profile_name)
                 self.refresh_profiles()
+                self._update_query_connection_status()
             self.status.setText(result.message)
             self._show_message("Falha ao abrir banco", result.message)
             return
         if self._opening_profile_name:
             self.connected_profiles.add(self._opening_profile_name)
+        self._update_query_connection_status()
         selected = next((index for index, profile in enumerate(self.profiles) if profile.name == self._opening_profile_name), -1)
         if 0 <= selected < len(self.profiles):
             self.profile_objects[self.profiles[selected].name] = objects
@@ -1656,6 +1663,7 @@ class MainWindow:
             pass
         self.profile_objects.pop(profile.name, None)
         self.refresh_profiles()
+        self._update_query_connection_status()
         self.name.clear(); self.database.clear(); self.role.clear(); self.password.clear(); self.save_password.setChecked(False); self.favorite.setChecked(False)
         self.status.setText("Cadastro excluído. O arquivo do banco foi mantido.")
 
@@ -1669,6 +1677,7 @@ class MainWindow:
         self.save_password.setChecked(bool(stored_password))
         self.favorite.setChecked(bool(p.favorite))
         self.port.setValue(p.port); self.version.setCurrentText(p.version)
+        self._update_query_connection_status()
 
     def _profile_from_form(self):
         return ConnectionProfile(self.name.text(), self.host.text(), self.port.value(), self.database.text(), self.version.currentText(), self.user.text(), role=self.role.text(), charset=self.charset.text(), favorite=self.favorite.isChecked(), isql_path=self.isql_path.text(), gbak_path=self.gbak_path.text())
