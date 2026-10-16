@@ -1657,10 +1657,10 @@ class MainWindow:
                 self.status.setText("Execução cancelada; nenhuma alteração foi aplicada.")
                 return
         result = self._transaction_session.execute(sql_text) if explicit_transaction else execute_sql(profile, sql_text, self._password_for(profile), commit=commit)
-        self._log_event("SQL executado", profile=profile.name, statement=statement.split(None, 1)[0] if statement else "", commit=commit, ok=result.ok, rows=len(result.rows), detail=result.message)
+        self._log_event("SQL executado", profile=profile.name, statement=statement.split(None, 1)[0] if statement else "", commit=commit, ok=result.ok, rows=len(result.rows), elapsed_ms=f"{result.elapsed_ms:.1f}", detail=result.message)
         self._add_query_history(sql_text)
         suffix = " Transação aberta; escolha Commit ou Rollback." if explicit_transaction and result.ok else (" Alterações confirmadas." if changes_data and commit and result.ok else (" Alterações desfeitas (modo seguro)." if changes_data and result.ok else ""))
-        self.status.setText(result.message + suffix)
+        self.status.setText(f"{result.message} ({result.elapsed_ms:.1f} ms)." + suffix)
         self.result_tabs.setCurrentWidget(self.result_table)
         self._table_original_rows = []
         if hasattr(self, "edit_data_action"):

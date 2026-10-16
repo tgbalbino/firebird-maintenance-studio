@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
+import time
 
 from .connection import _dsn
 from .models import ConnectionProfile
@@ -13,6 +14,7 @@ class QueryResult:
     columns: list[str]
     rows: list[tuple]
     message: str
+    elapsed_ms: float = 0.0
 
 
 DEFAULT_MAX_RESULT_ROWS = 10_000
@@ -58,6 +60,7 @@ def execute_sql(
     kwargs = {"dsn": _dsn(profile), "user": profile.user, "password": password or "", "charset": profile.charset}
     if profile.role:
         kwargs["role"] = profile.role
+    started = time.perf_counter()
     try:
         if profile.version == "2.5":
             import fdb
@@ -88,6 +91,6 @@ def execute_sql(
                 affected = f"Primeiras {len(rows)} linha(s) exibidas; resultado limitado a {max_rows}."
             else:
                 affected = f"{len(rows)} linha(s) retornada(s)."
-            return QueryResult(True, columns, rows, affected)
+            return QueryResult(True, columns, rows, affected, (time.perf_counter() - started) * 1000)
     except Exception as exc:  # driver-specific exceptions differ by version
-        return QueryResult(False, [], [], f"Falha ao executar SQL: {exc}")
+        return QueryResult(False, [], [], f"Falha ao executar SQL: {exc}", (time.perf_counter() - started) * 1000)

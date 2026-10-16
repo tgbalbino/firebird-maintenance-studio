@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+import time
 
 from .connection import _dsn
 from .models import ConnectionProfile
@@ -41,6 +42,7 @@ class TransactionSession:
             return QueryResult(False, [], [], "Informe uma instrução SQL.")
         if max_rows < 1:
             return QueryResult(False, [], [], "O limite de linhas deve ser maior que zero.")
+        started = time.perf_counter()
         try:
             cursor = self.connection.cursor()
             cursor.execute(sql)
@@ -60,9 +62,9 @@ class TransactionSession:
                 affected = f"Primeiras {len(rows)} linha(s) exibidas; resultado limitado a {max_rows}."
             else:
                 affected = f"{len(rows)} linha(s) retornada(s)."
-            return QueryResult(True, columns, rows, affected)
+            return QueryResult(True, columns, rows, affected, (time.perf_counter() - started) * 1000)
         except Exception as exc:
-            return QueryResult(False, [], [], f"Falha ao executar SQL: {exc}")
+            return QueryResult(False, [], [], f"Falha ao executar SQL: {exc}", (time.perf_counter() - started) * 1000)
 
     def commit(self) -> None:
         self.connection.commit()

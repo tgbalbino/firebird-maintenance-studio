@@ -138,6 +138,7 @@ class ProfileTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.rows, [(1,), (2,)])
         self.assertIn("limitado", result.message)
+        self.assertGreaterEqual(result.elapsed_ms, 0)
 
     def test_sql_rejects_invalid_result_limit(self):
         result = execute_sql(ConnectionProfile("Local", database="sample.fdb"), "SELECT 1", max_rows=0)
