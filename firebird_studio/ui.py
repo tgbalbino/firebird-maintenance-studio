@@ -231,6 +231,7 @@ class MainWindow:
         # the selected document without duplicating connection information.
         self._query_profile_combos = []
         self._history_combos = []
+        self._history_lists = []
         self.query_profile_combo = None
         self.query_connection_status = None
         self.connection_badge = None
@@ -602,10 +603,15 @@ class MainWindow:
             menu.setMinimumWidth(240)
 
     def _choose_history_query(self):
-        if self.history_combo.count() == 0:
+        if not self.query_history:
             self._show_message("Histórico SQL", "Ainda não há consultas no histórico.", warning=True)
             return
-        self.history_combo.showPopup()
+        editor = self.editor
+        document_tabs = editor.property("document_tabs") if editor is not None else None
+        history_list = editor.property("history_list") if editor is not None else None
+        if document_tabs is not None and history_list is not None:
+            document_tabs.setCurrentWidget(history_list)
+            history_list.setFocus()
 
     def show_app_settings(self):
         from PySide6.QtWidgets import QComboBox, QDialog, QDialogButtonBox, QFormLayout, QLabel, QCheckBox, QVBoxLayout
@@ -990,7 +996,7 @@ class MainWindow:
         editor.setProperty("completion_shortcut", completion_shortcut)
 
     def _create_sql_document_tabs(self, editor):
-        from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QTableWidget, QTabWidget, QVBoxLayout, QWidget
+        from PySide6.QtWidgets import QListWidget, QComboBox, QHBoxLayout, QLabel, QTableWidget, QTabWidget, QVBoxLayout, QWidget
         from PySide6.QtCore import Qt
         from .result_views import configure_result_table
         result_table = configure_result_table(QTableWidget())
@@ -1007,6 +1013,12 @@ class MainWindow:
         document_tabs.setUsesScrollButtons(True)
         document_tabs.addTab(editor, "SQL")
         document_tabs.addTab(result_table, "Resultado")
+        history_list = QListWidget()
+        history_list.setObjectName("sqlHistoryList")
+        history_list.setAlternatingRowColors(True)
+        history_list.setToolTip("Duplo clique em uma consulta para restaurá-la no editor SQL")
+        history_list.itemDoubleClicked.connect(lambda item, target=editor: self._restore_history_item(item, target))
+        document_tabs.addTab(history_list, "Histórico SQL")
         document_tabs.setCurrentWidget(editor)
         document_tabs.setProperty("sql_editor", editor)
         editor.setProperty("document_tabs", document_tabs)
@@ -1050,14 +1062,9 @@ class MainWindow:
         connection_row.addWidget(profile_combo)
         connection_row.addWidget(connection_status)
         connection_row.addWidget(connection_badge)
-        history_row = QHBoxLayout()
-        history_row.setSpacing(8)
-        history_row.addWidget(QLabel("Histórico SQL"))
-        history_row.addWidget(history_combo, 1)
         shell = QWidget()
         shell_layout = QVBoxLayout(shell)
         shell_layout.setContentsMargins(0, 0, 0, 0)
-        shell_layout.addLayout(history_row)
         shell_layout.addLayout(connection_row)
         shell_layout.addLayout(context_row)
         shell_layout.addWidget(document_tabs, 1)
@@ -1071,10 +1078,13 @@ class MainWindow:
         editor.setProperty("connection_badge", connection_badge)
         editor.setProperty("cursor_status", cursor_status)
         editor.setProperty("history_combo", history_combo)
+        editor.setProperty("history_list", history_list)
         editor.setProperty("object_breadcrumb", breadcrumb)
         editor.setProperty("workspace_status", workspace_status)
         self._query_profile_combos.append(profile_combo)
         self._history_combos.append(history_combo)
+        self._history_lists.append(history_list)
+        self._refresh_history_list(history_list)
         self._set_active_editor_widgets(editor)
         return shell, result_table
 
@@ -1353,8 +1363,24 @@ class MainWindow:
                 label = " ".join(item.split())
                 combo.addItem(label[:120], item)
             combo.blockSignals(False)
+        for history_list in self._history_lists:
+            self._refresh_history_list(history_list)
         self._settings.setValue("query_history", json.dumps(self.query_history, ensure_ascii=False))
         self._settings.sync()
+
+    def _refresh_history_list(self, history_list):
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QListWidgetItem
+
+        if history_list is None:
+            return
+        history_list.clear()
+        for query in self.query_history:
+            label = " ".join(query.split()) or "(consulta vazia)"
+            item = QListWidgetItem(label[:160])
+            item.setData(Qt.UserRole, query)
+            item.setToolTip(query)
+            history_list.addItem(item)
 
     def _restore_backup_history(self):
         import json
@@ -1407,6 +1433,31 @@ class MainWindow:
         query = combo.itemData(index) if combo is not None else None
         if query is not None and editor is not None:
             editor.setPlainText(str(query))
+
+    def _restore_history_item(self, item, editor=None):
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QMessageBox
+
+        editor = editor or self.editor
+        query = item.data(Qt.UserRole) if item is not None else None
+        if not query or editor is None:
+            return
+        current = editor.toPlainText().strip()
+        if current and current != str(query).strip():
+            answer = QMessageBox.question(
+                self._window,
+                "Restaurar consulta do histórico",
+                "O editor SQL já contém texto. Deseja sobrescrever a consulta atual?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if answer != QMessageBox.Yes:
+                return
+        editor.setPlainText(str(query))
+        document_tabs = editor.property("document_tabs")
+        if document_tabs is not None:
+            document_tabs.setCurrentWidget(editor)
+        self.status.setText("Consulta restaurada do histórico.")
 
     def find_in_sql(self):
         from PySide6.QtWidgets import QInputDialog

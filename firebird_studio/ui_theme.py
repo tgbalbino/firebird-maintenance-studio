@@ -30,6 +30,8 @@ LIGHT_STYLE += " QCheckBox#toolbarOption { background: #eef3f9; border: 1px soli
 DARK_STYLE += " QCheckBox#toolbarOption { background: #202631; border: 1px solid #4f5d72; border-radius: 4px; padding: 5px 8px; } QFrame#toolbarSeparator, QFrame#actionGroupSeparator { color: #667085; background: #667085; min-width: 1px; max-width: 1px; margin: 3px 2px; } QPushButton#paginationButton { background: #252d3a; border-color: #667085; padding: 5px 10px; } QPushButton#paginationButton:hover { background: #334e7a; border-color: #60a5fa; }"
 LIGHT_STYLE += " QTabWidget#sqlDocumentTabs::pane { border-color: #9eacbe; } QTabWidget#sqlDocumentTabs QTabBar::tab { min-width: 76px; } QTabWidget#sqlDocumentTabs QTabBar::tab:selected { font-weight: 700; }"
 DARK_STYLE += " QTabWidget#sqlDocumentTabs::pane { border-color: #8490a3; } QTabWidget#sqlDocumentTabs QTabBar::tab { min-width: 76px; } QTabWidget#sqlDocumentTabs QTabBar::tab:selected { font-weight: 700; }"
+LIGHT_STYLE += " QListWidget#sqlHistoryList { padding: 6px; } QListWidget#sqlHistoryList::item { padding: 7px 8px; border-bottom: 1px solid #dbe2ec; } QListWidget#sqlHistoryList::item:hover { background: #e1ebf8; }"
+DARK_STYLE += " QListWidget#sqlHistoryList { padding: 6px; } QListWidget#sqlHistoryList::item { padding: 7px 8px; border-bottom: 1px solid #3b4658; } QListWidget#sqlHistoryList::item:hover { background: #303b4e; }"
 
 
 def apply_theme(theme: str) -> None:
