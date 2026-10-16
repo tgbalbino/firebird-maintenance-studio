@@ -137,7 +137,9 @@ def export_database_sql(
                             output.write(f'INSERT INTO "{safe_table}" ({quoted_columns}) VALUES ({values});\n')
                             total_rows += 1
                     output.write("\n")
+                output.write("COMMIT;\n")
                 return SqlExportResult(True, str(filename), len(table_names), total_rows)
+            output.write("COMMIT;\n")
         return SqlExportResult(True, str(filename), len(tables), 0)
     except Exception as exc:
         return SqlExportResult(False, str(filename), 0, 0, f"Falha ao exportar SQL: {exc}")
