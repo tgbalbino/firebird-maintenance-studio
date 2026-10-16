@@ -947,6 +947,15 @@ class MainWindow:
                 self.workspace_status.setText("Ctrl+Tab alterna as janelas")
         elif self.workspace_status is not None:
             self.workspace_status.setText("Resultados e diagnóstico · use o menu Janelas para voltar ao SQL")
+            self.query_profile_combo = None
+            self.query_connection_status = None
+            self.connection_badge = None
+            self.query_cursor_status = None
+            self.history_combo = None
+            self.object_breadcrumb = None
+            self.workspace_status = None
+            self.commit_changes = None
+            self.read_only_mode = None
 
     def _sync_sql_window_bar(self, active_index: int | None = None):
         """Keep the local SQL document bar aligned with the MDI windows."""
@@ -1867,7 +1876,6 @@ class MainWindow:
         # only metadata loading is still in progress.
         from PySide6.QtWidgets import QApplication
         from PySide6.QtCore import Qt
-        self.status.setText("Executando SQL...")
         QApplication.setOverrideCursor(Qt.WaitCursor)
         QApplication.processEvents()
         try:
@@ -1916,6 +1924,11 @@ class MainWindow:
             return
         if self._opening_profile_name:
             self.connected_profiles.add(self._opening_profile_name)
+        if self.sql_tabs.count() == 0:
+            self._new_sql_tab()
+        if self.editor is not None and self._opening_profile_name:
+            self.editor.setProperty("query_profile", self._opening_profile_name)
+            self._sync_editor(self.sql_tabs.currentIndex())
         self._update_query_connection_status()
         selected = next((index for index, profile in enumerate(self.profiles) if profile.name == self._opening_profile_name), -1)
         if 0 <= selected < len(self.profiles):
@@ -2765,6 +2778,7 @@ class MainWindow:
                 return
         from PySide6.QtWidgets import QApplication
         from PySide6.QtCore import Qt
+        self.status.setText("Executando SQL...")
         QApplication.setOverrideCursor(Qt.WaitCursor)
         QApplication.processEvents()
         try:
