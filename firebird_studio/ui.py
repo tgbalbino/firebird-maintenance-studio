@@ -489,6 +489,7 @@ class MainWindow:
     def _sync_editor(self, index: int):
         self.editor = self.sql_tabs.widget(index) if index >= 0 else None
         if self.editor is not None:
+            self._refresh_sql_completer(self.editor)
             self.query_profile_combo.blockSignals(True)
             profile_name = self.editor.property("query_profile") or ""
             combo_index = self.query_profile_combo.findText(profile_name)
@@ -511,7 +512,8 @@ class MainWindow:
         return next((profile for profile in self.profiles if profile.name == name), self._profile_from_form())
 
     def _new_sql_tab(self):
-        from PySide6.QtWidgets import QTextEdit
+        from PySide6.QtWidgets import QCompleter, QTextEdit
+        from PySide6.QtCore import QStringListModel, Qt
         from PySide6.QtGui import QKeySequence, QShortcut
         editor = QTextEdit()
         editor.setFont(QFont("Consolas", 10))
@@ -526,11 +528,65 @@ class MainWindow:
         replace_shortcut = QShortcut(QKeySequence("Ctrl+H"), editor)
         replace_shortcut.activated.connect(self.replace_in_sql)
         editor.setProperty("replace_shortcut", replace_shortcut)
+        completion_model = QStringListModel(editor)
+        completer = QCompleter(completion_model, editor)
+        completer.setCaseSensitivity(Qt.CaseInsensitive)
+        completer.setCompletionMode(QCompleter.PopupCompletion)
+        completer.setWidget(editor)
+        completer.activated.connect(lambda text, target=editor: self._insert_completion(target, text))
+        completion_shortcut = QShortcut(QKeySequence("Ctrl+Space"), editor)
+        completion_shortcut.activated.connect(lambda target=editor: self._show_sql_completions(target))
+        editor.setProperty("completion_model", completion_model)
+        editor.setProperty("completion", completer)
+        editor.setProperty("completion_shortcut", completion_shortcut)
         selected_name = self.query_profile_combo.currentText() if hasattr(self, "query_profile_combo") else ""
         editor.setProperty("query_profile", selected_name or (self.profiles[0].name if self.profiles else ""))
         index = self.sql_tabs.addTab(editor, f"SQL {self.sql_tabs.count() + 1}")
         self.sql_tabs.setCurrentIndex(index)
         self.editor = editor
+        self._refresh_sql_completer(editor)
+
+    def _completion_words(self):
+        from PySide6.QtGui import QTextDocument
+        words = set()
+        highlighter = SqlHighlighter(QTextDocument()) if SqlHighlighter is not None else None
+        if highlighter is not None:
+            words.update(highlighter._keywords)
+            words.update(highlighter._types)
+        for objects in self.profile_objects.values():
+            for obj in objects:
+                name = str(getattr(obj, "name", ""))
+                if name:
+                    words.add(name)
+                for column in getattr(obj, "columns", ()):
+                    if column and column[0]:
+                        words.add(str(column[0]))
+        return sorted(words, key=str.casefold)
+
+    def _refresh_sql_completer(self, editor=None):
+        target = editor or self.editor
+        if target is None:
+            return
+        model = target.property("completion_model")
+        if model is not None:
+            model.setStringList(self._completion_words())
+
+    def _show_sql_completions(self, editor):
+        completer = editor.property("completion")
+        if completer is None:
+            return
+        cursor = editor.textCursor()
+        cursor.select(cursor.WordUnderCursor)
+        completer.setCompletionPrefix(cursor.selectedText())
+        rectangle = editor.cursorRect()
+        rectangle.setWidth(completer.popup().sizeHintForColumn(0) + completer.popup().verticalScrollBar().sizeHint().width())
+        completer.complete(rectangle)
+
+    def _insert_completion(self, editor, text):
+        cursor = editor.textCursor()
+        cursor.select(cursor.WordUnderCursor)
+        cursor.insertText(text)
+        editor.setTextCursor(cursor)
 
     def _on_profile_clicked(self, item):
         """Select a database/object; loading happens only on double click."""
@@ -987,6 +1043,8 @@ class MainWindow:
                 parent.addChild(item)
             parent.setExpanded(True)
         profile_item.setExpanded(True)
+        for index in range(self.sql_tabs.count()):
+            self._refresh_sql_completer(self.sql_tabs.widget(index))
 
     def _profile_item(self, index):
         if index < 0 or index >= self.profile_list.topLevelItemCount():
