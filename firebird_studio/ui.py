@@ -919,7 +919,9 @@ class MainWindow:
         self.query_connection_status.setText(f"Perfil: {profile_name or 'não definido'}" + (" · transação aberta" if transaction_open else ""))
         connected = bool(profile_name and profile_name in self.connected_profiles)
         self.connection_badge.setText("● Conectado" if connected else "● Desconectado")
-        self.connection_badge.setStyleSheet("color: #188038; font-weight: 600;" if connected else "color: #b3261e; font-weight: 600;")
+        self.connection_badge.setProperty("connectionState", "connected" if connected else "disconnected")
+        self.connection_badge.style().unpolish(self.connection_badge)
+        self.connection_badge.style().polish(self.connection_badge)
 
     def _query_profile(self):
         name = self.editor.property("query_profile") if self.editor is not None else ""
