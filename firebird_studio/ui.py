@@ -897,7 +897,7 @@ class MainWindow:
             self.query_profile_combo.blockSignals(False)
             self._update_query_connection_status()
             if self.workspace_status is not None:
-                self.workspace_status.setText(f"{self.sql_tabs.tabText(index)} · Ctrl+Tab alterna as janelas")
+                self.workspace_status.setText("Ctrl+Tab alterna as janelas")
         elif self.workspace_status is not None:
             self.workspace_status.setText("Resultados e diagnóstico · use o menu Janelas para voltar ao SQL")
 
@@ -931,7 +931,8 @@ class MainWindow:
         transaction_open = self._transaction_session is not None and self._transaction_session.active
         if self.query_connection_status is None:
             return
-        self.query_connection_status.setText(f"Perfil: {profile_name or 'não definido'}" + (" · transação aberta" if transaction_open else ""))
+        self.query_connection_status.setText("Transação aberta" if transaction_open else "")
+        self.query_connection_status.setVisible(transaction_open)
         connected = bool(profile_name and profile_name in self.connected_profiles)
         self.connection_badge.setText("● Conectado" if connected else "● Desconectado")
         self.connection_badge.setProperty("connectionState", "connected" if connected else "disconnected")
@@ -1015,8 +1016,9 @@ class MainWindow:
         profile_combo.addItems([profile.name for profile in self.profiles])
         profile_combo.setProperty("sql_editor", editor)
         profile_combo.currentTextChanged.connect(lambda name, target=editor: self._set_current_query_profile(name, target))
-        connection_status = QLabel("Perfil: não definido")
+        connection_status = QLabel()
         connection_status.setObjectName("connectionStatus")
+        connection_status.setVisible(False)
         connection_badge = QLabel("● Desconectado")
         connection_badge.setObjectName("connectionBadge")
         connection_badge.setToolTip("Estado da conexão do banco desta consulta")
@@ -1031,7 +1033,7 @@ class MainWindow:
         breadcrumb = QLabel("Banco > consulta SQL")
         breadcrumb.setObjectName("objectBreadcrumb")
         breadcrumb.setToolTip("Caminho do objeto selecionado")
-        workspace_status = QLabel("SQL · Ctrl+Tab alterna as janelas")
+        workspace_status = QLabel("Ctrl+Tab alterna as janelas")
         workspace_status.setObjectName("workspaceStatus")
         context_row = QHBoxLayout()
         context_row.setSpacing(8)
