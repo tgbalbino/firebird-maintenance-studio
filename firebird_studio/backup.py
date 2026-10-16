@@ -67,19 +67,22 @@ def run_gbak(
     if operation == "restore" and not source.exists():
         return BackupResult(False, -1, "", f"Arquivo de backup não encontrado: {source}", operation)
     args = build_gbak_args(profile, operation, source, target, gbak_path)
-    execution = run_command(
-        subprocess.run,
-        args,
-        input="",
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=timeout_seconds,
-        check=False,
-        cwd=str(gbak_path.parent),
-        env={**os.environ, "ISC_USER": profile.user, "ISC_PASSWORD": password or ""},
-    )
+    command_options = {
+        "input": "",
+        "capture_output": True,
+        "text": True,
+        "encoding": "utf-8",
+        "errors": "replace",
+        "timeout": timeout_seconds,
+        "check": False,
+        "cwd": str(gbak_path.parent),
+        "env": {**os.environ, "ISC_USER": profile.user, "ISC_PASSWORD": password or ""},
+    }
+    if os.name == "nt":
+        # gbak is a console executable; prevent a black CMD window from
+        # appearing over the Qt application during backup or restore.
+        command_options["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    execution = run_command(subprocess.run, args, **command_options)
     if execution.timed_out:
         return BackupResult(False, -1, "", f"{operation} excedeu o limite de {timeout_seconds} segundos.", operation)
     if execution.error is not None:

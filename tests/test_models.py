@@ -287,6 +287,24 @@ class ProfileTests(unittest.TestCase):
             self.assertFalse(result.ok)
             self.assertIn("diferente do banco", result.error)
 
+    def test_backup_hides_console_window_on_windows(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "sample.fdb"; database.write_text("db")
+            gbak = root / "gbak.exe"; gbak.write_text("tool")
+            target = root / "sample.fbk"
+            profile = ConnectionProfile("Local", database=str(database))
+
+            def fake_run(_args, **kwargs):
+                target.write_text("backup")
+                return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+            with patch("firebird_studio.backup.subprocess.run", side_effect=fake_run) as runner:
+                result = run_gbak(profile, "backup", database, target, "secret", gbak)
+            self.assertTrue(result.ok)
+            if sys.platform == "win32":
+                self.assertEqual(runner.call_args.kwargs["creationflags"], getattr(__import__("subprocess"), "CREATE_NO_WINDOW", 0))
+
     def test_validation_rejects_gfix_directory(self):
         with tempfile.TemporaryDirectory() as directory:
             profile = ConnectionProfile("Local", database="sample.fdb")

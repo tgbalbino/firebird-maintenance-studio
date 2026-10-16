@@ -2401,7 +2401,15 @@ class MainWindow:
         self._operation_thread = thread
         self._operation_worker = worker
         thread.started.connect(worker.run)
-        worker.finished.connect(on_finished, Qt.QueuedConnection)
+        def finish_safely(result):
+            try:
+                on_finished(result)
+            except Exception as exc:
+                self._log_event("Falha ao finalizar operação", operation=name, error=str(exc))
+                self.status.setText(f"{name} terminou com erro na interface: {exc}")
+                self._show_message(f"Falha em {name}", str(exc), warning=True)
+
+        worker.finished.connect(finish_safely, Qt.QueuedConnection)
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)
