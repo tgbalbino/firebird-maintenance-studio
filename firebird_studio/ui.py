@@ -121,6 +121,7 @@ class MainWindow:
             QCheckBox,
             QTableWidget,
             QTableWidgetItem,
+            QProgressBar,
             QFileDialog,
             QTabWidget,
             QTreeWidget,
@@ -345,7 +346,14 @@ class MainWindow:
         self.next_data_button.setEnabled(False)
         self.next_data_button.clicked.connect(lambda: self._load_table_page(self.table_page + 1))
         pagination_row.addWidget(self.previous_data_button); pagination_row.addWidget(self.data_page_label, 1); pagination_row.addWidget(self.data_filter); pagination_row.addWidget(self.next_data_button)
-        right_layout.addWidget(self.result_tabs); right_layout.addLayout(pagination_row); right_layout.addWidget(self.status)
+        right_layout.addWidget(self.result_tabs); right_layout.addLayout(pagination_row)
+        self.operation_progress = QProgressBar()
+        self.operation_progress.setRange(0, 0)
+        self.operation_progress.setTextVisible(False)
+        self.operation_progress.setFixedHeight(8)
+        self.operation_progress.setVisible(False)
+        right_layout.addWidget(self.operation_progress)
+        right_layout.addWidget(self.status)
         splitter = QSplitter(Qt.Horizontal); splitter.addWidget(left); splitter.addWidget(right)
         self.main_splitter = splitter
         splitter.setChildrenCollapsible(False)
@@ -1500,6 +1508,7 @@ class MainWindow:
         thread.finished.connect(thread.deleteLater)
         thread.finished.connect(self._clear_background_operation)
         self.status.setText(f"{name} em execução...")
+        self.operation_progress.setVisible(True)
         self._log_event("Operação iniciada", operation=name)
         thread.start()
         return True
@@ -1508,6 +1517,8 @@ class MainWindow:
         self._operation_thread = None
         self._operation_worker = None
         self._operation_name = ""
+        if hasattr(self, "operation_progress"):
+            self.operation_progress.setVisible(False)
 
     def _operation_result_text(self, result):
         if isinstance(result, Exception):
