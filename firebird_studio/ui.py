@@ -250,7 +250,7 @@ class MainWindow:
         profile_button = QToolButton(); profile_button.setText("Perfil"); profile_button.setToolTip("Criar, salvar, abrir ou excluir o cadastro selecionado")
         profile_button.setPopupMode(QToolButton.InstantPopup)
         profile_menu = QMenu(profile_button)
-        for label, callback in (("Novo perfil", self.new_profile), ("Salvar perfil", self.save_profile), ("Abrir banco", self.open_profile), ("Excluir cadastro", self.delete_profile)):
+        for label, callback in (("Novo perfil", self.new_profile), ("Salvar perfil", self.save_profile), ("Abrir banco", self.open_profile), ("Desconectar banco", self.disconnect_selected), ("Excluir cadastro", self.delete_profile)):
             profile_action = profile_menu.addAction(label)
             profile_action.triggered.connect(callback)
         profile_button.setMenu(profile_menu)
@@ -1509,8 +1509,15 @@ class MainWindow:
         self.profile_list.clear()
         from PySide6.QtWidgets import QTreeWidgetItem
         for index, profile in enumerate(self.profiles):
-            marker = ("★ " if profile.favorite else "") + ("● " if profile.name in self.connected_profiles else "")
+            from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
+            connected = profile.name in self.connected_profiles
+            marker = "★ " if profile.favorite else ""
             item = QTreeWidgetItem([f"{marker}{profile.name} · FB {profile.version}"])
+            pixmap = QPixmap(16, 16); pixmap.fill(QColor("transparent"))
+            painter = QPainter(pixmap); painter.setRenderHint(QPainter.Antialiasing)
+            painter.setBrush(QColor("#188038" if connected else "#80868b")); painter.setPen(QColor("#0f5132" if connected else "#5f6368")); painter.drawEllipse(2, 2, 12, 12); painter.end()
+            item.setIcon(0, QIcon(pixmap))
+            item.setForeground(0, QColor("#188038" if connected else "#5f6368"))
             item.setData(0, 33, index)
             self.profile_list.addTopLevelItem(item)
             objects = self.profile_objects.get(profile.name, [])
@@ -1562,6 +1569,13 @@ class MainWindow:
         if item is None:
             return
         menu = QMenu(self._window)
+        profile_index = self._profile_index_for_item(item)
+        if item.parent() is None and 0 <= profile_index < len(self.profiles):
+            profile = self.profiles[profile_index]
+            if profile.name in self.connected_profiles:
+                disconnect = menu.addAction("Desconectar banco")
+                disconnect.triggered.connect(self.disconnect_selected)
+                menu.addSeparator()
         if item.childCount():
             if item.isExpanded():
                 action = menu.addAction("Recolher objetos")
@@ -1572,6 +1586,21 @@ class MainWindow:
         collapse_all = menu.addAction("Recolher todos os bancos")
         collapse_all.triggered.connect(self._collapse_all_profiles)
         menu.exec(self.profile_list.viewport().mapToGlobal(position))
+
+    def disconnect_selected(self):
+        index = self._profile_index_for_item()
+        if index < 0 or index >= len(self.profiles):
+            self._show_message("Desconectar banco", "Selecione um banco conectado na árvore.", warning=True)
+            return
+        profile = self.profiles[index]
+        self.connected_profiles.discard(profile.name)
+        self.profile_objects.pop(profile.name, None)
+        self.selected_object = None
+        self._set_table_data_enabled(False)
+        self.refresh_profiles()
+        self._update_query_connection_status()
+        self._log_event("Banco desconectado", profile=profile.name)
+        self.status.setText(f"Banco '{profile.name}' desconectado. O cadastro e o arquivo foram mantidos.")
 
     def _collapse_all_profiles(self):
         for index in range(self.profile_list.topLevelItemCount()):
