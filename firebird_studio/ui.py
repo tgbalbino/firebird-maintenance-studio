@@ -308,6 +308,7 @@ class MainWindow:
         # the fields alive for validation and credential handling, but do not
         # place the old profile form in the main workspace.
         self.profile_toggle.setVisible(False)
+        self.profile_test_button.setVisible(False)
         self.profile_box.setVisible(False)
         self.profile_log_button = QPushButton("Abrir log")
         self.profile_log_button.clicked.connect(self.open_event_log)
@@ -340,7 +341,7 @@ class MainWindow:
         welcome_log.clicked.connect(self.open_event_log)
         welcome_actions.addWidget(welcome_profile); welcome_actions.addWidget(welcome_sql); welcome_actions.addWidget(welcome_log); welcome_actions.addStretch()
         welcome_layout.addWidget(welcome_title); welcome_layout.addWidget(welcome_text); welcome_layout.addLayout(welcome_actions)
-        right_layout.addWidget(self.welcome_banner); right_layout.addLayout(profile_actions)
+        right_layout.addWidget(self.welcome_banner)
         right_layout.addWidget(self.sql_tabs, 1)
         action_row = QHBoxLayout()
         action_row.setSpacing(6)
@@ -655,7 +656,7 @@ class MainWindow:
         """Create or edit a profile in a modal configuration window."""
         if index is not None and (index < 0 or index >= len(self.profiles)):
             return
-        from PySide6.QtWidgets import QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QLineEdit, QSpinBox, QVBoxLayout
+        from PySide6.QtWidgets import QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QLineEdit, QPlainTextEdit, QPushButton, QSpinBox, QVBoxLayout
 
         profile = self.profiles[index] if index is not None else ConnectionProfile(name="", version="5")
         dialog = QDialog(self._window)
@@ -683,9 +684,24 @@ class MainWindow:
         form.addRow("", save_password)
         form.addRow("", favorite)
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        test_button = QPushButton("Testar conexão")
+        buttons.addButton(test_button, QDialogButtonBox.ActionRole)
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
-        layout = QVBoxLayout(dialog); layout.addLayout(form); layout.addWidget(buttons)
+        output = QPlainTextEdit(); output.setReadOnly(True); output.setPlaceholderText("O resultado do teste aparecerá aqui.")
+
+        def test_dialog_connection():
+            from .connection import test_connection
+            candidate = ConnectionProfile(
+                name=name.text(), host=host.text(), port=port.value(), database=database.text(),
+                version=version.currentText(), user=user.text(), role=role.text(), charset=charset.text(),
+                favorite=favorite.isChecked(), isql_path=isql_path.text(), gbak_path=gbak_path.text(),
+            )
+            result = test_connection(candidate, password.text())
+            output.setPlainText(result.message + (f"\nVersão detectada: {result.server_version}" if result.server_version else ""))
+
+        test_button.clicked.connect(test_dialog_connection)
+        layout = QVBoxLayout(dialog); layout.addLayout(form); layout.addWidget(output, 1); layout.addWidget(buttons)
         if dialog.exec() != QDialog.Accepted:
             return
 
