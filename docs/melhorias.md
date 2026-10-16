@@ -2,6 +2,43 @@
 
 Data da revisão: 16/10/2026.
 
+## Segunda validação visual e novas referências
+
+Data: 16/10/2026.
+
+As referências recentes reforçam que a próxima evolução visual deve concentrar contexto e reduzir decisões escondidas em menus. O DBeaver mantém um navegador com filtro, agrupamento, estado de expansão salvo, cor por conexão e ação de “vincular ao editor”; o editor mostra conexão, limite de linhas, abas de resultado e navegação de histórico. O Database Workbench 7 adiciona uma tela inicial com conexões recentes, atalhos e tema escuro próprio. O FlameRobin confirma o valor de uma interface leve, rápida e independente de IDE paga.
+
+### Ideias aprovadas para a próxima etapa
+
+| Área | Melhoria proposta | Benefício | Critério de aceite |
+|---|---|---|---|
+| Tela inicial | Mostrar uma página inicial quando não houver banco conectado, com cartões “Conectar banco”, “Nova consulta” e “Abrir log”. | Reduz a sensação de tela vazia e orienta o primeiro uso. | Sem cadastro: a página inicial aparece; com cadastro: o navegador continua sendo a área principal. |
+| Navegador | Adicionar filtro “somente conectados”, opção de ordenar por favorito/nome/estado e cor configurável por conexão. | Facilita ambientes com muitos bancos. | O filtro não remove perfis; apenas controla a visualização e é salvo. |
+| Caminho do objeto | Mostrar breadcrumb `Banco > Grupo > Objeto` acima do painel de detalhes. | Mantém o usuário orientado ao abrir várias consultas. | O breadcrumb muda ao selecionar tabela, view, procedure, domain ou índice. |
+| Editor SQL | Exibir no título da aba o nome da consulta e a conexão; permitir destacar a aba ativa com a cor do banco. | Evita executar uma consulta no banco errado. | Três abas de bancos diferentes permanecem distinguíveis sem abrir o formulário do perfil. |
+| Dados | Adicionar uma pequena barra inferior com linhas carregadas, limite, duração e estado de edição. | Torna o risco e o volume da operação claros. | O texto muda após carregar, filtrar, editar ou confirmar uma linha. |
+| Diagnóstico | Organizar Saúde, Sessões, Atividade e Plano em cartões de resumo antes das tabelas detalhadas. | Mostra primeiro o que exige atenção. | Alertas aparecem acima dos detalhes e podem ser copiados para o relatório. |
+| Operações | Unificar diálogo de operação com título, etapa atual, progresso, saída recolhível e botão copiar. | Padroniza backup, restore, script, gfix e exportação. | Sucesso e falha têm a mesma estrutura e nunca escondem a saída técnica. |
+| Responsividade | Usar menus de overflow quando a largura for menor que 1100px e manter apenas ações essenciais visíveis. | Evita botões comprimidos em 1280×720 e escalas maiores. | Nenhum botão ou aba é cortado em 100%, 125% e 150%. |
+
+### O que não será copiado
+
+- Não transformar o Studio em uma ferramenta genérica para vários bancos.
+- Não colocar IA ou recursos comerciais no fluxo principal antes de estabilizar Firebird 2.5 a 5.
+- Não usar cores como único indicador de conexão, erro ou estado.
+- Não ocultar comandos destrutivos atrás de um botão ambíguo.
+
+### Ordem recomendada
+
+1. Tela inicial e breadcrumb.
+2. Estado visual da aba SQL e barra inferior da grade.
+3. Filtro “somente conectados”, ordenação e cor por banco.
+4. Diálogo padronizado de operações.
+5. Cartões de diagnóstico.
+6. Revisão de responsividade em 1280×720, 1920×1080 e escala de 150%.
+
+Referências adicionais: [DBeaver Database Navigator](https://github.com/dbeaver/dbeaver/wiki/database-navigator), [DBeaver Result Set Navigation](https://dbeaver.com/docs/dbeaver/Navigation/), [FlameRobin](https://flamerobin.sourceforge.io/) e [Database Workbench 7](https://www.firebirdnews.org/database-workbench-7-now-available/).
+
 ## Validação visual adicional
 
 Data da validação: 16/10/2026.
