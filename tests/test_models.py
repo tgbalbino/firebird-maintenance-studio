@@ -95,6 +95,7 @@ class ProfileTests(unittest.TestCase):
             store.save([profile])
             self.assertEqual(store.load(), [profile])
             self.assertTrue(store.load()[0].favorite)
+            self.assertFalse((Path(directory) / ".profiles.json.tmp").exists())
 
     def test_invalid_profile_is_reported(self):
         errors = ConnectionProfile("", database="", version="6", port=0).validate()

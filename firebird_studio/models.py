@@ -70,4 +70,10 @@ class ProfileStore:
     def save(self, profiles: list[ConnectionProfile]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = [asdict(profile) for profile in profiles]
-        self.path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        try:
+            temporary.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+            temporary.replace(self.path)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
