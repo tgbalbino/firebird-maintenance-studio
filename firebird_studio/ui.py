@@ -981,6 +981,10 @@ class MainWindow:
         shortcut.activated.connect(self.execute_selected)
         editor.setProperty("execute_shortcut", shortcut)
         f5_shortcut = QShortcut(QKeySequence("F5"), editor)
+        # The MDI child can lose keyboard focus while its editor remains the
+        # active SQL document.  An application shortcut keeps F5 reliable in
+        # that state and avoids depending on the inner editor focus widget.
+        f5_shortcut.setContext(Qt.ApplicationShortcut)
         f5_shortcut.activated.connect(lambda target=editor: (self.sql_tabs.setCurrentWidget(target), self._execute_sql_text(target.toPlainText())))
         editor.setProperty("execute_f5_shortcut", f5_shortcut)
         selection_shortcut = QShortcut(QKeySequence("Ctrl+Shift+F5"), editor)
@@ -1176,7 +1180,6 @@ class MainWindow:
         more_menu.setMinimumWidth(340)
         more_menu.setStyleSheet("QMenu::item { padding: 6px 130px 6px 12px; }")
         execute_action = more_menu.addAction("Executar SQL")
-        execute_action.setShortcut("F5")
         execute_action.triggered.connect(lambda: (self.sql_tabs.setCurrentWidget(editor), self._execute_sql_text(editor.toPlainText())))
         selection_action = more_menu.addAction("Executar seleção")
         selection_action.setShortcut("Ctrl+Shift+F5")
@@ -2684,7 +2687,15 @@ class MainWindow:
             if answer != QMessageBox.Yes:
                 self.status.setText("Execução cancelada; nenhuma alteração foi aplicada.")
                 return
-        result = self._transaction_session.execute(sql_text) if explicit_transaction else execute_sql(profile, sql_text, self._password_for(profile), commit=commit)
+        from PySide6.QtWidgets import QApplication
+        from PySide6.QtCore import Qt
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.processEvents()
+        try:
+            result = self._transaction_session.execute(sql_text) if explicit_transaction else execute_sql(profile, sql_text, self._password_for(profile), commit=commit)
+        finally:
+            while QApplication.overrideCursor() is not None:
+                QApplication.restoreOverrideCursor()
         self._log_event("SQL executado", profile=profile.name, statement=statement.split(None, 1)[0] if statement else "", commit=commit, ok=result.ok, rows=len(result.rows), elapsed_ms=f"{result.elapsed_ms:.1f}", detail=result.message)
         self._add_query_history(sql_text)
         suffix = " Transação aberta; escolha Commit ou Rollback." if explicit_transaction and result.ok else (" Alterações confirmadas." if changes_data and commit and result.ok else (" Alterações desfeitas (modo seguro)." if changes_data and result.ok else ""))
