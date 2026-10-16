@@ -645,7 +645,6 @@ class MainWindow:
             self.select_profile(index)
         if is_object_item and obj is not None:
             self.preview_object(item, _column, load_data=True)
-            self.open_object(item, _column)
             return
         if index >= 0:
             self.open_profile(index)
