@@ -134,6 +134,9 @@ class MainWindow:
         self._event_log_path = Path.home() / ".firebird-maintenance-studio" / "events.txt"
         self._log_event("Aplicação iniciada", executable=str(Path(__file__).resolve()))
         self._settings = QSettings("TGBalbino", "FirebirdMaintenanceStudio")
+        saved_geometry = self._settings.value("window_geometry")
+        if saved_geometry:
+            self._window.restoreGeometry(saved_geometry)
         self._apply_theme(str(self._settings.value("theme", "light")))
         self.backup_history = self._restore_backup_history()
         self._open_thread = None
@@ -447,6 +450,7 @@ class MainWindow:
         app_instance = QApplication.instance()
         if app_instance is not None:
             app_instance.aboutToQuit.connect(self._close_transaction)
+            app_instance.aboutToQuit.connect(self._save_window_geometry)
         self.profile_list.itemClicked.connect(self._on_profile_clicked)
         # Use Qt's actual double-click signal. Inferring a double click from
         # itemPressed/itemClicked makes a fast single click open object data.
@@ -465,6 +469,11 @@ class MainWindow:
     def _save_splitter_state(self, splitter):
         self._settings.setValue("main_splitter_state", splitter.saveState())
         self._settings.sync()
+
+    def _save_window_geometry(self):
+        if hasattr(self, "_window") and self._window.isVisible():
+            self._settings.setValue("window_geometry", self._window.saveGeometry())
+            self._settings.sync()
 
     def _apply_theme(self, theme: str):
         from .ui_theme import apply_theme
