@@ -12,6 +12,7 @@ def create_application():
 
     app = QApplication.instance() or QApplication([])
     app.setApplicationName("Firebird Maintenance Studio")
+    app.setStyleSheet("QToolButton, QPushButton { padding: 5px 9px; } QTabBar::tab { padding: 6px 12px; } QHeaderView::section { padding: 5px; font-weight: 600; }")
     return app
 
 
@@ -279,10 +280,14 @@ class MainWindow:
         self.open_data_button.setEnabled(False)
         self.open_data_button.clicked.connect(self.open_table_data)
         left_layout.addWidget(self.open_data_button)
-        new_button = QPushButton("Novo perfil"); new_button.clicked.connect(self.new_profile); left_layout.addWidget(new_button)
-        save_button = QPushButton("Salvar perfil"); save_button.clicked.connect(self.save_profile); left_layout.addWidget(save_button)
-        open_button = QPushButton("Abrir banco"); open_button.clicked.connect(self.open_profile); left_layout.addWidget(open_button)
-        delete_button = QPushButton("Excluir cadastro"); delete_button.clicked.connect(self.delete_profile); left_layout.addWidget(delete_button)
+        profile_button = QToolButton(); profile_button.setText("Perfil"); profile_button.setToolTip("Criar, salvar, abrir ou excluir o cadastro selecionado")
+        profile_button.setPopupMode(QToolButton.InstantPopup)
+        profile_menu = QMenu(profile_button)
+        for label, callback in (("Novo perfil", self.new_profile), ("Salvar perfil", self.save_profile), ("Abrir banco", self.open_profile), ("Excluir cadastro", self.delete_profile)):
+            profile_action = profile_menu.addAction(label)
+            profile_action.triggered.connect(callback)
+        profile_button.setMenu(profile_menu)
+        left_layout.addWidget(profile_button)
         left_layout.addStretch()
 
         form = QFormLayout(); form.addRow("Nome", self.name); form.addRow("", self.favorite); form.addRow("Host", self.host)
