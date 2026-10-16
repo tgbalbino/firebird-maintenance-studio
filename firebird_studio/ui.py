@@ -190,9 +190,8 @@ class MainWindow:
         self._restore_query_history()
         self.editor = None
         self._new_sql_tab()
-        self.result_table = QTableWidget(); self.result_table.setMinimumHeight(180); self.result_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.result_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.result_table.setSortingEnabled(True)
+        from .result_views import configure_result_table
+        self.result_table = configure_result_table(QTableWidget())
         self.result_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.result_table.customContextMenuRequested.connect(self._table_context_menu)
         self.structure_table = QTableWidget(); self.structure_table.setMinimumHeight(180); self.structure_table.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -1475,19 +1474,9 @@ class MainWindow:
             self.status.setText(result.message)
             self._show_message("Falha ao abrir dados", result.message)
             return False
-        self.result_table.clear()
         self._table_original_rows = [tuple(row) for row in result.rows]
-        self.result_table.setSortingEnabled(False)
-        self.result_table.setColumnCount(len(result.columns))
-        self.result_table.setRowCount(len(result.rows))
-        self.result_table.setHorizontalHeaderLabels(result.columns)
-        for row_index, row in enumerate(result.rows):
-            for column_index, value in enumerate(row):
-                item = QTableWidgetItem("" if value is None else str(value))
-                item.setData(Qt.UserRole, value)
-                self.result_table.setItem(row_index, column_index, item)
-        self.result_table.resizeColumnsToContents()
-        self.result_table.setSortingEnabled(True)
+        from .result_views import fill_table
+        fill_table(self.result_table, result.columns, result.rows, preserve_values=True)
         self._filter_data_rows(self.data_filter.text())
         self.table_page = page
         self.previous_data_button.setEnabled(page > 0)
@@ -1748,12 +1737,8 @@ class MainWindow:
                 action.setEnabled(False)
         if hasattr(self, "apply_update_action"):
             self.apply_update_action.setEnabled(False)
-        self.result_table.clear()
-        self.result_table.setColumnCount(len(result.columns)); self.result_table.setRowCount(len(result.rows))
-        self.result_table.setHorizontalHeaderLabels(result.columns)
-        for row_index, row in enumerate(result.rows):
-            for column_index, value in enumerate(row):
-                self.result_table.setItem(row_index, column_index, QTableWidgetItem("" if value is None else str(value)))
+        from .result_views import fill_table
+        fill_table(self.result_table, result.columns, result.rows)
 
     def export_result_csv(self):
         from PySide6.QtWidgets import QFileDialog
