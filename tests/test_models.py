@@ -223,6 +223,16 @@ class ProfileTests(unittest.TestCase):
         self.assertIn("NOT GENERATED", migration)
         self.assertNotIn("DROP TABLE", migration)
 
+    def test_alter_create_ddl_is_comment_only_until_reviewed(self):
+        changes = compare_schema(
+            [SchemaObject("TABLE", "CUSTOMER", 'CREATE TABLE "CUSTOMER" (ID INTEGER, NAME VARCHAR(80))')],
+            [SchemaObject("TABLE", "CUSTOMER", 'CREATE TABLE "CUSTOMER" (ID INTEGER)')],
+        )
+        migration = generate_migration(changes)
+        self.assertIn("MANUAL ALTER REQUIRED", migration)
+        self.assertIn('-- CREATE TABLE "CUSTOMER"', migration)
+        self.assertNotIn('\nCREATE TABLE "CUSTOMER"', migration)
+
     def test_schema_diff_includes_domains_and_indexes(self):
         source = [
             SchemaObject("DOMAIN", "DM_CODE", 'CREATE DOMAIN "DM_CODE" AS INTEGER'),

@@ -85,7 +85,15 @@ def generate_migration(changes: list[SchemaChange]) -> str:
         if change.action == "ADD":
             lines.extend([f"-- {label}", change.object.ddl.rstrip().rstrip(";") + ";", ""])
         elif change.action == "ALTER":
-            lines.extend([f"-- {label}" + (" [REVIEW: potentially destructive]" if change.destructive else ""), change.object.ddl.rstrip().rstrip(";") + ";", ""])
+            review = " [REVIEW: potentially destructive]" if change.destructive else ""
+            ddl = change.object.ddl.rstrip().rstrip(";") + ";"
+            if re.match(r"\s*(CREATE|RECREATE)\b", ddl, re.IGNORECASE):
+                lines.append(f"-- {label}{review} [MANUAL ALTER REQUIRED]")
+                lines.append("-- The source DDL is shown for review and is not executable as an ALTER:")
+                lines.extend(f"-- {line}" for line in ddl.splitlines())
+                lines.append("")
+            else:
+                lines.extend([f"-- {label}{review}", ddl, ""])
         elif change.action == "REMOVE":
             lines.extend([f"-- {label} [NOT GENERATED: destructive change]", ""])
     if not changes:
