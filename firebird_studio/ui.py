@@ -170,6 +170,10 @@ class MainWindow:
         self.tree_filter.textChanged.connect(self._filter_tree)
         self.tree_filter.setText(str(self._settings.value("tree_filter", "")))
         self.tree_filter.textChanged.connect(lambda value: self._settings.setValue("tree_filter", value))
+        self.tree_connected_only = QCheckBox("Conectados")
+        self.tree_connected_only.setToolTip("Mostrar somente bancos conectados")
+        self.tree_connected_only.setChecked(bool(self._settings.value("tree_connected_only", False, type=bool)))
+        self.tree_connected_only.toggled.connect(self._tree_connected_filter_changed)
         self.name = QLineEdit()
         self.favorite = QCheckBox("Favorito")
         self.host = QLineEdit("localhost")
@@ -265,7 +269,8 @@ class MainWindow:
         sidebar_title.setObjectName("sectionTitle")
         sidebar_hint = QLabel("Duplo clique conecta ou abre o objeto")
         sidebar_hint.setObjectName("sectionHint")
-        left_layout.addWidget(sidebar_title); left_layout.addWidget(sidebar_hint); left_layout.addWidget(self.tree_filter); left_layout.addWidget(self.profile_list, 1)
+        tree_filter_row = QHBoxLayout(); tree_filter_row.addWidget(self.tree_filter, 1); tree_filter_row.addWidget(self.tree_connected_only)
+        left_layout.addWidget(sidebar_title); left_layout.addWidget(sidebar_hint); left_layout.addLayout(tree_filter_row); left_layout.addWidget(self.profile_list, 1)
         self.open_data_button = QPushButton("Abrir dados da tabela")
         self.open_data_button.setEnabled(False)
         self.open_data_button.clicked.connect(self.open_table_data)
@@ -324,12 +329,16 @@ class MainWindow:
         workspace_row = QHBoxLayout()
         workspace_title = QLabel("Área de trabalho")
         workspace_title.setStyleSheet("font-weight: 600;")
+        self.object_breadcrumb = QLabel("Banco > nenhum objeto")
+        self.object_breadcrumb.setObjectName("objectBreadcrumb")
+        self.object_breadcrumb.setToolTip("Caminho do objeto selecionado")
         self.workspace_status = QLabel("SQL 1 · Ctrl+Tab alterna as janelas")
         self.workspace_status.setStyleSheet("color: #526173;")
         self.workspace_connection = QLabel("Banco: nenhum")
         self.workspace_connection.setObjectName("workspaceConnection")
         self.workspace_connection.setToolTip("Banco associado à consulta ativa")
         workspace_row.addWidget(workspace_title)
+        workspace_row.addWidget(self.object_breadcrumb)
         workspace_row.addWidget(self.workspace_status, 1)
         workspace_row.addWidget(self.workspace_connection)
         right_layout.addLayout(workspace_row); right_layout.addWidget(self.sql_tabs, 1)
@@ -665,6 +674,8 @@ class MainWindow:
             self._update_cursor_status(self.editor)
             self._set_transaction_controls_enabled()
             self._update_sql_tab_title(index)
+            if hasattr(self, "object_breadcrumb") and self.selected_object is None:
+                self.object_breadcrumb.setText("Banco > consulta SQL")
             self.query_profile_combo.blockSignals(True)
             profile_name = self.editor.property("query_profile") or ""
             combo_index = self.query_profile_combo.findText(profile_name)
@@ -932,6 +943,7 @@ class MainWindow:
                 self.password.setText(typed_password)
         if is_object_item and obj is not None:
             self.selected_object = obj
+            self._set_object_breadcrumb(obj)
             self._set_table_data_enabled(str(getattr(obj, "kind", "")).upper() == "TABLE")
             self.status.setText(
                 f"{obj.kind.title()} selecionado: {obj.name}. Duplo clique para carregar DDL e dados."
@@ -939,6 +951,18 @@ class MainWindow:
             return
         if 0 <= index < len(self.profiles):
             self.status.setText(f"Perfil '{self.profiles[index].name}' selecionado. Duplo clique para conectar.")
+            if hasattr(self, "object_breadcrumb"):
+                self.object_breadcrumb.setText(f"{self.profiles[index].name} > banco")
+
+    def _set_object_breadcrumb(self, obj):
+        profile = self._query_profile() if hasattr(self, "_query_profile") else None
+        profile_name = profile.name if profile is not None else self.name.text().strip()
+        profile_name = profile_name or "Banco"
+        kind = str(getattr(obj, "kind", "Objeto")).title()
+        name = str(getattr(obj, "name", ""))
+        group = "Tabelas" if kind.upper() == "TABLE" else f"{kind}s"
+        if hasattr(self, "object_breadcrumb"):
+            self.object_breadcrumb.setText(f"{profile_name} > {group} > {name}")
 
     def _on_tree_double_clicked(self, item, _column=0):
         """Open a profile or object only after Qt confirms a double click."""
@@ -1429,6 +1453,7 @@ class MainWindow:
         obj = self._load_preview_object(obj)
         if obj is None:
             return
+        self._set_object_breadcrumb(obj)
         if obj.kind.upper() == "TABLE":
             self.table_page = 0
             self.data_filter.clear()
@@ -1833,6 +1858,7 @@ class MainWindow:
         if self.selected_object is not None and self.selected_object.key == obj.key:
             obj = self.selected_object
         self._show_object_sql(obj, new_tab=True)
+        self._set_object_breadcrumb(obj)
         self.status.setText(f"Nova janela SQL aberta para {obj.kind.lower()} {obj.name}.")
 
     def refresh_profiles(self):
@@ -1864,6 +1890,11 @@ class MainWindow:
         self.query_profile_combo.blockSignals(False)
         self._filter_tree(self.tree_filter.text())
 
+    def _tree_connected_filter_changed(self, checked: bool):
+        self._settings.setValue("tree_connected_only", bool(checked))
+        self._settings.sync()
+        self._filter_tree(self.tree_filter.text())
+
     def _tree_state_key(self, profile_name: str) -> str:
         return f"tree_expanded/{profile_name}"
 
@@ -1887,6 +1918,12 @@ class MainWindow:
         for index in range(self.profile_list.topLevelItemCount()):
             root = self.profile_list.topLevelItem(index)
             visible = not query or query in root.text(0).casefold()
+            profile_index = root.data(0, 33)
+            connected_visible = (
+                not self.tree_connected_only.isChecked()
+                or (profile_index is not None and int(profile_index) < len(self.profiles)
+                    and self.profiles[int(profile_index)].name in self.connected_profiles)
+            )
             for child_index in range(root.childCount()):
                 child = root.child(child_index)
                 child_visible = not query or query in child.text(0).casefold()
@@ -1894,7 +1931,7 @@ class MainWindow:
                     object_item = child.child(object_index)
                     object_item.setHidden(bool(query) and not (child_visible or query in object_item.text(0).casefold()))
                 child.setHidden(bool(query) and not (child_visible or any(not child.child(i).isHidden() for i in range(child.childCount()))))
-            root.setHidden(bool(query) and not (visible or any(not root.child(i).isHidden() for i in range(root.childCount()))))
+            root.setHidden((bool(query) and not (visible or any(not root.child(i).isHidden() for i in range(root.childCount())))) or not connected_visible)
 
     def _tree_context_menu(self, position):
         """Offer expansion controls without triggering selection or connection."""
