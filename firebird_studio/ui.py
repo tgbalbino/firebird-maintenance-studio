@@ -1005,6 +1005,7 @@ class MainWindow:
     def _create_sql_document_tabs(self, editor):
         from PySide6.QtWidgets import QListWidget, QComboBox, QHBoxLayout, QLabel, QTableWidget, QTabWidget, QVBoxLayout, QWidget, QPushButton
         from PySide6.QtCore import Qt
+        from PySide6.QtGui import QAction, QKeySequence
         from .result_views import configure_result_table
         result_table = configure_result_table(QTableWidget())
         result_table.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -1025,6 +1026,11 @@ class MainWindow:
         history_list.setAlternatingRowColors(True)
         history_list.setToolTip("Duplo clique em uma consulta para restaurá-la no editor SQL")
         history_list.itemDoubleClicked.connect(lambda item, target=editor: self._restore_history_item(item, target))
+        remove_history = QAction("Remover consulta selecionada", history_list)
+        remove_history.setShortcut(QKeySequence.Delete)
+        remove_history.setShortcutContext(Qt.WidgetShortcut)
+        remove_history.triggered.connect(lambda _checked=False, listing=history_list: self._remove_selected_history_item(listing))
+        history_list.addAction(remove_history)
         history_panel = QWidget()
         history_layout = QVBoxLayout(history_panel)
         history_layout.setContentsMargins(6, 6, 6, 6)
@@ -1514,6 +1520,28 @@ class MainWindow:
             return
         QApplication.clipboard().setText(str(query))
         self.status.setText("Consulta do histórico copiada para a área de transferência.")
+
+    def _remove_selected_history_item(self, history_list):
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QMessageBox
+
+        item = history_list.currentItem() if history_list is not None else None
+        query = item.data(Qt.UserRole) if item is not None else None
+        if not query:
+            self.status.setText("Selecione uma consulta no histórico para remover.")
+            return
+        answer = QMessageBox.question(
+            self._window,
+            "Remover consulta do histórico",
+            "Remover a consulta selecionada do histórico?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        self.query_history = [entry for entry in self.query_history if entry != str(query)]
+        self._refresh_query_history()
+        self.status.setText("Consulta removida do histórico.")
 
     def _clear_query_history(self):
         from PySide6.QtWidgets import QMessageBox
