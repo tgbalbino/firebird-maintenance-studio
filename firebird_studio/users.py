@@ -21,6 +21,9 @@ class RoleAccount:
     name: str
 
 
+PRIVILEGES = ("SELECT", "INSERT", "UPDATE", "DELETE", "REFERENCES", "EXECUTE")
+
+
 def list_roles(profile: ConnectionProfile, password: str | None = None) -> list[RoleAccount]:
     with open_database(profile, password) as connection:
         cursor = connection.cursor()
@@ -104,3 +107,17 @@ def grant_role(profile: ConnectionProfile, admin_password: str | None, role_name
 
 def revoke_role(profile: ConnectionProfile, admin_password: str | None, role_name: str, username: str) -> None:
     _execute_security(profile, admin_password, f"REVOKE {_identifier(role_name)} FROM USER {_identifier(username)}")
+
+
+def grant_privilege(profile: ConnectionProfile, admin_password: str | None, privilege: str, object_name: str, username: str) -> None:
+    action = privilege.strip().upper()
+    if action not in PRIVILEGES:
+        raise ValueError("Privilégio não suportado.")
+    _execute_security(profile, admin_password, f"GRANT {action} ON {_identifier(object_name)} TO USER {_identifier(username)}")
+
+
+def revoke_privilege(profile: ConnectionProfile, admin_password: str | None, privilege: str, object_name: str, username: str) -> None:
+    action = privilege.strip().upper()
+    if action not in PRIVILEGES:
+        raise ValueError("Privilégio não suportado.")
+    _execute_security(profile, admin_password, f"REVOKE {action} ON {_identifier(object_name)} FROM USER {_identifier(username)}")

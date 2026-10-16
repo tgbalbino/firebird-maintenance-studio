@@ -11,7 +11,7 @@ from firebird_studio.script_runner import build_isql_args, run_script
 from firebird_studio.backup import build_gbak_args, run_gbak
 from firebird_studio.maintenance import validate_database
 from firebird_studio.export_sql import export_database_sql, _exportable_columns, _literal
-from firebird_studio.users import _identifier, _password, delete_user
+from firebird_studio.users import PRIVILEGES, _identifier, _password, delete_user, grant_privilege
 from firebird_studio.schema import SchemaChange, SchemaObject, compare_schema, generate_migration
 from firebird_studio.catalog import _field_type
 from firebird_studio.plan import build_plan_script, parse_plan, suggest_improvements
@@ -20,6 +20,11 @@ from unittest.mock import patch
 
 
 class ProfileTests(unittest.TestCase):
+    def test_privilege_validation(self):
+        self.assertIn("SELECT", PRIVILEGES)
+        with self.assertRaises(ValueError):
+            grant_privilege(ConnectionProfile("Local", database="sample.fdb"), "secret", "DROP", "T", "U")
+
     def test_profile_validation_and_round_trip(self):
         profile = ConnectionProfile("Local", database="sample.fdb", version="2.5", role="RDB$ADMIN", favorite=True)
         self.assertEqual(profile.validate(), [])

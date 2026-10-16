@@ -1740,8 +1740,8 @@ class MainWindow:
         )
 
     def manage_users(self):
-        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QInputDialog, QLineEdit, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout
-        from .users import change_user_password, create_role, create_user, delete_user, grant_role, list_users, revoke_role
+        from PySide6.QtWidgets import QComboBox, QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QInputDialog, QLineEdit, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout
+        from .users import PRIVILEGES, change_user_password, create_role, create_user, delete_user, grant_privilege, grant_role, list_users, revoke_privilege, revoke_role
 
         profile = self._profile_from_form()
         admin_password = self._password_for(profile)
@@ -1770,6 +1770,13 @@ class MainWindow:
         revoke_role_button = QPushButton("Remover role do usuário selecionado")
         role_row.addWidget(role_name); role_row.addWidget(create_role_button); role_row.addWidget(grant_role_button); role_row.addWidget(revoke_role_button)
         layout.addLayout(role_row)
+        privilege_row = QHBoxLayout()
+        privilege_combo = QComboBox(); privilege_combo.addItems(PRIVILEGES)
+        object_name = QLineEdit(); object_name.setPlaceholderText("Tabela, view ou procedure")
+        grant_privilege_button = QPushButton("Conceder privilégio")
+        revoke_privilege_button = QPushButton("Remover privilégio")
+        privilege_row.addWidget(privilege_combo); privilege_row.addWidget(object_name); privilege_row.addWidget(grant_privilege_button); privilege_row.addWidget(revoke_privilege_button)
+        layout.addLayout(privilege_row)
         close = QDialogButtonBox(QDialogButtonBox.Close)
         close.rejected.connect(dialog.reject)
         layout.addWidget(close)
@@ -1824,6 +1831,22 @@ class MainWindow:
             except Exception as exc:
                 self._show_message("Permissão de role", str(exc), warning=True)
 
+        def change_privilege_action(revoke: bool):
+            target_user = selected_user(); target_object = object_name.text().strip(); privilege = privilege_combo.currentText()
+            if not target_user or not target_object:
+                self._show_message("Privilégio", "Selecione um usuário e informe o objeto.", warning=True); return
+            if revoke:
+                answer = QMessageBox.question(dialog, "Remover privilégio", f"Remover {privilege} de {target_user} no objeto {target_object}?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                if answer != QMessageBox.Yes:
+                    return
+            try:
+                (revoke_privilege if revoke else grant_privilege)(profile, admin_password, privilege, target_object, target_user)
+                action = "removido" if revoke else "concedido"
+                self._log_event("Privilégio alterado", profile=profile.name, privilege=privilege, object=target_object, user=target_user, action=action)
+                self.status.setText(f"Privilégio {privilege} {action} para {target_user}.")
+            except Exception as exc:
+                self._show_message("Privilégio", str(exc), warning=True)
+
         def create_user_action():
             username, accepted = QInputDialog.getText(dialog, "Criar usuário", "Nome do usuário:")
             if not accepted or not username.strip():
@@ -1873,6 +1896,7 @@ class MainWindow:
 
         refresh.clicked.connect(reload_users); create.clicked.connect(create_user_action); change.clicked.connect(lambda: change_user_action()); sysdba.clicked.connect(change_sysdba_action); remove.clicked.connect(delete_user_action)
         create_role_button.clicked.connect(create_role_action); grant_role_button.clicked.connect(lambda: change_role_action(False)); revoke_role_button.clicked.connect(lambda: change_role_action(True))
+        grant_privilege_button.clicked.connect(lambda: change_privilege_action(False)); revoke_privilege_button.clicked.connect(lambda: change_privilege_action(True))
         reload_users()
         dialog.exec()
 
