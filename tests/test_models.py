@@ -10,6 +10,7 @@ from firebird_studio.sql import execute_sql, is_mutating_statement
 from firebird_studio.script_runner import build_isql_args, run_script
 from firebird_studio.backup import build_gbak_args, run_gbak
 from firebird_studio.maintenance import validate_database
+from firebird_studio.export_sql import export_database_sql, _literal
 from firebird_studio.schema import SchemaChange, SchemaObject, compare_schema, generate_migration
 from firebird_studio.catalog import _field_type
 from firebird_studio.plan import build_plan_script, parse_plan, suggest_improvements
@@ -43,6 +44,15 @@ class ProfileTests(unittest.TestCase):
             path.write_text(json.dumps([{"name": "Local", "database": "sample.fdb", "future": True}, "invalid"]), encoding="utf-8")
             profiles = ProfileStore(path).load()
             self.assertEqual([profile.name for profile in profiles], ["Local"])
+
+    def test_sql_export_validates_mode_and_literals(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = export_database_sql(ConnectionProfile("Local", database="sample.fdb"), "secret", Path(directory) / "export.sql", "unknown")
+        self.assertFalse(result.ok)
+        self.assertIn("Modo de exportação", result.error)
+        self.assertEqual(_literal(None), "NULL")
+        self.assertEqual(_literal("O'Reilly"), "'O''Reilly'")
+        self.assertEqual(_literal(True), "TRUE")
 
     def test_empty_sql_is_rejected_without_connection(self):
         result = execute_sql(ConnectionProfile("Local", database="sample.fdb"), " ")

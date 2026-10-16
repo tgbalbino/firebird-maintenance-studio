@@ -366,7 +366,7 @@ class MainWindow:
         data_button.menu().addAction(self.generate_insert_action)
         data_button.menu().addAction(self.generate_delete_action)
         data_button.menu().addAction(self.apply_update_action)
-        database_button = menu_button("Banco", [("Backup", self.execute_backup), ("Restore", self.execute_restore), ("Histórico de backup/restore", self.show_backup_history)], "Operações de backup e restore")
+        database_button = menu_button("Banco", [("Backup", self.execute_backup), ("Restore", self.execute_restore), ("Exportar banco para SQL", self.export_database_sql), ("Histórico de backup/restore", self.show_backup_history)], "Operações de backup, restore e exportação SQL")
         analysis_button = menu_button("Análise", [("Ler estrutura", self.inspect_schema), ("Ver plano", self.inspect_plan), ("Saúde", self.inspect_health), ("Banco e atividade", self.inspect_activity), ("Salvar relatório de saúde", self.save_health_report), ("Salvar saúde em HTML", self.save_health_html), ("Sessões", self.inspect_sessions), ("Validar integridade", self.validate_database), ("Comparar estruturas", self.compare_selected), ("Salvar comparação", self.save_compare_report), ("Salvar comparação em HTML", self.save_compare_html)], "Estrutura, plano, saúde, atividade e comparação")
         action_row.addWidget(sql_button); action_row.addWidget(data_button); action_row.addWidget(database_button); action_row.addWidget(analysis_button); action_row.addWidget(self.commit_changes); action_row.addWidget(self.read_only_mode); action_row.addStretch(); right_layout.addLayout(action_row)
         pagination_row = QHBoxLayout()
@@ -1770,6 +1770,41 @@ class MainWindow:
             lambda: run_gbak(profile, "restore", Path(source), Path(target), password, gbak_path),
             lambda result: self._finish_restore_operation(result, profile, source, target, password),
         )
+
+    def export_database_sql(self):
+        from PySide6.QtWidgets import QFileDialog, QInputDialog
+        from datetime import datetime
+        from .export_sql import export_database_sql
+
+        labels = ["Somente dados", "Somente metadados", "Dados e metadados"]
+        label, accepted = QInputDialog.getItem(self._window, "Exportar banco para SQL", "Conteúdo:", labels, 2, False)
+        if not accepted:
+            return
+        modes = {labels[0]: "data", labels[1]: "metadata", labels[2]: "both"}
+        stem = Path(self.database.text().strip().strip('"')).stem or self.name.text().strip() or "firebird_export"
+        filename, _ = QFileDialog.getSaveFileName(self._window, "Salvar exportação SQL", f"{stem}_{datetime.now():%Y%m%d_%H%M%S}.sql", "SQL (*.sql);;Todos (*.*)")
+        if not filename:
+            return
+        profile = self._profile_from_form()
+        password = self._password_for(profile)
+        self._start_background_operation(
+            "Exportação SQL",
+            lambda: export_database_sql(profile, password, Path(filename), modes[label]),
+            lambda result: self._finish_sql_export(result, profile),
+        )
+
+    def _finish_sql_export(self, result, profile):
+        if isinstance(result, Exception):
+            self._show_message("Falha na exportação SQL", str(result))
+            return
+        if result.ok:
+            self.editor.setPlainText(f"-- Exportação SQL concluída\n-- Arquivo: {result.filename}\n-- Tabelas: {result.tables}\n-- Linhas: {result.rows}\n")
+            self._log_event("Exportação SQL concluída", profile=profile.name, filename=result.filename, tables=result.tables, rows=result.rows)
+            self.status.setText(f"Exportação SQL concluída: {result.filename}")
+        else:
+            self._log_event("Exportação SQL falhou", profile=profile.name, filename=result.filename, error=result.error)
+            self.status.setText(f"Exportação SQL falhou: {result.error}")
+            self._show_message("Falha na exportação SQL", result.error)
 
     def _finish_restore_operation(self, result, profile, source, target, password):
         output, error = self._operation_result_text(result)
