@@ -1604,13 +1604,15 @@ class MainWindow:
 
     def inspect_schema(self):
         from .catalog import load_schema
-        try:
-            profile = self._profile_from_form()
-            objects = load_schema(profile, self._password_for(profile))
-        except Exception as exc:
-            self._log_event("Falha ao ler estrutura", profile=profile.name, error=str(exc))
-            self.status.setText(f"Falha ao ler estrutura: {exc}")
-            self._show_message("Falha ao ler estrutura", str(exc))
+        profile = self._profile_from_form()
+        password = self._password_for(profile)
+        self._start_background_operation("Leitura da estrutura", lambda: load_schema(profile, password), lambda result: self._finish_schema_operation(result, profile))
+
+    def _finish_schema_operation(self, objects, profile):
+        if isinstance(objects, Exception):
+            self._log_event("Falha ao ler estrutura", profile=profile.name, error=str(objects))
+            self.status.setText(f"Falha ao ler estrutura: {objects}")
+            self._show_message("Falha ao ler estrutura", str(objects))
             return
         self.editor.setPlainText("\n".join(f"{obj.kind}: {obj.name}\n{obj.ddl}" for obj in objects))
         self._populate_object_tree(objects)
@@ -1625,7 +1627,17 @@ class MainWindow:
             self.status.setText("Configure o caminho do isql no perfil antes de analisar o plano.")
             self._show_message("Ver plano", "Configure o caminho do isql.exe no perfil antes de analisar o plano.", warning=True)
             return
-        result = explain_query(profile, self.editor.toPlainText(), self._password_for(profile), Path(profile.isql_path))
+        password = self._password_for(profile)
+        query = self.editor.toPlainText()
+        isql_path = Path(profile.isql_path)
+        self._start_background_operation("Análise do plano", lambda: explain_query(profile, query, password, isql_path), lambda result: self._finish_plan_operation(result, profile))
+
+    def _finish_plan_operation(self, result, profile):
+        if isinstance(result, Exception):
+            self._log_event("Falha ao analisar plano", profile=profile.name, error=str(result))
+            self.status.setText(f"Falha ao analisar plano: {result}")
+            self._show_message("Falha ao obter plano", str(result))
+            return
         self._log_event("Plano analisado", profile=profile.name, ok=result.ok, suggestions=len(result.suggestions), error=result.error)
         if not result.ok:
             self.status.setText(result.error)
