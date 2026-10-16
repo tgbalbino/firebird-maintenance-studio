@@ -249,7 +249,14 @@ class MainWindow:
         self.backup_history_table = QTableWidget(); self.backup_history_table.setEditTriggers(QAbstractItemView.NoEditTriggers); self.backup_history_table.setSelectionBehavior(QAbstractItemView.SelectRows); self.backup_history_table.setSortingEnabled(True)
         backup_history_panel = QWidget(); backup_history_layout = QVBoxLayout(backup_history_panel); backup_history_layout.addWidget(QLabel("Histórico local de backup e restore")); backup_history_layout.addWidget(self.backup_history_table, 1)
         self.backup_history_panel = backup_history_panel
-        self.result_tabs = QTabWidget(); self.result_tabs.addTab(self.result_table, "Resultado"); self.result_tabs.addTab(self.structure_table, "Estrutura"); self.result_tabs.addTab(plan_panel, "Plano e sugestões"); self.result_tabs.addTab(activity_panel, "Banco e atividade"); self.result_tabs.addTab(sessions_panel, "Sessões"); self.result_tabs.addTab(backup_history_panel, "Histórico de backup")
+        self.compare_changes = []
+        self.compare_filter = QLineEdit(); self.compare_filter.setPlaceholderText("Filtrar tipo ou nome..."); self.compare_filter.textChanged.connect(self._filter_compare_rows)
+        self.compare_action_filter = QComboBox(); self.compare_action_filter.addItems(["Todas as ações", "ADD", "ALTER", "REMOVE"]); self.compare_action_filter.currentTextChanged.connect(self._filter_compare_rows)
+        self.compare_table = QTableWidget(); self.compare_table.setEditTriggers(QAbstractItemView.NoEditTriggers); self.compare_table.setSelectionBehavior(QAbstractItemView.SelectRows); self.compare_table.setSortingEnabled(True)
+        compare_controls = QHBoxLayout(); compare_controls.addWidget(self.compare_filter, 1); compare_controls.addWidget(self.compare_action_filter)
+        compare_panel = QWidget(); compare_layout = QVBoxLayout(compare_panel); compare_layout.addLayout(compare_controls); compare_layout.addWidget(self.compare_table, 1)
+        self.compare_panel = compare_panel
+        self.result_tabs = QTabWidget(); self.result_tabs.addTab(self.result_table, "Resultado"); self.result_tabs.addTab(self.structure_table, "Estrutura"); self.result_tabs.addTab(plan_panel, "Plano e sugestões"); self.result_tabs.addTab(activity_panel, "Banco e atividade"); self.result_tabs.addTab(sessions_panel, "Sessões"); self.result_tabs.addTab(backup_history_panel, "Histórico de backup"); self.result_tabs.addTab(compare_panel, "Comparação")
 
         left = QWidget(); left_layout = QVBoxLayout(left); left.setMinimumWidth(280)
         left_layout.addWidget(QLabel("Bancos e objetos (duplo clique para conectar/abrir)")); left_layout.addWidget(self.tree_filter); left_layout.addWidget(self.profile_list, 1)
@@ -2144,6 +2151,7 @@ class MainWindow:
 
     def _finish_compare_operation(self, changes, source, target):
         from .schema import generate_migration
+        from PySide6.QtWidgets import QTableWidgetItem
 
         if isinstance(changes, Exception):
             self._log_event("Falha ao comparar estruturas", source=source.name, target=target.name, error=str(changes))
@@ -2156,9 +2164,27 @@ class MainWindow:
             lines.append(f"[{marker}] {change.object.kind} {change.object.name}")
         lines.extend(["", "PRÉVIA DE MIGRAÇÃO", "", generate_migration(changes)])
         self.last_compare_report = "\n".join(lines)
+        self.compare_changes = list(changes)
+        headers = ["Ação", "Tipo", "Nome", "Destrutiva", "DDL de origem"]
+        self.compare_table.setSortingEnabled(False); self.compare_table.clear(); self.compare_table.setColumnCount(len(headers)); self.compare_table.setRowCount(len(changes)); self.compare_table.setHorizontalHeaderLabels(headers)
+        for row, change in enumerate(changes):
+            values = [change.action, change.object.kind, change.object.name, "SIM" if change.destructive else "NÃO", change.object.ddl]
+            for column, value in enumerate(values):
+                self.compare_table.setItem(row, column, QTableWidgetItem(str(value)))
+        self.compare_table.resizeColumnsToContents(); self.compare_table.setSortingEnabled(True); self._filter_compare_rows(self.compare_filter.text())
+        self.result_tabs.setCurrentWidget(self.compare_panel)
         self.editor.setPlainText(self.last_compare_report)
         self._log_event("Comparação concluída", source=source.name, target=target.name, changes=len(changes))
         self.status.setText(f"Comparação concluída: {len(changes)} diferença(s). Nenhuma alteração foi aplicada.")
+
+    def _filter_compare_rows(self, text: str = ""):
+        needle = (text or self.compare_filter.text()).strip().casefold()
+        action = self.compare_action_filter.currentText()
+        for row in range(self.compare_table.rowCount()):
+            values = [self.compare_table.item(row, col).text() if self.compare_table.item(row, col) else "" for col in range(self.compare_table.columnCount())]
+            matches_text = not needle or needle in " ".join(values).casefold()
+            matches_action = action == "Todas as ações" or values[0] == action
+            self.compare_table.setRowHidden(row, not (matches_text and matches_action))
 
     def save_compare_report(self):
         """Save the most recent comparison report without applying any change."""
