@@ -234,7 +234,10 @@ class MainWindow:
         self.activity_refresh_timer = QTimer(self._window); self.activity_refresh_timer.setInterval(5000); self.activity_refresh_timer.timeout.connect(self.inspect_activity)
         activity_panel = QWidget(); activity_layout = QVBoxLayout(activity_panel); activity_layout.addLayout(activity_controls); activity_layout.addWidget(self.activity_metrics); activity_layout.addWidget(self.activity_table, 1)
         self.activity_panel = activity_panel
-        self.result_tabs = QTabWidget(); self.result_tabs.addTab(self.result_table, "Resultado"); self.result_tabs.addTab(self.structure_table, "Estrutura"); self.result_tabs.addTab(plan_panel, "Plano e sugestões"); self.result_tabs.addTab(activity_panel, "Banco e atividade")
+        self.sessions_table = QTableWidget(); self.sessions_table.setEditTriggers(QTableWidget.NoEditTriggers); self.sessions_table.setSelectionBehavior(QAbstractItemView.SelectRows); self.sessions_table.setSortingEnabled(True)
+        sessions_panel = QWidget(); sessions_layout = QVBoxLayout(sessions_panel); sessions_layout.addWidget(QLabel("Conexões ativas do banco")); sessions_layout.addWidget(self.sessions_table, 1)
+        self.sessions_panel = sessions_panel
+        self.result_tabs = QTabWidget(); self.result_tabs.addTab(self.result_table, "Resultado"); self.result_tabs.addTab(self.structure_table, "Estrutura"); self.result_tabs.addTab(plan_panel, "Plano e sugestões"); self.result_tabs.addTab(activity_panel, "Banco e atividade"); self.result_tabs.addTab(sessions_panel, "Sessões")
 
         left = QWidget(); left_layout = QVBoxLayout(left); left.setMinimumWidth(280)
         left_layout.addWidget(QLabel("Bancos e objetos (duplo clique para conectar/abrir)")); left_layout.addWidget(self.tree_filter); left_layout.addWidget(self.profile_list, 1)
@@ -1856,15 +1859,24 @@ class MainWindow:
         self._start_background_operation("Sessões", lambda: list_sessions(profile, password), lambda result: self._finish_sessions_operation(result, profile))
 
     def _finish_sessions_operation(self, sessions, profile):
+        from PySide6.QtWidgets import QTableWidgetItem
+
         if isinstance(sessions, Exception):
             self._log_event("Falha ao ler sessões", profile=profile.name, error=str(sessions))
             self.status.setText(f"Falha ao ler sessões: {sessions}")
             self._show_message("Falha ao ler sessões", str(sessions))
             return
-        lines = ["SESSÕES ATIVAS", ""]
-        for session in sessions:
-            lines.append(f"ID: {session['id']} | Usuário: {session['user']} | Endereço: {session['address']} | Processo: {session['process']} | Estado: {session['state'] or 'N/D'}")
-        self.editor.setPlainText("\n".join(lines))
+        headers = ["ID", "Usuário", "Endereço", "Processo", "Estado"]
+        self.sessions_table.setSortingEnabled(False)
+        self.sessions_table.clear()
+        self.sessions_table.setColumnCount(len(headers)); self.sessions_table.setRowCount(len(sessions)); self.sessions_table.setHorizontalHeaderLabels(headers)
+        for row, session in enumerate(sessions):
+            values = [session.get("id"), session.get("user"), session.get("address"), session.get("process"), session.get("state") or "N/D"]
+            for column, value in enumerate(values):
+                self.sessions_table.setItem(row, column, QTableWidgetItem("" if value is None else str(value)))
+        self.sessions_table.resizeColumnsToContents()
+        self.sessions_table.setSortingEnabled(True)
+        self.result_tabs.setCurrentWidget(self.sessions_panel)
         self._log_event("Sessões lidas", profile=profile.name, sessions=len(sessions))
         self.status.setText(f"Sessões lidas: {len(sessions)}.")
 
