@@ -548,11 +548,10 @@ class MainWindow:
         name = self.editor.property("query_profile") if self.editor is not None else ""
         return next((profile for profile in self.profiles if profile.name == name), self._profile_from_form())
 
-    def _new_sql_tab(self):
-        from PySide6.QtWidgets import QCompleter, QHBoxLayout, QPushButton, QTableWidget, QTabWidget, QTextEdit, QWidget
+    def _configure_sql_editor(self, editor):
+        from PySide6.QtWidgets import QCompleter
         from PySide6.QtCore import QStringListModel, Qt
         from PySide6.QtGui import QKeySequence, QShortcut
-        editor = QTextEdit()
         editor.setFont(QFont("Consolas", 10))
         editor.setPlaceholderText("Execute uma instrução SQL...")
         editor.setProperty("sql_highlighter", SqlHighlighter(editor.document()))
@@ -589,6 +588,10 @@ class MainWindow:
         editor.setProperty("completion_model", completion_model)
         editor.setProperty("completion", completer)
         editor.setProperty("completion_shortcut", completion_shortcut)
+
+    def _create_sql_document_tabs(self, editor):
+        from PySide6.QtWidgets import QTableWidget, QTabWidget
+        from PySide6.QtCore import Qt
         from .result_views import configure_result_table
         result_table = configure_result_table(QTableWidget())
         result_table.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -600,10 +603,10 @@ class MainWindow:
         document_tabs.setProperty("sql_editor", editor)
         editor.setProperty("document_tabs", document_tabs)
         editor.setProperty("result_table", result_table)
-        selected_name = self.query_profile_combo.currentText() if hasattr(self, "query_profile_combo") else ""
-        editor.setProperty("query_profile", selected_name or (self.profiles[0].name if self.profiles else ""))
-        editor.setProperty("document_title", f"SQL {self.sql_tabs.count() + 1}")
-        index = self.sql_documents.add(document_tabs, f"SQL {self.sql_tabs.count() + 1}", editor.property("query_profile") or "")
+        return document_tabs, result_table
+
+    def _create_sql_toolbar(self, editor):
+        from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
         sql_toolbar = QWidget()
         toolbar_layout = QHBoxLayout(sql_toolbar)
         toolbar_layout.setContentsMargins(4, 4, 4, 4)
@@ -623,15 +626,23 @@ class MainWindow:
         commit_button.clicked.connect(self._commit_transaction)
         rollback_button = QPushButton("Rollback")
         rollback_button.clicked.connect(self._rollback_transaction)
-        toolbar_layout.addWidget(execute_button)
-        toolbar_layout.addWidget(selection_button)
-        toolbar_layout.addWidget(plan_button)
-        toolbar_layout.addWidget(save_button)
-        toolbar_layout.addWidget(commit_button)
-        toolbar_layout.addWidget(rollback_button)
+        for button in (execute_button, selection_button, plan_button, save_button, commit_button, rollback_button):
+            toolbar_layout.addWidget(button)
         toolbar_layout.addStretch()
+        return sql_toolbar, (commit_button, rollback_button)
+
+    def _new_sql_tab(self):
+        from PySide6.QtWidgets import QTextEdit
+        editor = QTextEdit()
+        self._configure_sql_editor(editor)
+        document_tabs, result_table = self._create_sql_document_tabs(editor)
+        selected_name = self.query_profile_combo.currentText() if hasattr(self, "query_profile_combo") else ""
+        editor.setProperty("query_profile", selected_name or (self.profiles[0].name if self.profiles else ""))
+        editor.setProperty("document_title", f"SQL {self.sql_tabs.count() + 1}")
+        index = self.sql_documents.add(document_tabs, f"SQL {self.sql_tabs.count() + 1}", editor.property("query_profile") or "")
+        sql_toolbar, transaction_controls = self._create_sql_toolbar(editor)
         self.sql_tabs.add_toolbar(index, sql_toolbar)
-        editor.setProperty("sql_toolbar_controls", (commit_button, rollback_button))
+        editor.setProperty("sql_toolbar_controls", transaction_controls)
         self.editor = editor
         self.result_table = result_table
         self._table_original_rows = []
