@@ -119,6 +119,15 @@ try:
             if active is not None:
                 active.showMaximized()
 
+        def toggle_maximize_current(self):
+            active = self.activeSubWindow()
+            if active is None:
+                return
+            if active.isMaximized():
+                active.showNormal()
+            else:
+                active.showMaximized()
+
         def restore_windows(self):
             for sub in self.subWindowList():
                 sub.showNormal()

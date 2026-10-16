@@ -339,7 +339,7 @@ class MainWindow:
         window_button.menu().addSeparator()
         window_button.menu().addAction("Organizar em cascata", self.sql_tabs.cascade_windows)
         window_button.menu().addAction("Organizar lado a lado", self.sql_tabs.tile_windows)
-        window_button.menu().addAction("Maximizar consulta atual", self.sql_tabs.maximize_current)
+        window_button.menu().addAction("Maximizar/restaurar consulta atual", self.sql_tabs.toggle_maximize_current)
         window_button.menu().addAction("Restaurar consultas", self.sql_tabs.restore_windows)
         window_button.menu().addSeparator()
         always_top_action = window_button.menu().addAction("Sempre no topo")
