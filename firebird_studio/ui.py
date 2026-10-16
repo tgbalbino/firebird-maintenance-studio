@@ -698,84 +698,28 @@ class MainWindow:
 
     def check_for_updates(self):
         from PySide6.QtWidgets import QMessageBox
+        self.status.setText("Verificando atualizações...")
+        self._start_background_operation(
+            "Verificação de atualizações",
+            lambda: __import__("firebird_studio.updates", fromlist=["check_latest"]).check_latest(__version__),
+            self._finish_update_check,
+        )
+
+    def _finish_update_check(self, result):
         from PySide6.QtCore import QUrl
         from PySide6.QtGui import QDesktopServices
-        import json
-        import re
-        from urllib.request import Request, urlopen
-        from urllib.error import HTTPError, URLError
-
-        current = __version__
-        repository_url = "https://github.com/tgbalbino/firebird-maintenance-studio"
-        api_url = "https://api.github.com/repos/tgbalbino/firebird-maintenance-studio/releases/latest"
-        tags_url = "https://api.github.com/repos/tgbalbino/firebird-maintenance-studio/tags?per_page=10"
-
-        def load_json(url):
-            request = Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "FirebirdMaintenanceStudio"})
-            with urlopen(request, timeout=5) as response:
-                return json.loads(response.read().decode("utf-8"))
-
-        def load_text(url):
-            request = Request(url, headers={"User-Agent": "FirebirdMaintenanceStudio"})
-            with urlopen(request, timeout=5) as response:
-                return response.read().decode("utf-8")
-
-        def version_key(value):
-            match = re.search(r"(\d+)(?:\.(\d+))?(?:\.(\d+))?", str(value or ""))
-            if not match:
-                raise ValueError(f"Versão inválida: {value}")
-            return tuple(int(part or 0) for part in match.groups())
-
-        try:
-            source = "release"
-            try:
-                payload = load_json(api_url)
-            except HTTPError as release_error:
-                if release_error.code != 404:
-                    raise
-                # A public repository can exist before its first Release is
-                # published.  Tags are still a useful update source.
-                try:
-                    tags = load_json(tags_url)
-                except HTTPError as tags_error:
-                    if tags_error.code != 404:
-                        raise
-                    tags = []
-                if isinstance(tags, list) and tags:
-                    payload = tags[0]
-                    source = "tag"
-                else:
-                    # Before the first Release/tag, use the public version
-                    # module as a lightweight update manifest.
-                    raw_url = "https://raw.githubusercontent.com/tgbalbino/firebird-maintenance-studio/main/firebird_studio/__init__.py"
-                    source_text = load_text(raw_url)
-                    match = re.search(r'__version__\s*=\s*[\"\']([^\"\']+)', source_text)
-                    if not match:
-                        self._log_event("Nenhuma versão publicada no GitHub", repository=repository_url)
-                        self._show_message("Atualizações", f"Não foi encontrada uma versão publicada.\n\nVersão instalada: {current}")
-                        return
-                    payload = {"tag_name": match.group(1), "html_url": repository_url}
-                    source = "arquivo de versão"
-            tag = str(payload.get("tag_name", "")).strip()
-            if not tag:
-                tag = str(payload.get("name", "")).strip()
-            latest = tag[1:] if tag.lower().startswith("v") else tag
-            release_url = str(payload.get("html_url", f"{repository_url}/releases"))
-            if not latest:
-                raise ValueError("A release não informou uma versão.")
-            current_key = version_key(current)
-            latest_key = version_key(latest)
-        except (OSError, ValueError, TypeError, json.JSONDecodeError, HTTPError, URLError) as exc:
-            self._log_event("Falha ao verificar atualização", error=str(exc))
-            self._show_message("Atualizações", f"Não foi possível consultar o GitHub.\n\nVersão instalada: {current}\n\n{exc}", warning=True)
+        from PySide6.QtWidgets import QMessageBox
+        if isinstance(result, Exception):
+            self._log_event("Falha ao verificar atualização", error=str(result))
+            self._show_message("Atualizações", f"Não foi possível consultar o GitHub.\n\nVersão instalada: {__version__}\n\n{result}", warning=True)
             return
-        if latest_key <= current_key:
+        current, latest = result["current"], result["latest"]
+        if not result["is_newer"]:
             self._show_message("Atualizações", f"Você já está usando a versão mais recente ({current}).")
             return
-        source_label = "Release" if source == "release" else "tag"
-        answer = QMessageBox.question(self._window, "Atualização disponível", f"Versão instalada: {current}\nNova versão: {latest} ({source_label})\n\nAbrir a página de download?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        answer = QMessageBox.question(self._window, "Atualização disponível", f"Versão instalada: {current}\nNova versão: {latest} ({result['source']})\n\nAbrir a página de download?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
         if answer == QMessageBox.Yes:
-            QDesktopServices.openUrl(QUrl(release_url))
+            QDesktopServices.openUrl(QUrl(result["url"]))
 
     def _set_always_on_top(self, enabled: bool):
         from PySide6.QtCore import Qt
