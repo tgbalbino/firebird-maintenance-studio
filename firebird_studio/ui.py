@@ -122,6 +122,7 @@ class MainWindow:
             QProgressBar,
             QFileDialog,
             QTabWidget,
+            QTabBar,
             QTreeWidget,
             QTreeWidgetItem,
             QSizePolicy,
@@ -231,6 +232,15 @@ class MainWindow:
         from .sql_documents import SqlDocumentManager
         from .mdi import SqlMdiArea
         self.sql_tabs = SqlMdiArea(); self.sql_tabs.setMinimumHeight(320); self.sql_tabs.setTabsClosable(True); self.sql_tabs.tabCloseRequested.connect(self.close_sql_tab)
+        self.sql_window_bar = QTabBar()
+        self.sql_window_bar.setObjectName("sqlWindowBar")
+        self.sql_window_bar.setMovable(False)
+        self.sql_window_bar.setTabsClosable(True)
+        self.sql_window_bar.setExpanding(False)
+        self.sql_window_bar.setDocumentMode(True)
+        self.sql_window_bar.setToolTip("Consultas SQL abertas; clique para alternar entre elas")
+        self.sql_window_bar.currentChanged.connect(self._activate_sql_window_from_bar)
+        self.sql_window_bar.tabCloseRequested.connect(self.close_sql_tab)
         self._mdi_next_shortcut = QShortcut(QKeySequence("Ctrl+Tab"), self._window)
         self._mdi_next_shortcut.activated.connect(self.sql_tabs.activate_next)
         self._mdi_previous_shortcut = QShortcut(QKeySequence("Ctrl+Shift+Tab"), self._window)
@@ -392,6 +402,7 @@ class MainWindow:
         welcome_actions.addWidget(welcome_profile); welcome_actions.addWidget(welcome_sql); welcome_actions.addWidget(welcome_log); welcome_actions.addStretch()
         welcome_layout.addLayout(welcome_heading); welcome_layout.addWidget(welcome_text); welcome_layout.addLayout(welcome_actions)
         right_layout.addWidget(self.welcome_banner)
+        right_layout.addWidget(self.sql_window_bar)
         right_layout.addWidget(self.sql_tabs, 1)
         action_row = QHBoxLayout()
         action_row.setSpacing(6)
@@ -914,6 +925,7 @@ class MainWindow:
         self._save_splitter_state(self.main_splitter)
 
     def _sync_editor(self, index: int):
+        self._sync_sql_window_bar(index)
         self.editor = self.sql_tabs.widget(index) if index >= 0 else None
         if self.editor is not None:
             self._set_active_editor_widgets(self.editor)
@@ -935,6 +947,34 @@ class MainWindow:
                 self.workspace_status.setText("Ctrl+Tab alterna as janelas")
         elif self.workspace_status is not None:
             self.workspace_status.setText("Resultados e diagnóstico · use o menu Janelas para voltar ao SQL")
+
+    def _sync_sql_window_bar(self, active_index: int | None = None):
+        """Keep the local SQL document bar aligned with the MDI windows."""
+        bar = getattr(self, "sql_window_bar", None)
+        if bar is None:
+            return
+        count = self.sql_tabs.count()
+        bar.blockSignals(True)
+        try:
+            while bar.count() > count:
+                bar.removeTab(bar.count() - 1)
+            while bar.count() < count:
+                bar.addTab(self.sql_tabs.tabText(bar.count()))
+            for index in range(count):
+                title = self.sql_tabs.tabText(index) or f"SQL {index + 1}"
+                bar.setTabText(index, title)
+                editor = self.sql_tabs.widget(index)
+                profile_name = editor.property("query_profile") if editor is not None else ""
+                bar.setTabToolTip(index, f"{title}\nConexão: {profile_name or 'não definida'}")
+            if active_index is None:
+                active_index = self.sql_tabs.currentIndex()
+            bar.setCurrentIndex(active_index if 0 <= active_index < count else -1)
+        finally:
+            bar.blockSignals(False)
+
+    def _activate_sql_window_from_bar(self, index: int):
+        if 0 <= index < self.sql_tabs.count():
+            self.sql_tabs.setCurrentIndex(index)
 
     def _show_result_window(self):
         """Bring the shared result/diagnostic form back to the front."""
@@ -1250,6 +1290,7 @@ class MainWindow:
     def _update_sql_tab_title(self, index=None):
         index = self.sql_tabs.currentIndex() if index is None else index
         self.sql_documents.update_title(index)
+        self._sync_sql_window_bar(index)
 
     def _close_all_sql_tabs(self):
         self.sql_documents.close_all(self._new_sql_tab)
