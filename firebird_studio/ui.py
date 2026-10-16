@@ -306,6 +306,8 @@ class MainWindow:
 
         self.commit_changes = QCheckBox("Confirmar alterações")
         self.commit_changes.setToolTip("Quando marcado, confirma DDL/DML. Desmarcado, alterações são desfeitas ao terminar a execução.")
+        self.read_only_mode = QCheckBox("Somente leitura")
+        self.read_only_mode.setToolTip("Bloqueia DML, DDL, EXECUTE, GRANT e REVOKE nesta sessão SQL.")
         self.open_data_action = QAction("Dados da tabela", self._window)
         self.open_data_action.setEnabled(False)
         self.open_data_action.triggered.connect(self.open_table_data)
@@ -355,7 +357,7 @@ class MainWindow:
         data_button.menu().addAction(self.apply_update_action)
         database_button = menu_button("Banco", [("Backup", self.execute_backup), ("Restore", self.execute_restore), ("Histórico de backup/restore", self.show_backup_history)], "Operações de backup e restore")
         analysis_button = menu_button("Análise", [("Ler estrutura", self.inspect_schema), ("Ver plano", self.inspect_plan), ("Saúde", self.inspect_health), ("Banco e atividade", self.inspect_activity), ("Salvar relatório de saúde", self.save_health_report), ("Salvar saúde em HTML", self.save_health_html), ("Sessões", self.inspect_sessions), ("Validar integridade", self.validate_database), ("Comparar estruturas", self.compare_selected), ("Salvar comparação", self.save_compare_report), ("Salvar comparação em HTML", self.save_compare_html)], "Estrutura, plano, saúde, atividade e comparação")
-        action_row.addWidget(sql_button); action_row.addWidget(data_button); action_row.addWidget(database_button); action_row.addWidget(analysis_button); action_row.addWidget(self.commit_changes); action_row.addStretch(); right_layout.addLayout(action_row)
+        action_row.addWidget(sql_button); action_row.addWidget(data_button); action_row.addWidget(database_button); action_row.addWidget(analysis_button); action_row.addWidget(self.commit_changes); action_row.addWidget(self.read_only_mode); action_row.addStretch(); right_layout.addLayout(action_row)
         pagination_row = QHBoxLayout()
         self.previous_data_button = QPushButton("Anterior")
         self.previous_data_button.setEnabled(False)
@@ -1543,6 +1545,10 @@ class MainWindow:
         statement = sql_text.lstrip().upper()
         changes_data = statement.startswith(("INSERT", "UPDATE", "DELETE", "MERGE", "EXECUTE", "ALTER", "CREATE", "DROP", "RECREATE", "GRANT", "REVOKE"))
         commit = bool(self.commit_changes.isChecked())
+        if changes_data and self.read_only_mode.isChecked():
+            self.status.setText("Modo somente leitura: a instrução foi bloqueada.")
+            self._log_event("SQL bloqueado por somente leitura", statement=statement.split(None, 1)[0] if statement else "")
+            return
         profile = self._query_profile()
         explicit_transaction = self._transaction_session is not None and self._transaction_session.active
         if explicit_transaction and self._transaction_profile_name != profile.name:
