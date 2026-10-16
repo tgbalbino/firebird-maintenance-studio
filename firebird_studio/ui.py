@@ -17,6 +17,42 @@ def create_application():
 
 try:
     from PySide6.QtCore import QObject, Signal, Slot
+    from PySide6.QtGui import QColor, QFont, QSyntaxHighlighter, QTextCharFormat
+
+    class SqlHighlighter(QSyntaxHighlighter):
+        """Lightweight SQL highlighting that works offline in the packaged app."""
+
+        def __init__(self, document):
+            super().__init__(document)
+            self._keyword_format = QTextCharFormat()
+            self._keyword_format.setForeground(QColor("#005cc5"))
+            self._keyword_format.setFontWeight(QFont.Bold)
+            self._type_format = QTextCharFormat()
+            self._type_format.setForeground(QColor("#7b3f00"))
+            self._string_format = QTextCharFormat()
+            self._string_format.setForeground(QColor("#008000"))
+            self._comment_format = QTextCharFormat()
+            self._comment_format.setForeground(QColor("#6a737d"))
+            self._number_format = QTextCharFormat()
+            self._number_format.setForeground(QColor("#8b008b"))
+            self._keywords = {"SELECT", "FROM", "WHERE", "JOIN", "LEFT", "RIGHT", "FULL", "INNER", "OUTER", "ON", "GROUP", "BY", "ORDER", "HAVING", "UNION", "ALL", "DISTINCT", "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE", "MERGE", "CREATE", "ALTER", "DROP", "RECREATE", "TABLE", "VIEW", "PROCEDURE", "FUNCTION", "TRIGGER", "INDEX", "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "CONSTRAINT", "GRANT", "REVOKE", "EXECUTE", "PLAN", "ROWS", "FIRST", "SKIP", "NULL", "IS", "NOT", "AND", "OR", "AS", "CASE", "WHEN", "THEN", "ELSE", "END", "ASC", "DESC", "WITH", "RECURSIVE", "RETURNING"}
+            self._types = {"INTEGER", "SMALLINT", "BIGINT", "DECIMAL", "NUMERIC", "FLOAT", "DOUBLE", "DATE", "TIME", "TIMESTAMP", "CHAR", "VARCHAR", "BLOB", "BOOLEAN", "UUID", "DECFLOAT"}
+
+        def highlightBlock(self, text):
+            import re
+
+            for match in re.finditer(r"--[^\n]*|/\*.*?\*/", text):
+                self.setFormat(match.start(), match.end() - match.start(), self._comment_format)
+            for match in re.finditer(r"'(?:''|[^'])*'", text):
+                self.setFormat(match.start(), match.end() - match.start(), self._string_format)
+            for match in re.finditer(r"\b\d+(?:\.\d+)?\b", text):
+                self.setFormat(match.start(), match.end() - match.start(), self._number_format)
+            for match in re.finditer(r"\b[A-Za-z_][A-Za-z0-9_$]*\b", text):
+                word = match.group(0).upper()
+                if word in self._keywords:
+                    self.setFormat(match.start(), match.end() - match.start(), self._keyword_format)
+                elif word in self._types:
+                    self.setFormat(match.start(), match.end() - match.start(), self._type_format)
 
     class OperationWorker(QObject):
         finished = Signal(object)
@@ -411,7 +447,9 @@ class MainWindow:
         from PySide6.QtWidgets import QTextEdit
         from PySide6.QtGui import QKeySequence, QShortcut
         editor = QTextEdit()
+        editor.setFont(QFont("Consolas", 10))
         editor.setPlaceholderText("Execute uma instrução SQL...")
+        editor.setProperty("sql_highlighter", SqlHighlighter(editor.document()))
         shortcut = QShortcut(QKeySequence("Ctrl+Return"), editor)
         shortcut.activated.connect(self.execute_selected)
         editor.setProperty("execute_shortcut", shortcut)
