@@ -18,6 +18,18 @@ class ScriptResult:
     command_label: str
 
 
+def _isql_error_text(output: str) -> bool:
+    """Detect errors that older isql builds report with exit code zero."""
+    lowered = output.lower()
+    return any(marker in lowered for marker in (
+        "statement failed",
+        "sqlstate =",
+        "dynamic sql error",
+        "your user name and password are not defined",
+        "unavailable database",
+    ))
+
+
 def build_isql_args(profile: ConnectionProfile, script: Path, isql_path: Path) -> list[str]:
     """Build arguments without including the password, which is supplied through stdin."""
     args = [str(isql_path), "-user", profile.user, "-ch", profile.charset, "-input", str(script)]
@@ -68,4 +80,8 @@ def run_script(
         return ScriptResult(False, -1, "", f"Não foi possível iniciar o isql: {exc}", "isql")
     output = completed.stdout or ""
     error = completed.stderr or ""
-    return ScriptResult(completed.returncode == 0, completed.returncode, output, error, "isql")
+    combined = output + ("\n" + error if error else "")
+    ok = completed.returncode == 0 and not _isql_error_text(combined)
+    if not ok and completed.returncode == 0 and not error:
+        error = "O isql reportou uma falha no texto de saída."
+    return ScriptResult(ok, completed.returncode, output, error, "isql")

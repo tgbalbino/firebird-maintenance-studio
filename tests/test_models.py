@@ -84,6 +84,20 @@ class ProfileTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertIn("não encontrado", result.error)
 
+    def test_script_detects_isql_error_with_zero_exit_code(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            script = root / "script.sql"
+            isql = root / "isql.exe"
+            script.write_text("SELECT 1 FROM MISSING_TABLE;")
+            isql.write_text("tool")
+            completed = types.SimpleNamespace(returncode=0, stdout="Statement failed, SQLSTATE = 42S02", stderr="")
+            profile = ConnectionProfile("Local", database="sample.fdb")
+            with patch("firebird_studio.script_runner.subprocess.run", return_value=completed):
+                result = run_script(profile, script, "secret", isql)
+        self.assertFalse(result.ok)
+        self.assertIn("isql reportou", result.error)
+
     def test_gbak_arguments_do_not_include_password(self):
         profile = ConnectionProfile("Local", database="sample.fdb")
         args = build_gbak_args(profile, "backup", Path("sample.fdb"), Path("sample.fbk"), Path("gbak.exe"))

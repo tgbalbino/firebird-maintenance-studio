@@ -8,6 +8,7 @@ import subprocess
 
 from .connection import _dsn
 from .models import ConnectionProfile
+from .script_runner import _isql_error_text
 
 
 @dataclass(slots=True)
@@ -109,6 +110,6 @@ def explain_query(profile: ConnectionProfile, sql: str, password: str | None, is
             return PlanResult(False, "", None, [], f"Acesso negado ao isql.exe: {isql_path}. Verifique as permissões do arquivo e se o Windows não o bloqueou.")
         return PlanResult(False, "", None, [], f"Não foi possível iniciar o isql: {exc}")
     raw = (completed.stdout or "") + ("\n" + completed.stderr if completed.stderr else "")
-    if completed.returncode != 0:
+    if completed.returncode != 0 or _isql_error_text(raw):
         return PlanResult(False, raw, None, [], "Falha ao obter o plano.")
     return PlanResult(True, raw, parse_plan(raw), suggest_improvements(raw, sql))
