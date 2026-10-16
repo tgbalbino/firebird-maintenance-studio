@@ -297,6 +297,10 @@ class MainWindow:
         light_action = theme_menu.addAction("Tema claro"); light_action.triggered.connect(lambda: self._set_theme("light"))
         dark_action = theme_menu.addAction("Tema escuro"); dark_action.triggered.connect(lambda: self._set_theme("dark"))
         self.theme_button.setMenu(theme_menu)
+        # Application-level preferences live in the main menu to keep the
+        # workspace toolbar focused on database work.
+        self.profile_log_button.setVisible(False)
+        self.theme_button.setVisible(False)
         right = QWidget(); right.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding); right.setObjectName("workspacePanel")
         profile_actions = QHBoxLayout(); profile_actions.addWidget(self.profile_toggle); profile_actions.addWidget(self.profile_test_button); profile_actions.addWidget(self.profile_log_button); profile_actions.addWidget(self.theme_button)
         right_layout = QVBoxLayout(right)
@@ -447,6 +451,7 @@ class MainWindow:
         splitter.setStretchFactor(1, 1)
         splitter.splitterMoved.connect(lambda _position, _index: self._save_splitter_state(splitter))
         self._window.setCentralWidget(splitter)
+        self._setup_main_menu()
         app_instance = QApplication.instance()
         if app_instance is not None:
             app_instance.aboutToQuit.connect(self._close_transaction)
@@ -489,11 +494,106 @@ class MainWindow:
                 highlighter.set_theme(theme == "dark")
         self.status.setText("Tema escuro aplicado." if theme == "dark" else "Tema claro aplicado.")
 
+    def _setup_main_menu(self):
+        """Create the compact application menu for global commands."""
+        menu_bar = self._window.menuBar()
+        app_menu = menu_bar.addMenu("Aplicação")
+        settings_action = app_menu.addAction("Configurações...")
+        settings_action.setShortcut("Ctrl+," )
+        settings_action.triggered.connect(self.show_app_settings)
+        app_menu.addSeparator()
+        self.menu_always_top_action = app_menu.addAction("Sempre no topo")
+        self.menu_always_top_action.setCheckable(True)
+        self.menu_always_top_action.setChecked(bool(self._settings.value("always_on_top", False, type=bool)))
+        self.menu_always_top_action.toggled.connect(self._set_always_on_top)
+        app_menu.addAction("Abrir log de eventos", self.open_event_log)
+        app_menu.addSeparator()
+        app_menu.addAction("Sair", self._window.close)
+
+        sql_menu = menu_bar.addMenu("SQL")
+        sql_menu.addAction("Nova janela SQL", self._new_sql_tab)
+        sql_menu.addAction("Executar SQL", self.execute_selected)
+        sql_menu.addAction("Executar seleção", self.execute_selection)
+        sql_menu.addAction("Ver plano", self.inspect_plan)
+        sql_menu.addAction("Histórico SQL", self._choose_history_query)
+
+        database_menu = menu_bar.addMenu("Banco")
+        database_menu.addAction("Novo perfil", self.new_profile)
+        database_menu.addAction("Salvar perfil", self.save_profile)
+        database_menu.addAction("Abrir banco", self.open_profile)
+        database_menu.addAction("Desconectar banco", self.disconnect_selected)
+        database_menu.addSeparator()
+        database_menu.addAction("Backup", self.execute_backup)
+        database_menu.addAction("Restore", self.execute_restore)
+
+        help_menu = menu_bar.addMenu("Ajuda")
+        help_menu.addAction("Sobre o Firebird Maintenance Studio", self.show_about)
+
+    def _choose_history_query(self):
+        if self.history_combo.count() == 0:
+            self._show_message("Histórico SQL", "Ainda não há consultas no histórico.", warning=True)
+            return
+        self.history_combo.showPopup()
+
+    def show_app_settings(self):
+        from PySide6.QtWidgets import QComboBox, QDialog, QDialogButtonBox, QFormLayout, QLabel, QCheckBox, QVBoxLayout
+
+        dialog = QDialog(self._window)
+        dialog.setWindowTitle("Configurações da aplicação")
+        dialog.resize(460, 230)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("Preferências do Studio aplicadas ao usuário atual."))
+        form = QFormLayout()
+        theme = QComboBox(); theme.addItem("Claro", "light"); theme.addItem("Escuro", "dark")
+        theme.setCurrentIndex(1 if self._settings.value("theme", "light") == "dark" else 0)
+        page_size = QComboBox(); page_size.addItems(["50", "200", "500", "1000"])
+        page_size.setCurrentText(str(self._settings.value("data_page_size", "200")))
+        always_top = QCheckBox("Manter a janela sempre no topo")
+        always_top.setChecked(bool(self._settings.value("always_on_top", False, type=bool)))
+        form.addRow("Tema", theme); form.addRow("Linhas por página", page_size); form.addRow("Janela", always_top)
+        layout.addLayout(form)
+        layout.addWidget(QLabel("As preferências de tamanho, posição, árvore e filtro são salvas automaticamente."))
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons.rejected.connect(dialog.reject); buttons.accepted.connect(dialog.accept)
+        layout.addWidget(buttons)
+        theme.currentIndexChanged.connect(lambda index: self._set_theme(theme.itemData(index)))
+        page_size.currentTextChanged.connect(self._page_size_changed)
+        always_top.toggled.connect(self._set_always_on_top)
+        dialog.exec()
+
+    def show_about(self):
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout
+        from PySide6.QtCore import Qt
+
+        dialog = QDialog(self._window)
+        dialog.setWindowTitle("Sobre o Firebird Maintenance Studio")
+        dialog.resize(520, 280)
+        layout = QVBoxLayout(dialog)
+        title = QLabel("<h2>Firebird Maintenance Studio</h2>")
+        description = QLabel(
+            "Ferramenta open source para manutenção de bancos Firebird 2.5, 3, 4 e 5.<br>"
+            "Editor SQL, múltiplos bancos, catálogo de objetos, plano, saúde, sessões, backup, restore e comparação."
+        )
+        description.setWordWrap(True)
+        details = QLabel("Tecnologias: Python + PySide6<br>Distribuição: Windows x64<br>Licença: MIT")
+        details.setTextFormat(Qt.RichText)
+        link = QLabel('<a href="https://github.com/tgbalbino/firebird-maintenance-studio">github.com/tgbalbino/firebird-maintenance-studio</a>')
+        link.setOpenExternalLinks(True)
+        layout.addWidget(title); layout.addWidget(description); layout.addWidget(details); layout.addWidget(link)
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons.rejected.connect(dialog.reject); layout.addWidget(buttons)
+        dialog.exec()
+
     def _set_always_on_top(self, enabled: bool):
         from PySide6.QtCore import Qt
 
         self._settings.setValue("always_on_top", bool(enabled))
         self._settings.sync()
+        menu_action = getattr(self, "menu_always_top_action", None)
+        if menu_action is not None and menu_action.isChecked() != bool(enabled):
+            menu_action.blockSignals(True)
+            menu_action.setChecked(bool(enabled))
+            menu_action.blockSignals(False)
         was_visible = self._window.isVisible()
         self._window.setWindowFlag(Qt.WindowStaysOnTopHint, bool(enabled))
         if was_visible:
