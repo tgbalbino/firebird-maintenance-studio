@@ -461,7 +461,8 @@ class MainWindow:
         self.data_page_size.setCurrentIndex(page_size_index if page_size_index >= 0 else 1)
         self.data_page_size.setToolTip("Quantidade de linhas carregadas por página")
         self.data_page_size.currentTextChanged.connect(self._page_size_changed)
-        self.next_data_button = QPushButton("Próximas 200")
+        self.next_data_button = QPushButton()
+        self._update_pagination_labels()
         self.next_data_button.setEnabled(False)
         self.next_data_button.clicked.connect(lambda: self._load_table_page(self.table_page + 1))
         pagination_row.addWidget(self.previous_data_button); pagination_row.addWidget(self.data_page_label, 1); pagination_row.addWidget(self.result_summary); pagination_row.addWidget(QLabel("Linhas:")); pagination_row.addWidget(self.data_page_size); pagination_row.addWidget(self.data_filter); pagination_row.addWidget(self.next_data_button)
@@ -2096,8 +2097,20 @@ class MainWindow:
             return
         self._settings.setValue("data_page_size", size)
         self._settings.sync()
+        self._update_pagination_labels(size)
         if self.selected_object is not None and self.selected_object.kind.upper() == "TABLE":
             self._load_table_page(self.table_page)
+
+    def _update_pagination_labels(self, page_size=None):
+        """Keep pagination actions aligned with the selected page size."""
+        if not hasattr(self, "next_data_button"):
+            return
+        if page_size is None:
+            try:
+                page_size = int(self.data_page_size.currentText())
+            except (AttributeError, TypeError, ValueError):
+                page_size = 200
+        self.next_data_button.setText(f"Próximas {max(1, int(page_size))}")
 
     def _result_header_context_menu(self, table, position):
         from PySide6.QtWidgets import QInputDialog, QMenu
