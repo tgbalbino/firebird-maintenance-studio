@@ -22,7 +22,10 @@ try:
     class SqlMdiArea(QMdiArea):
         """QTabWidget-compatible facade backed by movable MDI sub-windows."""
 
-        _SUBWINDOW_FLAGS = Qt.SubWindow | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowMinMaxButtonsHint | Qt.WindowCloseButtonHint
+        # The application has its own SQL document bar with the title and
+        # close button.  Keeping the native MDI title bar as well duplicates
+        # every document name and wastes vertical space.
+        _SUBWINDOW_FLAGS = Qt.SubWindow | Qt.FramelessWindowHint
 
         currentChanged = Signal(int)
         tabCloseRequested = Signal(int)
