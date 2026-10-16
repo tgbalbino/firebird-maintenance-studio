@@ -85,23 +85,29 @@ def load_schema(profile: ConnectionProfile, password: str | None = None, detaile
                 except Exception:
                     pass
             return objects
-        table_rows = _rows(connection, """
-            SELECT TRIM(RDB$RELATION_NAME) FROM RDB$RELATIONS
-            WHERE COALESCE(RDB$SYSTEM_FLAG, 0) = 0 AND RDB$VIEW_BLR IS NULL
-            ORDER BY RDB$RELATION_NAME
-        """)
+        try:
+            table_rows = _rows(connection, """
+                SELECT TRIM(RDB$RELATION_NAME) FROM RDB$RELATIONS
+                WHERE COALESCE(RDB$SYSTEM_FLAG, 0) = 0 AND RDB$VIEW_BLR IS NULL
+                ORDER BY RDB$RELATION_NAME
+            """)
+        except Exception:
+            table_rows = []
         # Read all table columns in one catalog query. The old per-table query
         # made schema comparison increasingly slow on databases with hundreds
         # of tables.
-        column_rows = _rows(connection, """
-            SELECT TRIM(rf.RDB$RELATION_NAME), TRIM(rf.RDB$FIELD_NAME),
-                   f.RDB$FIELD_TYPE, f.RDB$FIELD_LENGTH, f.RDB$FIELD_SCALE,
-                   f.RDB$FIELD_PRECISION, rf.RDB$NULL_FLAG
-            FROM RDB$RELATION_FIELDS rf JOIN RDB$FIELDS f ON f.RDB$FIELD_NAME = rf.RDB$FIELD_SOURCE
-            JOIN RDB$RELATIONS r ON r.RDB$RELATION_NAME = rf.RDB$RELATION_NAME
-            WHERE COALESCE(r.RDB$SYSTEM_FLAG, 0) = 0 AND r.RDB$VIEW_BLR IS NULL
-            ORDER BY rf.RDB$RELATION_NAME, rf.RDB$FIELD_POSITION
-        """)
+        try:
+            column_rows = _rows(connection, """
+                SELECT TRIM(rf.RDB$RELATION_NAME), TRIM(rf.RDB$FIELD_NAME),
+                       f.RDB$FIELD_TYPE, f.RDB$FIELD_LENGTH, f.RDB$FIELD_SCALE,
+                       f.RDB$FIELD_PRECISION, rf.RDB$NULL_FLAG
+                FROM RDB$RELATION_FIELDS rf JOIN RDB$FIELDS f ON f.RDB$FIELD_NAME = rf.RDB$FIELD_SOURCE
+                JOIN RDB$RELATIONS r ON r.RDB$RELATION_NAME = rf.RDB$RELATION_NAME
+                WHERE COALESCE(r.RDB$SYSTEM_FLAG, 0) = 0 AND r.RDB$VIEW_BLR IS NULL
+                ORDER BY rf.RDB$RELATION_NAME, rf.RDB$FIELD_POSITION
+            """)
+        except Exception:
+            column_rows = []
         columns_by_table: dict[str, list[tuple]] = {}
         for relation_name, field_name, field_type, length, scale, precision, null_flag in column_rows:
             columns_by_table.setdefault(_text(relation_name), []).append((field_name, field_type, length, scale, precision, null_flag))
