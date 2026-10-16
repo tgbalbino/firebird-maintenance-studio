@@ -320,7 +320,23 @@ class MainWindow:
         self.header_state = QLabel("Nenhuma conexão ativa")
         self.header_state.setObjectName("headerState")
         header_layout.addWidget(app_title); header_layout.addWidget(app_subtitle); header_layout.addWidget(self.header_state)
-        right_layout.addWidget(app_header); right_layout.addLayout(profile_actions); right_layout.addWidget(box)
+        self.welcome_banner = QFrame()
+        self.welcome_banner.setObjectName("welcomeBanner")
+        welcome_layout = QVBoxLayout(self.welcome_banner)
+        welcome_title = QLabel("Comece por aqui")
+        welcome_title.setObjectName("welcomeTitle")
+        welcome_text = QLabel("Cadastre um banco Firebird para conectar, abrir objetos e iniciar consultas SQL.")
+        welcome_text.setWordWrap(True)
+        welcome_actions = QHBoxLayout()
+        welcome_profile = QPushButton("Criar primeiro perfil")
+        welcome_profile.clicked.connect(self.new_profile)
+        welcome_sql = QPushButton("Nova janela SQL")
+        welcome_sql.clicked.connect(self._new_sql_tab)
+        welcome_log = QPushButton("Abrir log")
+        welcome_log.clicked.connect(self.open_event_log)
+        welcome_actions.addWidget(welcome_profile); welcome_actions.addWidget(welcome_sql); welcome_actions.addWidget(welcome_log); welcome_actions.addStretch()
+        welcome_layout.addWidget(welcome_title); welcome_layout.addWidget(welcome_text); welcome_layout.addLayout(welcome_actions)
+        right_layout.addWidget(app_header); right_layout.addWidget(self.welcome_banner); right_layout.addLayout(profile_actions); right_layout.addWidget(box)
         history_row = QHBoxLayout(); history_row.addWidget(QLabel("Histórico SQL:")); history_row.addWidget(self.history_combo, 1)
         right_layout.addLayout(history_row)
         connection_row = QHBoxLayout(); connection_row.addWidget(QLabel("Conexão desta janela:")); connection_row.addWidget(self.query_profile_combo, 1); connection_row.addWidget(self.query_connection_status); connection_row.addWidget(self.connection_badge)
@@ -470,6 +486,7 @@ class MainWindow:
         # itemPressed/itemClicked makes a fast single click open object data.
         self.profile_list.itemDoubleClicked.connect(self._on_tree_double_clicked)
         self.refresh_profiles()
+        self.welcome_banner.setVisible(not bool(self.profiles))
         if self.profiles:
             self._hide_profile_details()
         else:
@@ -1981,6 +1998,8 @@ class MainWindow:
 
     def new_profile(self):
         self._show_profile_details(); self.profile_list.clearSelection(); self.name.clear(); self.database.clear(); self.role.clear(); self.password.clear(); self.save_password.setChecked(False); self.favorite.setChecked(False); self.status.setText("Novo perfil.")
+        if hasattr(self, "welcome_banner"):
+            self.welcome_banner.setVisible(False)
 
     def delete_profile(self):
         selected = self._profile_index_for_item()
