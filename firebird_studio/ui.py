@@ -2699,6 +2699,12 @@ class MainWindow:
         QApplication.processEvents()
         try:
             result = self._transaction_session.execute(sql_text) if explicit_transaction else execute_sql(profile, sql_text, self._password_for(profile), commit=commit)
+        except Exception as exc:
+            detail = str(exc)
+            self._log_event("Falha inesperada na execução SQL", profile=profile.name, statement=statement.split(None, 1)[0] if statement else "", error=detail)
+            self.status.setText(f"Falha ao executar SQL: {detail}")
+            self.result_summary.setText("Resultado: falha na execução")
+            return
         finally:
             while QApplication.overrideCursor() is not None:
                 QApplication.restoreOverrideCursor()
