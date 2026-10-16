@@ -1393,7 +1393,12 @@ class MainWindow:
         obj = item.data(0, 32)
         is_object_item = item.parent() is not None
         self._log_event("Item da árvore clicado", index=index, item=item.text(0), object=getattr(obj, "name", ""), object_item=is_object_item, object_type=type(obj).__name__)
-        typed_password = self.password.text()
+        try:
+            typed_password = self.password.text()
+        except RuntimeError:
+            # The profile form is modal/legacy and may have been destroyed
+            # after the last SQL document was closed.
+            typed_password = ""
         if 0 <= index < len(self.profiles):
             self.select_profile(index)
             # Selecting the tree item must not erase a password just entered
@@ -1410,7 +1415,7 @@ class MainWindow:
             return
         if 0 <= index < len(self.profiles):
             self.status.setText(f"Conexão '{self.profiles[index].name}' selecionada. Duplo clique para conectar.")
-            if hasattr(self, "object_breadcrumb"):
+            if getattr(self, "object_breadcrumb", None) is not None:
                 self.object_breadcrumb.setText(f"{self.profiles[index].name} > banco")
 
     def _set_object_breadcrumb(self, obj):
