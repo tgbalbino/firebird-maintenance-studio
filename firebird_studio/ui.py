@@ -377,6 +377,12 @@ class MainWindow:
         sql_button.menu().addAction(self.commit_transaction_action)
         sql_button.menu().addAction(self.rollback_transaction_action)
         window_button = menu_button("Janelas", [("Selecionar consulta aberta", self._choose_sql_window), ("Fechar consulta atual", lambda: self.close_sql_tab(self.sql_tabs.currentIndex())), ("Fechar todas as consultas", self._close_all_sql_tabs)], "Alternar e fechar consultas SQL abertas")
+        window_button.menu().addSeparator()
+        always_top_action = window_button.menu().addAction("Sempre no topo")
+        always_top_action.setCheckable(True)
+        always_top_action.setChecked(bool(self._settings.value("always_on_top", False, type=bool)))
+        always_top_action.toggled.connect(self._set_always_on_top)
+        self._set_always_on_top(always_top_action.isChecked())
         data_button = menu_button("Dados", [("Exportar CSV", self.export_result_csv), ("Exportar JSON", self.export_result_json)], "Exportar resultados e abrir dados de tabelas")
         data_button.menu().addAction(self.open_data_action)
         data_button.menu().addAction(self.edit_data_action)
@@ -458,6 +464,17 @@ class MainWindow:
         self._settings.sync()
         self._apply_theme(theme)
         self.status.setText("Tema escuro aplicado." if theme == "dark" else "Tema claro aplicado.")
+
+    def _set_always_on_top(self, enabled: bool):
+        from PySide6.QtCore import Qt
+
+        self._settings.setValue("always_on_top", bool(enabled))
+        self._settings.sync()
+        was_visible = self._window.isVisible()
+        self._window.setWindowFlag(Qt.WindowStaysOnTopHint, bool(enabled))
+        if was_visible:
+            self._window.show()
+        self.status.setText("Janela configurada para ficar sempre no topo." if enabled else "Modo sempre no topo desativado.")
 
     def _log_event(self, message: str, **details):
         """Append a diagnostic event without passwords or SQL contents."""
