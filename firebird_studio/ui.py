@@ -205,7 +205,9 @@ class MainWindow:
         self.object_tree = self.profile_list
         self.object_tree.setMinimumWidth(240)
         self.object_tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        from .sql_documents import SqlDocumentManager
         self.sql_tabs = QTabWidget(); self.sql_tabs.setMinimumHeight(320); self.sql_tabs.setTabsClosable(True); self.sql_tabs.tabCloseRequested.connect(self.close_sql_tab)
+        self.sql_documents = SqlDocumentManager(self.sql_tabs)
         self.sql_tabs.currentChanged.connect(self._sync_editor)
         self.query_profile_combo = QComboBox()
         self.query_profile_combo.setMinimumWidth(240)
@@ -586,8 +588,7 @@ class MainWindow:
         selected_name = self.query_profile_combo.currentText() if hasattr(self, "query_profile_combo") else ""
         editor.setProperty("query_profile", selected_name or (self.profiles[0].name if self.profiles else ""))
         editor.setProperty("document_title", f"SQL {self.sql_tabs.count() + 1}")
-        index = self.sql_tabs.addTab(editor, f"SQL {self.sql_tabs.count() + 1}")
-        self.sql_tabs.setCurrentIndex(index)
+        index = self.sql_documents.add(editor, f"SQL {self.sql_tabs.count() + 1}", editor.property("query_profile") or "")
         self.editor = editor
         editor.cursorPositionChanged.connect(lambda target=editor: self._update_cursor_status(target))
         self._update_cursor_status(editor)
@@ -596,24 +597,10 @@ class MainWindow:
 
     def _update_sql_tab_title(self, index=None):
         index = self.sql_tabs.currentIndex() if index is None else index
-        if index < 0 or index >= self.sql_tabs.count():
-            return
-        editor = self.sql_tabs.widget(index)
-        profile_name = editor.property("query_profile") if editor is not None else ""
-        base = editor.property("document_title") if editor is not None else ""
-        if not base:
-            base = f"SQL {index + 1}"
-        title = f"{base} · {profile_name}" if profile_name else base
-        self.sql_tabs.setTabText(index, title)
-        self.sql_tabs.setTabToolTip(index, f"Consulta {base}\nBanco: {profile_name or 'não definido'}")
+        self.sql_documents.update_title(index)
 
     def _close_all_sql_tabs(self):
-        while self.sql_tabs.count() > 0:
-            widget = self.sql_tabs.widget(0)
-            self.sql_tabs.removeTab(0)
-            if widget is not None:
-                widget.deleteLater()
-        self._new_sql_tab()
+        self.sql_documents.close_all(self._new_sql_tab)
         self.status.setText("Todas as consultas foram fechadas; uma nova consulta vazia foi criada.")
 
     def _choose_sql_window(self):
@@ -621,7 +608,7 @@ class MainWindow:
 
         if self.sql_tabs.count() == 0:
             return
-        titles = [self.sql_tabs.tabText(index) for index in range(self.sql_tabs.count())]
+        titles = self.sql_documents.titles()
         selected, accepted = QInputDialog.getItem(self._window, "Janelas SQL", "Selecionar consulta:", titles, self.sql_tabs.currentIndex(), False)
         if accepted:
             self.sql_tabs.setCurrentIndex(titles.index(selected))
@@ -739,12 +726,7 @@ class MainWindow:
         return self.password.text() or self._stored_password(profile_name) or ""
 
     def close_sql_tab(self, index: int):
-        widget = self.sql_tabs.widget(index)
-        self.sql_tabs.removeTab(index)
-        if widget is not None:
-            widget.deleteLater()
-        if self.sql_tabs.count() == 0:
-            self._new_sql_tab()
+        self.sql_documents.close(index, self._new_sql_tab)
 
     def _add_query_history(self, sql: str):
         text = sql.strip()

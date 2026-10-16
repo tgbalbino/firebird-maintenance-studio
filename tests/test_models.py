@@ -18,10 +18,32 @@ from firebird_studio.plan import build_plan_script, parse_plan, suggest_improvem
 from firebird_studio.health import build_findings, inspect_health, _optional_database_values
 from firebird_studio.diagnostics import create_support_package
 from firebird_studio.ui_logging import log_event
+from firebird_studio.sql_documents import SqlDocumentManager
 from unittest.mock import patch
 
 
 class ProfileTests(unittest.TestCase):
+    def test_sql_document_manager_titles_and_close(self):
+        class Tabs:
+            def __init__(self): self.items = []; self.current = -1
+            def addTab(self, editor, title): self.items.append([editor, title, ""]); return len(self.items) - 1
+            def setCurrentIndex(self, index): self.current = index
+            def count(self): return len(self.items)
+            def widget(self, index): return self.items[index][0]
+            def setTabText(self, index, title): self.items[index][1] = title
+            def setTabToolTip(self, index, tip): self.items[index][2] = tip
+            def tabText(self, index): return self.items[index][1]
+            def removeTab(self, index): self.items.pop(index)
+        class Editor:
+            def __init__(self): self.values = {"document_title": "Consulta", "query_profile": "Local"}
+            def property(self, key): return self.values.get(key, "")
+            def deleteLater(self): pass
+        tabs = Tabs(); manager = SqlDocumentManager(tabs); editor = Editor()
+        manager.add(editor, "SQL 1", "Local")
+        self.assertEqual(tabs.tabText(0), "SQL 1 · Local")
+        manager.close(0, lambda: None)
+        self.assertEqual(tabs.count(), 0)
+
     def test_ui_log_writer_formats_details(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "events.txt"
