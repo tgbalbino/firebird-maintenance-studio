@@ -304,6 +304,11 @@ class MainWindow:
         self.profile_toggle.clicked.connect(self._toggle_profile_details)
         self.profile_test_button = QPushButton("Testar conexão")
         self.profile_test_button.clicked.connect(self.test_selected)
+        # Profile data is edited from the database tree context menu.  Keep
+        # the fields alive for validation and credential handling, but do not
+        # place the old profile form in the main workspace.
+        self.profile_toggle.setVisible(False)
+        self.profile_box.setVisible(False)
         self.profile_log_button = QPushButton("Abrir log")
         self.profile_log_button.clicked.connect(self.open_event_log)
         self.theme_button = QToolButton(); self.theme_button.setText("Tema"); self.theme_button.setToolTip("Escolher tema claro ou escuro")
@@ -335,7 +340,7 @@ class MainWindow:
         welcome_log.clicked.connect(self.open_event_log)
         welcome_actions.addWidget(welcome_profile); welcome_actions.addWidget(welcome_sql); welcome_actions.addWidget(welcome_log); welcome_actions.addStretch()
         welcome_layout.addWidget(welcome_title); welcome_layout.addWidget(welcome_text); welcome_layout.addLayout(welcome_actions)
-        right_layout.addWidget(self.welcome_banner); right_layout.addLayout(profile_actions); right_layout.addWidget(box)
+        right_layout.addWidget(self.welcome_banner); right_layout.addLayout(profile_actions)
         right_layout.addWidget(self.sql_tabs, 1)
         action_row = QHBoxLayout()
         action_row.setSpacing(6)
