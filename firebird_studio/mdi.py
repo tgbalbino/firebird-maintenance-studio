@@ -45,14 +45,18 @@ try:
             layout = QVBoxLayout(container)
             layout.setContentsMargins(0, 0, 0, 0)
             layout.addWidget(widget, 1)
-            container.setProperty("sql_editor", widget)
+            container.setProperty("sql_editor", widget.property("sql_editor") or widget)
             sub.setWidget(container)
             sub.closed.connect(self._on_close_requested)
             self.addSubWindow(sub)
             sub.resize(760, 480)
             sub.show()
             self.setActiveSubWindow(sub)
-            return self.indexOf(widget)
+            # ``widget`` is the document tab container.  SQL indexes are
+            # identified by the editor stored on that container, so returning
+            # ``indexOf(widget)`` would yield -1 and leave per-window
+            # toolbars parentless (and immediately destroyed by Qt).
+            return self.indexOf(container.property("sql_editor"))
 
         def add_panel(self, widget, title, width=820, height=360):
             """Add a non-SQL form to the MDI workspace without affecting SQL indexes."""
@@ -89,7 +93,7 @@ try:
             return self._editor_for_subwindow(sub)
 
         def indexOf(self, widget):
-            for index, sub in enumerate(self.subWindowList()):
+            for index, sub in enumerate(self._sql_subwindows()):
                 if self._editor_for_subwindow(sub) is widget:
                     return index
             return -1
@@ -108,7 +112,12 @@ try:
 
         def currentIndex(self):
             active = self.activeSubWindow()
-            return self.indexOf(active.widget()) if active is not None else -1
+            if active is None or not active.property("sql_document"):
+                return -1
+            try:
+                return self._sql_subwindows().index(active)
+            except ValueError:
+                return -1
 
         def setCurrentIndex(self, index):
             sub = self._subwindow(index)

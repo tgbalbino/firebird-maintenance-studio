@@ -196,10 +196,6 @@ class MainWindow:
         self._restore_query_history()
         self.editor = None
         self._new_sql_tab()
-        from .result_views import configure_result_table
-        self.result_table = configure_result_table(QTableWidget())
-        self.result_table.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.result_table.customContextMenuRequested.connect(self._table_context_menu)
         self.structure_table = QTableWidget(); self.structure_table.setMinimumHeight(180); self.structure_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.structure_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.structure_table.setSortingEnabled(True)
@@ -234,7 +230,7 @@ class MainWindow:
         compare_controls = QHBoxLayout(); compare_controls.addWidget(self.compare_filter, 1); compare_controls.addWidget(self.compare_action_filter)
         compare_panel = QWidget(); compare_layout = QVBoxLayout(compare_panel); compare_layout.addLayout(compare_controls); compare_layout.addWidget(self.compare_table, 1)
         self.compare_panel = compare_panel
-        self.result_tabs = QTabWidget(); self.result_tabs.addTab(self.result_table, "Resultado"); self.result_tabs.addTab(self.structure_table, "Estrutura"); self.result_tabs.addTab(self.index_table, "Índices"); self.result_tabs.addTab(self.constraint_table, "Restrições"); self.result_tabs.addTab(plan_panel, "Plano e sugestões"); self.result_tabs.addTab(activity_panel, "Banco e atividade"); self.result_tabs.addTab(sessions_panel, "Sessões"); self.result_tabs.addTab(backup_history_panel, "Histórico de backup"); self.result_tabs.addTab(compare_panel, "Comparação")
+        self.result_tabs = QTabWidget(); self.result_tabs.addTab(self.structure_table, "Estrutura"); self.result_tabs.addTab(self.index_table, "Índices"); self.result_tabs.addTab(self.constraint_table, "Restrições"); self.result_tabs.addTab(plan_panel, "Plano e sugestões"); self.result_tabs.addTab(activity_panel, "Banco e atividade"); self.result_tabs.addTab(sessions_panel, "Sessões"); self.result_tabs.addTab(backup_history_panel, "Histórico de backup"); self.result_tabs.addTab(compare_panel, "Comparação")
         self.result_mdi_window = self.sql_tabs.add_panel(self.result_tabs, "Resultados e diagnóstico", width=860, height=330)
         self.result_tabs.currentChanged.connect(lambda _index: self._show_result_window())
         self.sql_tabs.setCurrentIndex(0)
@@ -501,6 +497,8 @@ class MainWindow:
     def _sync_editor(self, index: int):
         self.editor = self.sql_tabs.widget(index) if index >= 0 else None
         if self.editor is not None:
+            self.result_table = self.editor.property("result_table") or self.result_table
+            self._table_original_rows = []
             self._refresh_sql_completer(self.editor)
             self._update_cursor_status(self.editor)
             self._set_transaction_controls_enabled()
@@ -524,6 +522,14 @@ class MainWindow:
         self.result_mdi_window.show()
         self.result_mdi_window.raise_()
 
+    def _show_sql_result(self):
+        if self.editor is None:
+            return
+        document_tabs = self.editor.property("document_tabs")
+        result_table = self.editor.property("result_table")
+        if document_tabs is not None and result_table is not None:
+            document_tabs.setCurrentWidget(result_table)
+
     def _set_current_query_profile(self, profile_name: str):
         if self.editor is not None and profile_name:
             self.editor.setProperty("query_profile", profile_name)
@@ -543,7 +549,7 @@ class MainWindow:
         return next((profile for profile in self.profiles if profile.name == name), self._profile_from_form())
 
     def _new_sql_tab(self):
-        from PySide6.QtWidgets import QCompleter, QHBoxLayout, QPushButton, QTextEdit, QWidget
+        from PySide6.QtWidgets import QCompleter, QHBoxLayout, QPushButton, QTableWidget, QTabWidget, QTextEdit, QWidget
         from PySide6.QtCore import QStringListModel, Qt
         from PySide6.QtGui import QKeySequence, QShortcut
         editor = QTextEdit()
@@ -583,10 +589,21 @@ class MainWindow:
         editor.setProperty("completion_model", completion_model)
         editor.setProperty("completion", completer)
         editor.setProperty("completion_shortcut", completion_shortcut)
+        from .result_views import configure_result_table
+        result_table = configure_result_table(QTableWidget())
+        result_table.setContextMenuPolicy(Qt.CustomContextMenu)
+        result_table.customContextMenuRequested.connect(self._table_context_menu)
+        document_tabs = QTabWidget()
+        document_tabs.addTab(editor, "SQL")
+        document_tabs.addTab(result_table, "Resultado")
+        document_tabs.setCurrentWidget(editor)
+        document_tabs.setProperty("sql_editor", editor)
+        editor.setProperty("document_tabs", document_tabs)
+        editor.setProperty("result_table", result_table)
         selected_name = self.query_profile_combo.currentText() if hasattr(self, "query_profile_combo") else ""
         editor.setProperty("query_profile", selected_name or (self.profiles[0].name if self.profiles else ""))
         editor.setProperty("document_title", f"SQL {self.sql_tabs.count() + 1}")
-        index = self.sql_documents.add(editor, f"SQL {self.sql_tabs.count() + 1}", editor.property("query_profile") or "")
+        index = self.sql_documents.add(document_tabs, f"SQL {self.sql_tabs.count() + 1}", editor.property("query_profile") or "")
         sql_toolbar = QWidget()
         toolbar_layout = QHBoxLayout(sql_toolbar)
         toolbar_layout.setContentsMargins(4, 4, 4, 4)
@@ -616,6 +633,8 @@ class MainWindow:
         self.sql_tabs.add_toolbar(index, sql_toolbar)
         editor.setProperty("sql_toolbar_controls", (commit_button, rollback_button))
         self.editor = editor
+        self.result_table = result_table
+        self._table_original_rows = []
         self._set_transaction_controls_enabled()
         editor.cursorPositionChanged.connect(lambda target=editor: self._update_cursor_status(target))
         self._update_cursor_status(editor)
@@ -1559,6 +1578,7 @@ class MainWindow:
             self._show_message("Falha ao abrir dados", result.message)
             return False
         self._table_original_rows = [tuple(row) for row in result.rows]
+        self._show_sql_result()
         from .result_views import fill_table
         fill_table(self.result_table, result.columns, result.rows, preserve_values=True)
         self._filter_data_rows(self.data_filter.text())
@@ -1808,7 +1828,7 @@ class MainWindow:
         self._add_query_history(sql_text)
         suffix = " Transação aberta; escolha Commit ou Rollback." if explicit_transaction and result.ok else (" Alterações confirmadas." if changes_data and commit and result.ok else (" Alterações desfeitas (modo seguro)." if changes_data and result.ok else ""))
         self.status.setText(f"{result.message} ({result.elapsed_ms:.1f} ms)." + suffix)
-        self.result_tabs.setCurrentWidget(self.result_table)
+        self._show_sql_result()
         self._table_original_rows = []
         if hasattr(self, "edit_data_action"):
             self.edit_data_action.setChecked(False)
