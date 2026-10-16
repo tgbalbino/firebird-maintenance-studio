@@ -269,7 +269,8 @@ class MainWindow:
         self._toast = None
         self._restore_query_history()
         self.editor = None
-        self._new_sql_tab()
+        # Start with a clean workspace.  SQL documents are created on demand
+        # from the menu or when a database is opened.
         self.structure_table = QTableWidget(); self.structure_table.setMinimumHeight(180); self.structure_table.setEditTriggers(QTableWidget.NoEditTriggers); self.structure_table.setAlternatingRowColors(True); self.structure_table.setShowGrid(False)
         self.structure_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.structure_table.setSortingEnabled(True)
