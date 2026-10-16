@@ -646,6 +646,52 @@ class MainWindow:
         self.profile_box.setVisible(True)
         self.profile_toggle.setText("Ocultar dados do cadastro")
 
+    def _show_profile_dialog(self, index: int):
+        """Edit one database profile from the tree context menu."""
+        if index < 0 or index >= len(self.profiles):
+            return
+        from PySide6.QtWidgets import QCheckBox, QDialog, QDialogButtonBox, QFormLayout, QLineEdit, QSpinBox, QVBoxLayout
+
+        profile = self.profiles[index]
+        dialog = QDialog(self._window)
+        dialog.setWindowTitle(f"Dados do cadastro — {profile.name}")
+        dialog.setModal(True)
+        dialog.resize(560, 520)
+        form = QFormLayout()
+
+        name = QLineEdit(profile.name)
+        host = QLineEdit(profile.host)
+        port = QSpinBox(); port.setRange(1, 65535); port.setValue(profile.port)
+        database = QLineEdit(profile.database)
+        version = QLineEdit(profile.version); version.setReadOnly(True)
+        user = QLineEdit(profile.user)
+        role = QLineEdit(profile.role)
+        password = QLineEdit(self._stored_password(profile.name) or ""); password.setEchoMode(QLineEdit.Password)
+        save_password = QCheckBox("Salvar senha criptografada no Windows")
+        save_password.setChecked(bool(password.text()))
+        charset = QLineEdit(profile.charset)
+        isql_path = QLineEdit(profile.isql_path)
+        gbak_path = QLineEdit(profile.gbak_path)
+        favorite = QCheckBox("Favorito"); favorite.setChecked(profile.favorite)
+        for label, widget in (("Nome", name), ("Host", host), ("Porta", port), ("Caminho ou alias", database), ("Firebird", version), ("Usuário", user), ("Role", role), ("Senha", password), ("Charset", charset), ("Caminho isql", isql_path), ("Caminho gbak", gbak_path)):
+            form.addRow(label, widget)
+        form.addRow("", save_password)
+        form.addRow("", favorite)
+        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout = QVBoxLayout(dialog); layout.addLayout(form); layout.addWidget(buttons)
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        # Feed the existing validation and credential handling path so the
+        # modal and the normal profile workflow behave identically.
+        self.profile_list.setCurrentItem(self.profile_list.topLevelItem(index))
+        for widget, value in ((self.name, name.text()), (self.host, host.text()), (self.database, database.text()), (self.user, user.text()), (self.role, role.text()), (self.charset, charset.text()), (self.isql_path, isql_path.text()), (self.gbak_path, gbak_path.text())):
+            widget.setText(value)
+        self.port.setValue(port.value()); self.version.setCurrentText(version.text()); self.password.setText(password.text()); self.save_password.setChecked(save_password.isChecked()); self.favorite.setChecked(favorite.isChecked())
+        self.save_profile()
+
     def _set_table_data_enabled(self, enabled: bool):
         self.open_data_button.setEnabled(enabled)
         if hasattr(self, "open_data_action"):
@@ -2037,6 +2083,9 @@ class MainWindow:
         profile_index = self._profile_index_for_item(item)
         if item.parent() is None and 0 <= profile_index < len(self.profiles):
             profile = self.profiles[profile_index]
+            show_details = menu.addAction("Mostrar dados do cadastro")
+            show_details.triggered.connect(lambda _checked=False, selected=profile_index: self._show_profile_dialog(selected))
+            menu.addSeparator()
             if profile.name in self.connected_profiles:
                 disconnect = menu.addAction("Desconectar banco")
                 disconnect.triggered.connect(self.disconnect_selected)
