@@ -22,6 +22,8 @@ LIGHT_STYLE += " QPushButton#primaryAction { background: #1d4ed8; color: #ffffff
 DARK_STYLE += " QPushButton#primaryAction { background: #2563eb; color: #ffffff; border-color: #60a5fa; font-weight: 700; } QPushButton#primaryAction:hover { background: #1d4ed8; } QPushButton#secondaryAction { background: #2d3748; } QProgressBar#operationProgress { border: none; border-radius: 4px; background: #303b4e; } QProgressBar#operationProgress::chunk { border-radius: 4px; background: #60a5fa; }"
 LIGHT_STYLE += " QSplitter#mainSplitter::handle:horizontal { background: #d8e1ed; width: 8px; } QSplitter#mainSplitter::handle:horizontal:hover { background: #9bbcf0; }"
 DARK_STYLE += " QSplitter#mainSplitter::handle:horizontal { background: #303b4e; width: 8px; } QSplitter#mainSplitter::handle:horizontal:hover { background: #5f86c6; }"
+LIGHT_STYLE += " QLabel#connectionStatus { color: #526173; } QLabel#connectionBadge { background: #eaf2ff; border: 1px solid #9bbcf0; border-radius: 9px; padding: 3px 8px; }"
+DARK_STYLE += " QLabel#connectionStatus { color: #b6c2d2; } QLabel#connectionBadge { background: #263a58; border: 1px solid #5f86c6; border-radius: 9px; padding: 3px 8px; }"
 
 
 def apply_theme(theme: str) -> None:
