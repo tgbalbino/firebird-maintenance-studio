@@ -23,7 +23,7 @@ def validate_database(profile: ConnectionProfile, password: str | None, gfix_pat
     tool = Path(str(gfix_path).strip().strip('"')).expanduser()
     if tool.is_dir():
         tool = tool / "gfix.exe"
-    if not tool.exists():
+    if not tool.exists() or not tool.is_file():
         return ValidationResult(False, "", f"Executável gfix não encontrado: {tool}")
     database = _dsn(profile)
     args = [str(tool), "-v", "-full", "-user", profile.user, database]

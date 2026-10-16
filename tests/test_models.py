@@ -8,6 +8,7 @@ from firebird_studio.models import ConnectionProfile, ProfileStore
 from firebird_studio.sql import execute_sql
 from firebird_studio.script_runner import build_isql_args, run_script
 from firebird_studio.backup import build_gbak_args, run_gbak
+from firebird_studio.maintenance import validate_database
 from firebird_studio.schema import SchemaChange, SchemaObject, compare_schema, generate_migration
 from firebird_studio.catalog import _field_type
 from firebird_studio.plan import build_plan_script, parse_plan, suggest_improvements
@@ -116,6 +117,13 @@ class ProfileTests(unittest.TestCase):
             result = run_gbak(profile, "backup", database, database, "secret", database.parent / "gbak.exe")
             self.assertFalse(result.ok)
             self.assertIn("diferente do banco", result.error)
+
+    def test_validation_rejects_gfix_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            profile = ConnectionProfile("Local", database="sample.fdb")
+            result = validate_database(profile, "secret", Path(directory))
+            self.assertFalse(result.ok)
+            self.assertIn("gfix não encontrado", result.error)
 
     def test_schema_diff_and_migration_preview(self):
         source = [
