@@ -448,16 +448,8 @@ class MainWindow:
         self._settings.sync()
 
     def _apply_theme(self, theme: str):
-        from PySide6.QtWidgets import QApplication
-
-        app = QApplication.instance()
-        if app is None:
-            return
-        compact = "QToolButton, QPushButton { padding: 5px 9px; } QTabBar::tab { padding: 6px 12px; } QHeaderView::section { padding: 5px; font-weight: 600; }"
-        if theme == "dark":
-            app.setStyleSheet(compact + " QWidget { background: #202124; color: #e8eaed; } QLineEdit, QTextEdit, QTableWidget, QTreeWidget, QComboBox, QSpinBox { background: #292a2d; color: #f1f3f4; border: 1px solid #5f6368; } QPushButton, QToolButton { background: #303134; color: #f1f3f4; border: 1px solid #5f6368; border-radius: 3px; } QPushButton:hover, QToolButton:hover { background: #3c4043; } QTabBar::tab { background: #303134; color: #bdc1c6; } QTabBar::tab:selected { background: #8ab4f8; color: #202124; }")
-        else:
-            app.setStyleSheet(compact)
+        from .ui_theme import apply_theme
+        apply_theme(theme)
 
     def _set_theme(self, theme: str):
         self._settings.setValue("theme", theme)
@@ -478,21 +470,13 @@ class MainWindow:
 
     def _log_event(self, message: str, **details):
         """Append a diagnostic event without passwords or SQL contents."""
-        try:
-            self._event_log_path.parent.mkdir(parents=True, exist_ok=True)
-            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-            suffix = " ".join(f"{key}={value!s}" for key, value in details.items() if value not in (None, ""))
-            with self._event_log_path.open("a", encoding="utf-8") as handle:
-                handle.write(f"[{timestamp}] {message}{(' ' + suffix) if suffix else ''}\n")
-        except OSError:
-            pass
+        from .ui_logging import log_event
+        log_event(self._event_log_path, message, **details)
 
     def open_event_log(self):
+        from .ui_logging import open_log
         try:
-            self._event_log_path.parent.mkdir(parents=True, exist_ok=True)
-            self._event_log_path.touch(exist_ok=True)
-            import os
-            os.startfile(str(self._event_log_path))
+            open_log(self._event_log_path)
         except OSError as exc:
             self._log_event("Falha ao abrir log", error=str(exc))
             self.status.setText(f"Log: {self._event_log_path}")
@@ -1073,14 +1057,8 @@ class MainWindow:
         self._open_worker = None
 
     def _show_message(self, title: str, message: str, warning: bool = False):
-        from PySide6.QtWidgets import QMessageBox
-
-        box = QMessageBox(self._window)
-        box.setWindowTitle(title)
-        box.setText(message)
-        box.setIcon(QMessageBox.Warning if warning else QMessageBox.Critical)
-        box.setStandardButtons(QMessageBox.Ok)
-        box.exec()
+        from .ui_messages import show_message
+        show_message(self._window, title, message, warning)
 
     def _on_profile_opened(self, result, objects, schema_error):
         from PySide6.QtWidgets import QApplication

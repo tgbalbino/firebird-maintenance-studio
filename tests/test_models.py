@@ -17,10 +17,19 @@ from firebird_studio.catalog import _field_type
 from firebird_studio.plan import build_plan_script, parse_plan, suggest_improvements
 from firebird_studio.health import build_findings, inspect_health, _optional_database_values
 from firebird_studio.diagnostics import create_support_package
+from firebird_studio.ui_logging import log_event
 from unittest.mock import patch
 
 
 class ProfileTests(unittest.TestCase):
+    def test_ui_log_writer_formats_details(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "events.txt"
+            log_event(path, "Teste", profile="Local", empty="")
+            content = path.read_text(encoding="utf-8")
+            self.assertIn("Teste profile=Local", content)
+            self.assertNotIn("empty=", content)
+
     def test_support_package_omits_password_and_database_files(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
