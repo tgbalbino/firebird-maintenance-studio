@@ -833,7 +833,7 @@ class MainWindow:
         """Create or edit a profile in a modal configuration window."""
         if index is not None and (index < 0 or index >= len(self.profiles)):
             return
-        from PySide6.QtWidgets import QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QLineEdit, QPlainTextEdit, QPushButton, QSpinBox, QVBoxLayout
+        from PySide6.QtWidgets import QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLineEdit, QPlainTextEdit, QPushButton, QSpinBox, QVBoxLayout, QFileDialog, QWidget
 
         profile = self.profiles[index] if index is not None else ConnectionProfile(name="", version="5")
         dialog = QDialog(self._window)
@@ -846,6 +846,15 @@ class MainWindow:
         host = QLineEdit(profile.host)
         port = QSpinBox(); port.setRange(1, 65535); port.setValue(profile.port)
         database = QLineEdit(profile.database)
+        database_browse = QPushButton("...")
+        database_browse.setFixedWidth(34)
+        database_browse.setToolTip("Selecionar arquivo de banco Firebird")
+        database_row = QWidget()
+        database_layout = QHBoxLayout(database_row)
+        database_layout.setContentsMargins(0, 0, 0, 0)
+        database_layout.setSpacing(6)
+        database_layout.addWidget(database, 1)
+        database_layout.addWidget(database_browse)
         version = QComboBox(); version.addItems(SUPPORTED_VERSIONS); version.setCurrentText(profile.version)
         user = QLineEdit(profile.user)
         role = QLineEdit(profile.role)
@@ -856,7 +865,7 @@ class MainWindow:
         isql_path = QLineEdit(profile.isql_path)
         gbak_path = QLineEdit(profile.gbak_path)
         favorite = QCheckBox("Favorito"); favorite.setChecked(profile.favorite)
-        for label, widget in (("Nome", name), ("Host", host), ("Porta", port), ("Caminho ou alias", database), ("Firebird", version), ("Usuário", user), ("Role", role), ("Senha", password), ("Charset", charset), ("Caminho isql", isql_path), ("Caminho gbak", gbak_path)):
+        for label, widget in (("Nome", name), ("Host", host), ("Porta", port), ("Caminho ou alias", database_row), ("Firebird", version), ("Usuário", user), ("Role", role), ("Senha", password), ("Charset", charset), ("Caminho isql", isql_path), ("Caminho gbak", gbak_path)):
             form.addRow(label, widget)
         form.addRow("", save_password)
         form.addRow("", favorite)
@@ -866,6 +875,21 @@ class MainWindow:
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         output = QPlainTextEdit(); output.setReadOnly(True); output.setPlaceholderText("O resultado do teste aparecerá aqui.")
+
+        def browse_dialog_database():
+            start_dir = database.text().strip()
+            if start_dir and not Path(start_dir).is_dir():
+                start_dir = str(Path(start_dir).parent)
+            filename, _ = QFileDialog.getOpenFileName(
+                dialog,
+                "Selecionar arquivo do banco Firebird",
+                start_dir or str(Path.home()),
+                "Bancos Firebird (*.fdb *.FDB *.gdb *.GDB);;Todos os arquivos (*.*)",
+            )
+            if filename:
+                database.setText(filename)
+
+        database_browse.clicked.connect(browse_dialog_database)
 
         def test_dialog_connection():
             from .connection import test_connection
