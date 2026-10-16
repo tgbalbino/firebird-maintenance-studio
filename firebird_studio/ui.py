@@ -343,35 +343,9 @@ class MainWindow:
         left_layout.addWidget(profile_button)
         left_layout.addStretch()
 
-        form = QFormLayout(); form.addRow("Nome", self.name); form.addRow("", self.favorite); form.addRow("Host", self.host)
-        form.addRow("Porta", self.port); form.addRow("Caminho ou alias", database_row)
-        form.addRow("Firebird", self.version); form.addRow("Usuário", self.user); form.addRow("Role", self.role); form.addRow("Senha", password_row); form.addRow("Charset", self.charset); form.addRow("Caminho isql", self.isql_path); form.addRow("Caminho gbak", self.gbak_path); form.addRow("Comparar com", self.target_profile)
-        box = QGroupBox("Conexão selecionada"); box.setLayout(form)
-        self.profile_box = box
-        self.profile_toggle = QPushButton("Ocultar dados do cadastro")
-        self.profile_toggle.clicked.connect(self._toggle_profile_details)
-        self.profile_test_button = QPushButton("Testar conexão")
-        self.profile_test_button.clicked.connect(self.test_selected)
-        # Profile data is edited from the database tree context menu.  Keep
-        # the fields alive for validation and credential handling, but do not
-        # place the old profile form in the main workspace.
-        self.profile_toggle.setVisible(False)
-        self.profile_test_button.setVisible(False)
-        self.profile_box.setVisible(False)
-        self.profile_log_button = QPushButton("Abrir log")
-        self.profile_log_button.clicked.connect(self.open_event_log)
-        self.theme_button = QToolButton(); self.theme_button.setText("Tema"); self.theme_button.setToolTip("Escolher tema claro ou escuro")
-        self.theme_button.setPopupMode(QToolButton.InstantPopup)
-        theme_menu = QMenu(self.theme_button)
-        light_action = theme_menu.addAction("Tema claro"); light_action.triggered.connect(lambda: self._set_theme("light"))
-        dark_action = theme_menu.addAction("Tema escuro"); dark_action.triggered.connect(lambda: self._set_theme("dark"))
-        self.theme_button.setMenu(theme_menu)
-        # Application-level preferences live in the main menu to keep the
-        # workspace toolbar focused on database work.
-        self.profile_log_button.setVisible(False)
-        self.theme_button.setVisible(False)
+        # Connection fields are kept as state for the existing operation
+        # handlers. Their form lives only in the modal connection dialog.
         right = QWidget(); right.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding); right.setObjectName("workspacePanel")
-        profile_actions = QHBoxLayout(); profile_actions.addWidget(self.profile_toggle); profile_actions.addWidget(self.profile_test_button); profile_actions.addWidget(self.profile_log_button); profile_actions.addWidget(self.theme_button)
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(12, 12, 12, 12)
         right_layout.setSpacing(8)
@@ -817,17 +791,16 @@ class MainWindow:
             self.status.setText(f"Log: {self._event_log_path}")
 
     def _toggle_profile_details(self):
-        visible = not self.profile_box.isVisible()
-        self.profile_box.setVisible(visible)
-        self.profile_toggle.setText("Ocultar dados do cadastro" if visible else "Mostrar dados do cadastro")
+        # Connection details are edited in the modal connection dialog.
+        # Keep this handler for compatibility with older actions that may still
+        # call it, but do not recreate the removed main-window form.
+        return
 
     def _hide_profile_details(self):
-        self.profile_box.setVisible(False)
-        self.profile_toggle.setText("Mostrar dados do cadastro")
+        return
 
     def _show_profile_details(self):
-        self.profile_box.setVisible(True)
-        self.profile_toggle.setText("Ocultar dados do cadastro")
+        return
 
     def _show_profile_dialog(self, index: int | None = None):
         """Create or edit a profile in a modal configuration window."""
