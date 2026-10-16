@@ -7,6 +7,7 @@ import subprocess
 
 from .connection import _dsn
 from .models import ConnectionProfile
+from .process_utils import resolve_tool_path
 
 
 @dataclass(slots=True)
@@ -51,9 +52,7 @@ def run_script(
         return ScriptResult(False, -1, "", " ".join(errors), "isql")
     if not script.exists() or not script.is_file():
         return ScriptResult(False, -1, "", f"Arquivo SQL não encontrado: {script}", "isql")
-    isql_path = Path(str(isql_path).strip().strip('"')).expanduser()
-    if isql_path.is_dir():
-        isql_path = isql_path / "isql.exe"
+    isql_path = resolve_tool_path(isql_path, "isql.exe")
     if not isql_path.exists() or not isql_path.is_file():
         return ScriptResult(False, -1, "", f"Executável isql não encontrado: {isql_path}", "isql")
     args = build_isql_args(profile, script, isql_path)

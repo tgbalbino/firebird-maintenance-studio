@@ -7,6 +7,7 @@ import subprocess
 
 from .connection import _dsn
 from .models import ConnectionProfile
+from .process_utils import resolve_tool_path
 
 
 @dataclass(slots=True)
@@ -20,9 +21,7 @@ def validate_database(profile: ConnectionProfile, password: str | None, gfix_pat
     errors = profile.validate()
     if errors:
         return ValidationResult(False, "", " ".join(errors))
-    tool = Path(str(gfix_path).strip().strip('"')).expanduser()
-    if tool.is_dir():
-        tool = tool / "gfix.exe"
+    tool = resolve_tool_path(gfix_path, "gfix.exe")
     if not tool.exists() or not tool.is_file():
         return ValidationResult(False, "", f"Executável gfix não encontrado: {tool}")
     database = _dsn(profile)

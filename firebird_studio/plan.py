@@ -9,6 +9,7 @@ import subprocess
 from .connection import _dsn
 from .models import ConnectionProfile
 from .script_runner import _isql_error_text
+from .process_utils import resolve_tool_path
 
 
 @dataclass(slots=True)
@@ -75,9 +76,7 @@ def explain_query(profile: ConnectionProfile, sql: str, password: str | None, is
         return PlanResult(False, "", None, [], " ".join(errors))
     if not sql.strip():
         return PlanResult(False, "", None, [], "Informe uma consulta SQL.")
-    isql_path = Path(str(isql_path).strip().strip('"')).expanduser()
-    if isql_path.is_dir():
-        isql_path = isql_path / "isql.exe"
+    isql_path = resolve_tool_path(isql_path, "isql.exe")
     if not isql_path.exists() or not isql_path.is_file():
         return PlanResult(False, "", None, [], f"Executável isql não encontrado: {isql_path}")
     args = [str(isql_path), "-user", profile.user, "-ch", profile.charset, "-m2", _dsn(profile)]
