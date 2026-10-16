@@ -44,6 +44,9 @@ class ProfileStore:
     def __init__(self, path: Path):
         self.path = path
 
+    def _temporary_path(self) -> Path:
+        return self.path.with_name(f".{self.path.name}.tmp")
+
     def load(self) -> list[ConnectionProfile]:
         if not self.path.exists():
             return []
@@ -70,7 +73,7 @@ class ProfileStore:
     def save(self, profiles: list[ConnectionProfile]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = [asdict(profile) for profile in profiles]
-        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        temporary = self._temporary_path()
         try:
             temporary.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
             temporary.replace(self.path)
