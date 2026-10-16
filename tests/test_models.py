@@ -77,6 +77,7 @@ class ProfileTests(unittest.TestCase):
         self.assertTrue(is_mutating_statement("-- comentário\nUPDATE CUSTOMER SET NAME = 'A'"))
         self.assertTrue(is_mutating_statement("WITH changed AS (SELECT ID FROM CUSTOMER) DELETE FROM CUSTOMER WHERE ID IN (SELECT ID FROM changed)"))
         self.assertFalse(is_mutating_statement("/* comentário */ SELECT * FROM CUSTOMER"))
+        self.assertFalse(is_mutating_statement("WITH text AS (SELECT 'UPDATE' AS VALUE FROM RDB$DATABASE) SELECT VALUE FROM text"))
 
     def test_isql_arguments_never_include_password(self):
         profile = ConnectionProfile("Local", database="sample.fdb", user="SYSDBA")

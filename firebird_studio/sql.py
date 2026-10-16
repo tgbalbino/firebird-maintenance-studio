@@ -22,6 +22,9 @@ def is_mutating_statement(sql: str) -> bool:
     """Return whether SQL may change data, metadata, or privileges."""
     without_comments = re.sub(r"/\*.*?\*/", " ", sql or "", flags=re.DOTALL)
     without_comments = re.sub(r"--[^\r\n]*", " ", without_comments)
+    # Remove quoted literals before inspecting CTE bodies so text such as
+    # SELECT 'UPDATE' is not mistaken for a mutating statement.
+    without_comments = re.sub(r"'(?:''|[^'])*'", "''", without_comments)
     keyword = re.match(r"\s*([A-Za-z]+)", without_comments)
     if not keyword:
         return False
