@@ -378,10 +378,17 @@ class MainWindow:
         self.data_filter.setPlaceholderText("Filtrar linhas...")
         self.data_filter.setToolTip("Filtra as linhas carregadas nesta página; não altera o banco.")
         self.data_filter.textChanged.connect(self._filter_data_rows)
+        self.data_page_size = QComboBox()
+        self.data_page_size.addItems(["50", "200", "500", "1000"])
+        saved_page_size = str(self._settings.value("data_page_size", "200"))
+        page_size_index = self.data_page_size.findText(saved_page_size)
+        self.data_page_size.setCurrentIndex(page_size_index if page_size_index >= 0 else 1)
+        self.data_page_size.setToolTip("Quantidade de linhas carregadas por página")
+        self.data_page_size.currentTextChanged.connect(self._page_size_changed)
         self.next_data_button = QPushButton("Próximas 200")
         self.next_data_button.setEnabled(False)
         self.next_data_button.clicked.connect(lambda: self._load_table_page(self.table_page + 1))
-        pagination_row.addWidget(self.previous_data_button); pagination_row.addWidget(self.data_page_label, 1); pagination_row.addWidget(self.data_filter); pagination_row.addWidget(self.next_data_button)
+        pagination_row.addWidget(self.previous_data_button); pagination_row.addWidget(self.data_page_label, 1); pagination_row.addWidget(QLabel("Linhas:")); pagination_row.addWidget(self.data_page_size); pagination_row.addWidget(self.data_filter); pagination_row.addWidget(self.next_data_button)
         right_layout.addLayout(pagination_row)
         self.operation_progress = QProgressBar()
         self.operation_progress.setRange(0, 0)
@@ -609,6 +616,11 @@ class MainWindow:
         result_table = configure_result_table(QTableWidget())
         result_table.setContextMenuPolicy(Qt.CustomContextMenu)
         result_table.customContextMenuRequested.connect(self._table_context_menu)
+        result_header = result_table.horizontalHeader()
+        result_header.setContextMenuPolicy(Qt.CustomContextMenu)
+        result_header.customContextMenuRequested.connect(
+            lambda position, table=result_table: self._result_header_context_menu(table, position)
+        )
         document_tabs = QTabWidget()
         document_tabs.addTab(editor, "SQL")
         document_tabs.addTab(result_table, "Resultado")
@@ -1587,6 +1599,42 @@ class MainWindow:
             values = [self.result_table.item(row, column).text() if self.result_table.item(row, column) else "" for column in range(self.result_table.columnCount())]
             self.result_table.setRowHidden(row, bool(query) and query not in " ".join(values).casefold())
 
+    def _page_size_changed(self, value: str):
+        try:
+            size = max(1, int(value))
+        except (TypeError, ValueError):
+            return
+        self._settings.setValue("data_page_size", size)
+        self._settings.sync()
+        if self.selected_object is not None and self.selected_object.kind.upper() == "TABLE":
+            self._load_table_page(self.table_page)
+
+    def _result_header_context_menu(self, table, position):
+        from PySide6.QtWidgets import QInputDialog, QMenu
+
+        column = table.horizontalHeader().logicalIndexAt(position)
+        if column < 0 or column >= table.columnCount():
+            return
+        header = table.horizontalHeaderItem(column)
+        title = header.text() if header else f"Coluna {column + 1}"
+        menu = QMenu(self._window)
+        filter_action = menu.addAction(f"Filtrar coluna {title}")
+        clear_action = menu.addAction("Limpar filtros da grade")
+        chosen = menu.exec(table.horizontalHeader().viewport().mapToGlobal(position))
+        if chosen is filter_action:
+            value, accepted = QInputDialog.getText(self._window, "Filtrar coluna", f"Valor em {title}:")
+            if accepted:
+                needle = value.casefold().strip()
+                for row in range(table.rowCount()):
+                    item = table.item(row, column)
+                    table.setRowHidden(row, bool(needle) and needle not in (item.text() if item else "").casefold())
+                self.status.setText(f"Filtro aplicado na coluna {title}.")
+        elif chosen is clear_action:
+            for row in range(table.rowCount()):
+                table.setRowHidden(row, False)
+            self._filter_data_rows(self.data_filter.text())
+            self.status.setText("Filtros da grade removidos.")
+
     def _load_table_page(self, page: int):
         from .sql import execute_sql
         from PySide6.QtWidgets import QTableWidgetItem
@@ -1599,8 +1647,9 @@ class MainWindow:
         page = max(0, page)
         profile = self._profile_from_form()
         table_name = obj.name.replace('"', '""')
-        start = page * 200 + 1
-        end = start + 199
+        page_size = max(1, int(self.data_page_size.currentText()))
+        start = page * page_size + 1
+        end = start + page_size - 1
         self.status.setText(f"Carregando linhas {start} a {end} de {obj.name}...")
         result = execute_sql(profile, f'SELECT * FROM "{table_name}" ROWS {start} TO {end}', self._password_for(profile))
         if not result.ok:
@@ -1614,7 +1663,8 @@ class MainWindow:
         self._filter_data_rows(self.data_filter.text())
         self.table_page = page
         self.previous_data_button.setEnabled(page > 0)
-        self.next_data_button.setEnabled(len(result.rows) == 200)
+        self.next_data_button.setText(f"Próximas {page_size}")
+        self.next_data_button.setEnabled(len(result.rows) == page_size)
         self.data_page_label.setText(f"Página {page + 1} · linhas {start}-{start + max(0, len(result.rows) - 1)}")
         self.status.setText(f"Dados carregados: {len(result.rows)} linha(s).")
         return True
