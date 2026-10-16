@@ -34,15 +34,47 @@ def make_database_icon(connected: bool):
     return QIcon(pixmap)
 
 
+def make_group_icon(label: str):
+    """Create a small category marker without requiring image assets."""
+    from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
+
+    colors = {
+        "Tabelas": ("#2563eb", "#1d4ed8"),
+        "Views": ("#0891b2", "#0e7490"),
+        "Procedures": ("#7c3aed", "#6d28d9"),
+        "Functions": ("#9333ea", "#7e22ce"),
+        "Índices": ("#d97706", "#b45309"),
+        "Restrições": ("#dc2626", "#b91c1c"),
+        "Triggers": ("#ea580c", "#c2410c"),
+    }
+    fill, outline = colors.get(label, ("#64748b", "#475569"))
+    pixmap = QPixmap(16, 16)
+    pixmap.fill(QColor("transparent"))
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing)
+    painter.setBrush(QColor(fill))
+    painter.setPen(QColor(outline))
+    painter.drawRoundedRect(2, 2, 12, 12, 3, 3)
+    painter.end()
+    return QIcon(pixmap)
+
+
 def populate_profile_children(profile_item, objects) -> None:
     from PySide6.QtWidgets import QTreeWidgetItem
+    from PySide6.QtGui import QFont
 
     groups = group_objects(objects)
     for label in sorted(groups):
         parent = QTreeWidgetItem([f"{label} ({len(groups[label])})"])
+        parent.setIcon(0, make_group_icon(label))
+        font = QFont(parent.font(0))
+        font.setBold(True)
+        parent.setFont(0, font)
+        parent.setToolTip(0, f"{len(groups[label])} objeto(s) em {label}. Duplo clique para abrir.")
         profile_item.addChild(parent)
         for obj in groups[label]:
             child = QTreeWidgetItem([obj.name])
             child.setData(0, 32, obj)
+            child.setToolTip(0, f"{label}: {obj.name}")
             parent.addChild(child)
         parent.setExpanded(True)
