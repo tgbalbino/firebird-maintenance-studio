@@ -281,8 +281,12 @@ class MainWindow:
         workspace_title.setStyleSheet("font-weight: 600;")
         self.workspace_status = QLabel("SQL 1 · Ctrl+Tab alterna as janelas")
         self.workspace_status.setStyleSheet("color: #526173;")
+        self.workspace_connection = QLabel("Banco: nenhum")
+        self.workspace_connection.setObjectName("workspaceConnection")
+        self.workspace_connection.setToolTip("Banco associado à consulta ativa")
         workspace_row.addWidget(workspace_title)
         workspace_row.addWidget(self.workspace_status, 1)
+        workspace_row.addWidget(self.workspace_connection)
         right_layout.addLayout(workspace_row); right_layout.addWidget(self.sql_tabs, 1)
         action_row = QHBoxLayout()
         action_row.setSpacing(6)
@@ -513,6 +517,8 @@ class MainWindow:
                 self.workspace_status.setText(f"{self.sql_tabs.tabText(index)} · Ctrl+Tab alterna as janelas")
         elif hasattr(self, "workspace_status"):
             self.workspace_status.setText("Resultados e diagnóstico · use o menu Janelas para voltar ao SQL")
+            if hasattr(self, "workspace_connection"):
+                self.workspace_connection.setText("Banco: nenhum")
 
     def _show_result_window(self):
         """Bring the shared result/diagnostic form back to the front."""
@@ -543,6 +549,13 @@ class MainWindow:
         connected = bool(profile_name and profile_name in self.connected_profiles)
         self.connection_badge.setText("● Conectado" if connected else "● Desconectado")
         self.connection_badge.setStyleSheet("color: #188038; font-weight: 600;" if connected else "color: #b3261e; font-weight: 600;")
+        if hasattr(self, "workspace_connection"):
+            profile = next((item for item in self.profiles if item.name == profile_name), None)
+            if profile is None:
+                self.workspace_connection.setText("Banco: nenhum")
+            else:
+                state = "conectado" if connected else "desconectado"
+                self.workspace_connection.setText(f"Banco: {profile.name} · FB {profile.version} · {profile.host}:{profile.port} · {state}")
 
     def _query_profile(self):
         name = self.editor.property("query_profile") if self.editor is not None else ""
@@ -606,30 +619,39 @@ class MainWindow:
         return document_tabs, result_table
 
     def _create_sql_toolbar(self, editor):
-        from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
+        from PySide6.QtWidgets import QHBoxLayout, QPushButton, QToolButton, QWidget, QMenu
         sql_toolbar = QWidget()
         toolbar_layout = QHBoxLayout(sql_toolbar)
         toolbar_layout.setContentsMargins(4, 4, 4, 4)
         execute_button = QPushButton("Executar SQL")
         execute_button.setToolTip("Executar o SQL desta janela (F5 ou Ctrl+Return)")
         execute_button.clicked.connect(lambda: self._execute_sql_text(editor.toPlainText()))
-        selection_button = QPushButton("Executar seleção")
-        selection_button.setToolTip("Executar somente o trecho selecionado nesta janela (Ctrl+Shift+F5)")
-        selection_button.clicked.connect(lambda: (self.sql_tabs.setCurrentWidget(editor), self.execute_selection()))
-        plan_button = QPushButton("Ver plano")
-        plan_button.setToolTip("Analisar o plano da consulta desta janela")
-        plan_button.clicked.connect(lambda: (self.sql_tabs.setCurrentWidget(editor), self.inspect_plan()))
-        save_button = QPushButton("Salvar SQL")
-        save_button.setToolTip("Salvar o conteúdo desta janela em um arquivo SQL (Ctrl+S)")
-        save_button.clicked.connect(lambda: (self.sql_tabs.setCurrentWidget(editor), self.save_sql_file()))
-        commit_button = QPushButton("Commit")
-        commit_button.clicked.connect(self._commit_transaction)
-        rollback_button = QPushButton("Rollback")
-        rollback_button.clicked.connect(self._rollback_transaction)
-        for button in (execute_button, selection_button, plan_button, save_button, commit_button, rollback_button):
+        result_button = QPushButton("Resultado")
+        result_button.setToolTip("Mostrar o resultado desta consulta")
+        result_button.clicked.connect(lambda: (self.sql_tabs.setCurrentWidget(editor), self._show_sql_result()))
+        more_button = QToolButton()
+        more_button.setText("Mais")
+        more_button.setToolTip("Ações adicionais desta consulta")
+        more_button.setPopupMode(QToolButton.InstantPopup)
+        more_menu = QMenu(more_button)
+        selection_action = more_menu.addAction("Executar seleção")
+        selection_action.setShortcut("Ctrl+Shift+F5")
+        selection_action.triggered.connect(lambda: (self.sql_tabs.setCurrentWidget(editor), self.execute_selection()))
+        plan_action = more_menu.addAction("Ver plano")
+        plan_action.triggered.connect(lambda: (self.sql_tabs.setCurrentWidget(editor), self.inspect_plan()))
+        save_action = more_menu.addAction("Salvar SQL")
+        save_action.setShortcut("Ctrl+S")
+        save_action.triggered.connect(lambda: (self.sql_tabs.setCurrentWidget(editor), self.save_sql_file()))
+        more_menu.addSeparator()
+        commit_action = more_menu.addAction("Commit")
+        commit_action.triggered.connect(lambda: (self.sql_tabs.setCurrentWidget(editor), self._commit_transaction()))
+        rollback_action = more_menu.addAction("Rollback")
+        rollback_action.triggered.connect(lambda: (self.sql_tabs.setCurrentWidget(editor), self._rollback_transaction()))
+        more_button.setMenu(more_menu)
+        for button in (execute_button, result_button, more_button):
             toolbar_layout.addWidget(button)
         toolbar_layout.addStretch()
-        return sql_toolbar, (commit_button, rollback_button)
+        return sql_toolbar, (commit_action, rollback_action)
 
     def _new_sql_tab(self):
         from PySide6.QtWidgets import QTextEdit
