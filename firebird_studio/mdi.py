@@ -5,7 +5,7 @@ from __future__ import annotations
 
 try:
     from PySide6.QtCore import Qt, Signal
-    from PySide6.QtWidgets import QMdiArea, QMdiSubWindow
+    from PySide6.QtWidgets import QVBoxLayout, QMdiArea, QMdiSubWindow, QWidget
 
     class _SqlSubWindow(QMdiSubWindow):
         closed = Signal(object)
@@ -39,14 +39,34 @@ try:
             sub = _SqlSubWindow(self)
             sub.setAttribute(Qt.WA_DeleteOnClose, True)
             sub.setWindowTitle(title)
+            sub.setProperty("sql_document", True)
             sub.setWindowFlags(Qt.SubWindow | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowMinMaxButtonsHint | Qt.WindowCloseButtonHint)
-            sub.setWidget(widget)
+            container = QWidget()
+            layout = QVBoxLayout(container)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.addWidget(widget, 1)
+            container.setProperty("sql_editor", widget)
+            sub.setWidget(container)
             sub.closed.connect(self._on_close_requested)
             self.addSubWindow(sub)
             sub.resize(760, 480)
             sub.show()
             self.setActiveSubWindow(sub)
             return self.indexOf(widget)
+
+        def add_panel(self, widget, title, width=820, height=360):
+            """Add a non-SQL form to the MDI workspace without affecting SQL indexes."""
+            sub = _SqlSubWindow(self)
+            sub.setAttribute(Qt.WA_DeleteOnClose, False)
+            sub.setWindowTitle(title)
+            sub.setProperty("sql_document", False)
+            sub.setWindowFlags(Qt.SubWindow | Qt.WindowTitleHint | Qt.WindowSystemMenuHint | Qt.WindowMinMaxButtonsHint | Qt.WindowCloseButtonHint)
+            sub.setWidget(widget)
+            self.addSubWindow(sub)
+            sub.resize(width, height)
+            sub.closed.connect(lambda closed_sub: closed_sub.hide())
+            sub.show()
+            return sub
 
         def removeTab(self, index):
             sub = self._subwindow(index)
@@ -62,21 +82,29 @@ try:
             self._on_activated(self.activeSubWindow())
 
         def count(self):
-            return len(self.subWindowList())
+            return len(self._sql_subwindows())
 
         def widget(self, index):
             sub = self._subwindow(index)
-            return sub.widget() if sub is not None else None
+            return self._editor_for_subwindow(sub)
 
         def indexOf(self, widget):
             for index, sub in enumerate(self.subWindowList()):
-                if sub.widget() is widget:
+                if self._editor_for_subwindow(sub) is widget:
                     return index
             return -1
 
+        @staticmethod
+        def _editor_for_subwindow(sub):
+            container = sub.widget() if sub is not None else None
+            return container.property("sql_editor") if container is not None else None
+
         def _subwindow(self, index):
-            windows = self.subWindowList()
+            windows = self._sql_subwindows()
             return windows[index] if 0 <= index < len(windows) else None
+
+        def _sql_subwindows(self):
+            return [sub for sub in self.subWindowList() if sub.property("sql_document")]
 
         def currentIndex(self):
             active = self.activeSubWindow()
@@ -107,6 +135,12 @@ try:
             sub = self._subwindow(index)
             if sub is not None:
                 sub.setToolTip(text)
+
+        def add_toolbar(self, index, toolbar):
+            sub = self._subwindow(index)
+            container = sub.widget() if sub is not None else None
+            if container is not None and container.layout() is not None:
+                container.layout().insertWidget(0, toolbar)
 
         def cascade_windows(self):
             self.cascadeSubWindows()
@@ -140,7 +174,7 @@ try:
             self.activatePreviousSubWindow()
 
         def _on_close_requested(self, sub):
-            widget = sub.widget()
+            widget = self._editor_for_subwindow(sub)
             index = self.indexOf(widget)
             if index >= 0:
                 self.tabCloseRequested.emit(index)

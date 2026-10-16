@@ -235,6 +235,9 @@ class MainWindow:
         compare_panel = QWidget(); compare_layout = QVBoxLayout(compare_panel); compare_layout.addLayout(compare_controls); compare_layout.addWidget(self.compare_table, 1)
         self.compare_panel = compare_panel
         self.result_tabs = QTabWidget(); self.result_tabs.addTab(self.result_table, "Resultado"); self.result_tabs.addTab(self.structure_table, "Estrutura"); self.result_tabs.addTab(self.index_table, "Índices"); self.result_tabs.addTab(self.constraint_table, "Restrições"); self.result_tabs.addTab(plan_panel, "Plano e sugestões"); self.result_tabs.addTab(activity_panel, "Banco e atividade"); self.result_tabs.addTab(sessions_panel, "Sessões"); self.result_tabs.addTab(backup_history_panel, "Histórico de backup"); self.result_tabs.addTab(compare_panel, "Comparação")
+        self.result_mdi_window = self.sql_tabs.add_panel(self.result_tabs, "Resultados e diagnóstico", width=860, height=330)
+        self.result_tabs.currentChanged.connect(lambda _index: self._show_result_window())
+        self.sql_tabs.setCurrentIndex(0)
 
         left = QWidget(); left_layout = QVBoxLayout(left); left.setMinimumWidth(280)
         left_layout.addWidget(QLabel("Bancos e objetos (duplo clique para conectar/abrir)")); left_layout.addWidget(self.tree_filter); left_layout.addWidget(self.profile_list, 1)
@@ -335,7 +338,7 @@ class MainWindow:
         sql_button.menu().addAction(self.begin_transaction_action)
         sql_button.menu().addAction(self.commit_transaction_action)
         sql_button.menu().addAction(self.rollback_transaction_action)
-        window_button = menu_button("Janelas", [("Selecionar consulta aberta", self._choose_sql_window), ("Próxima consulta", self.sql_tabs.activate_next), ("Consulta anterior", self.sql_tabs.activate_previous), ("Fechar consulta atual", lambda: self.close_sql_tab(self.sql_tabs.currentIndex())), ("Fechar todas as consultas", self._close_all_sql_tabs)], "Alternar e fechar consultas SQL abertas")
+        window_button = menu_button("Janelas", [("Selecionar consulta aberta", self._choose_sql_window), ("Mostrar resultados e diagnóstico", self._show_result_window), ("Próxima consulta", self.sql_tabs.activate_next), ("Consulta anterior", self.sql_tabs.activate_previous), ("Fechar consulta atual", lambda: self.close_sql_tab(self.sql_tabs.currentIndex())), ("Fechar todas as consultas", self._close_all_sql_tabs)], "Alternar consultas SQL e formulários abertos")
         window_button.menu().addSeparator()
         window_button.menu().addAction("Organizar em cascata", self.sql_tabs.cascade_windows)
         window_button.menu().addAction("Organizar lado a lado", self.sql_tabs.tile_windows)
@@ -372,7 +375,7 @@ class MainWindow:
         self.next_data_button.setEnabled(False)
         self.next_data_button.clicked.connect(lambda: self._load_table_page(self.table_page + 1))
         pagination_row.addWidget(self.previous_data_button); pagination_row.addWidget(self.data_page_label, 1); pagination_row.addWidget(self.data_filter); pagination_row.addWidget(self.next_data_button)
-        right_layout.addWidget(self.result_tabs); right_layout.addLayout(pagination_row)
+        right_layout.addLayout(pagination_row)
         self.operation_progress = QProgressBar()
         self.operation_progress.setRange(0, 0)
         self.operation_progress.setTextVisible(False)
@@ -501,6 +504,14 @@ class MainWindow:
             self.query_profile_combo.setCurrentIndex(combo_index if combo_index >= 0 else -1)
             self.query_profile_combo.blockSignals(False)
             self._update_query_connection_status()
+
+    def _show_result_window(self):
+        """Bring the shared result/diagnostic form back to the front."""
+        if self.result_mdi_window is None:
+            return
+        self.result_mdi_window.showNormal()
+        self.result_mdi_window.show()
+        self.result_mdi_window.raise_()
 
     def _set_current_query_profile(self, profile_name: str):
         if self.editor is not None and profile_name:
