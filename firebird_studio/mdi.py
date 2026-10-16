@@ -136,6 +136,8 @@ try:
         def setTabText(self, index, title):
             sub = self._subwindow(index)
             if sub is not None:
+                if sub.property("sql_document") and " · " in title:
+                    title = title.split(" · ", 1)[0]
                 sub.setWindowTitle(title)
 
         def tabText(self, index):
