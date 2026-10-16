@@ -580,8 +580,9 @@ class MainWindow:
         dialog.exec()
 
     def show_about(self):
-        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout, QFrame
-        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout, QFrame, QPushButton
+        from PySide6.QtCore import Qt, QUrl
+        from PySide6.QtGui import QDesktopServices
 
         dialog = QDialog(self._window)
         dialog.setWindowTitle("Sobre o Firebird Maintenance Studio")
@@ -603,9 +604,13 @@ class MainWindow:
         description.setWordWrap(True)
         details = QLabel("Tecnologias: Python + PySide6<br>Distribuição: Windows x64<br>Licença: MIT")
         details.setTextFormat(Qt.RichText)
-        link = QLabel('<a href="https://github.com/tgbalbino/firebird-maintenance-studio">github.com/tgbalbino/firebird-maintenance-studio</a>')
+        link = QPushButton("Abrir projeto no GitHub")
         link.setObjectName("aboutLink")
-        link.setOpenExternalLinks(True)
+        link.setToolTip("Abrir github.com/tgbalbino/firebird-maintenance-studio no navegador")
+        link.setCursor(Qt.PointingHandCursor)
+        link.setFlat(True)
+        link.setStyleSheet("text-align: left; padding: 3px 0;")
+        link.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/tgbalbino/firebird-maintenance-studio")))
         layout.addWidget(header); layout.addWidget(description); layout.addWidget(details); layout.addWidget(link)
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
         buttons.rejected.connect(dialog.reject); layout.addWidget(buttons)
