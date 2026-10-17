@@ -2690,6 +2690,9 @@ class MainWindow:
             copy_name.triggered.connect(lambda _checked=False, value=profile.name: self._copy_tree_value(value, "Nome do banco"))
             copy_database = menu.addAction("Copiar caminho ou alias")
             copy_database.triggered.connect(lambda _checked=False, value=profile.database: self._copy_tree_value(value, "Caminho ou alias"))
+            monitor = menu.addAction("Monitorar consultas")
+            monitor.setToolTip("Abrir atividade e consultas em execução deste banco")
+            monitor.triggered.connect(lambda _checked=False, selected=profile_index: self._open_activity_for_profile(selected))
             menu.addSeparator()
             if profile.name in self.connected_profiles:
                 disconnect = menu.addAction("Desconectar banco")
@@ -3741,6 +3744,12 @@ class MainWindow:
             lambda: (inspect_health(profile, password), list_statements(profile, password)),
             lambda result: self._finish_activity_operation(result, profile),
         )
+
+    def _open_activity_for_profile(self, profile_index: int):
+        """Open the activity monitor for the profile chosen in the tree."""
+        if 0 <= profile_index < len(self.profiles):
+            self.select_profile(profile_index)
+        self.inspect_activity()
 
     def _toggle_activity_auto_refresh(self, enabled: bool):
         if enabled:
