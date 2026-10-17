@@ -3724,6 +3724,19 @@ class MainWindow:
     def inspect_activity(self):
         from .health import inspect_health, list_statements
 
+        # Reopen the shared result form immediately.  After the user closes
+        # the MDI child, the activity tab is still selected and no tab-change
+        # signal is emitted on the next request; waiting for the worker would
+        # leave the click apparently without effect.
+        try:
+            self.result_tabs.setCurrentWidget(self.activity_panel)
+            self._show_result_window()
+            self._log_event("Painel de atividade reaberto")
+        except RuntimeError:
+            # The normal window remains usable even if a closing event is
+            # currently being processed by Qt.
+            pass
+
         # The main profile form is hidden during normal SQL work. Prefer the
         # connection assigned to the active SQL document so the monitor never
         # refreshes a different or stale database profile.
