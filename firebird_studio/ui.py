@@ -560,6 +560,8 @@ class MainWindow:
 
     def _setup_main_menu(self):
         """Create the compact application menu for global commands."""
+        from PySide6.QtCore import Qt
+
         menu_bar = self._window.menuBar()
         # Keep the top level labels readable when the window is restored to a
         # smaller size.  The previous compact padding made adjacent labels
@@ -587,7 +589,9 @@ class MainWindow:
 
         sql_menu = menu_bar.addMenu("SQL")
         sql_menu.addAction("Nova janela SQL", self._new_sql_tab)
-        sql_menu.addAction("Executar SQL", self.execute_selected)
+        execute_action = sql_menu.addAction("Executar SQL", self.execute_selected)
+        execute_action.setShortcut("F5")
+        execute_action.setShortcutContext(Qt.ApplicationShortcut)
         sql_menu.addAction("Executar seleção", self.execute_selection)
         sql_menu.addAction("Ver plano", self.inspect_plan)
         sql_menu.addAction("Histórico SQL", self._choose_history_query)
@@ -1023,13 +1027,6 @@ class MainWindow:
         shortcut = QShortcut(QKeySequence("Ctrl+Return"), editor)
         shortcut.activated.connect(self.execute_selected)
         editor.setProperty("execute_shortcut", shortcut)
-        f5_shortcut = QShortcut(QKeySequence("F5"), editor)
-        # The MDI child can lose keyboard focus while its editor remains the
-        # active SQL document.  An application shortcut keeps F5 reliable in
-        # that state and avoids depending on the inner editor focus widget.
-        f5_shortcut.setContext(Qt.ApplicationShortcut)
-        f5_shortcut.activated.connect(lambda target=editor: (self.sql_tabs.setCurrentWidget(target), self._execute_sql_text(target.toPlainText())))
-        editor.setProperty("execute_f5_shortcut", f5_shortcut)
         selection_shortcut = QShortcut(QKeySequence("Ctrl+Shift+F5"), editor)
         selection_shortcut.activated.connect(lambda target=editor: (self.sql_tabs.setCurrentWidget(target), self.execute_selection()))
         editor.setProperty("execute_selection_shortcut", selection_shortcut)
