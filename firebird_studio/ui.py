@@ -136,6 +136,7 @@ class MainWindow:
 
         self._window = QMainWindow()
         self.show = self._window.show
+        self.showMaximized = self._window.showMaximized
         self._window.setWindowTitle(f"Firebird Maintenance Studio v{__version__}")
         self._window.resize(1100, 700)
         self.store = store

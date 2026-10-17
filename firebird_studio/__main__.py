@@ -67,7 +67,9 @@ def main(argv: list[str] | None = None) -> int:
     register_backup_association()
     profile_path = args.profiles or Path.home() / ".firebird-maintenance-studio" / "profiles.json"
     window = MainWindow(ProfileStore(profile_path))
-    window.show()
+    # Start in the same maximized workspace used by database tools such as
+    # IBExpert, while still allowing the user to restore the window normally.
+    window.showMaximized()
     if args.backup and args.backup.suffix.lower() in {".fbk", ".gbk"}:
         from PySide6.QtCore import QTimer
         QTimer.singleShot(250, lambda: window.restore_backup_file(args.backup))
