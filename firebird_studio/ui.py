@@ -338,12 +338,14 @@ class MainWindow:
         self.open_data_button.clicked.connect(self.open_table_data)
         left_layout.addWidget(self.open_data_button)
         profile_button = QToolButton(); profile_button.setText("Conexão"); profile_button.setObjectName("profileMenuButton"); profile_button.setToolTip("Criar, salvar, abrir ou excluir o cadastro selecionado")
-        profile_button.setPopupMode(QToolButton.InstantPopup)
         profile_menu = QMenu(profile_button)
         for label, callback in (("Nova conexão", self.new_profile), ("Salvar conexão", self.save_profile), ("Abrir banco", self.open_profile), ("Desconectar banco", self.disconnect_selected), ("Excluir cadastro", self.delete_profile)):
             profile_action = profile_menu.addAction(label)
             profile_action.triggered.connect(callback)
-        profile_button.setMenu(profile_menu)
+        # QToolButton's native popup always opens below the button and can be
+        # clipped when the sidebar reaches the bottom edge of the window.
+        # Position it ourselves so it opens above when there is not enough room.
+        profile_button.clicked.connect(lambda: self._show_profile_menu(profile_button, profile_menu))
         left_layout.addWidget(profile_button)
         left_layout.addStretch()
 
@@ -2616,6 +2618,24 @@ class MainWindow:
         collapse_all = menu.addAction("Recolher todos os bancos")
         collapse_all.triggered.connect(self._collapse_all_profiles)
         menu.exec(self.profile_list.viewport().mapToGlobal(position))
+
+    def _show_profile_menu(self, button, menu):
+        """Show the connection menu inside the available screen geometry."""
+        from PySide6.QtCore import QPoint
+        from PySide6.QtGui import QGuiApplication
+
+        menu.ensurePolished()
+        menu_size = menu.sizeHint()
+        origin = button.mapToGlobal(QPoint(0, button.height()))
+        screen = QGuiApplication.screenAt(origin) or button.screen()
+        available = screen.availableGeometry() if screen is not None else None
+        x, y = origin.x(), origin.y()
+        if available is not None:
+            if y + menu_size.height() > available.bottom():
+                y = button.mapToGlobal(QPoint(0, 0)).y() - menu_size.height()
+            x = max(available.left(), min(x, available.right() - menu_size.width()))
+            y = max(available.top(), min(y, available.bottom() - menu_size.height()))
+        menu.popup(QPoint(x, y))
 
     def _copy_tree_value(self, value: str, label: str):
         from PySide6.QtWidgets import QApplication
