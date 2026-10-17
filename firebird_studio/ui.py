@@ -627,7 +627,11 @@ class MainWindow:
         app_menu.addAction("Sair", self._window.close)
 
         sql_menu = menu_bar.addMenu("SQL")
-        sql_menu.addAction("Nova janela SQL", self._new_sql_tab)
+        new_sql_action = sql_menu.addAction("Nova janela SQL", self._new_sql_tab)
+        new_sql_action.setToolTip("Abrir uma nova janela SQL (Ctrl+N)")
+        self.new_sql_shortcut = QShortcut(QKeySequence("Ctrl+N"), self._window)
+        self.new_sql_shortcut.setContext(Qt.ApplicationShortcut)
+        self.new_sql_shortcut.activated.connect(self._new_sql_tab)
         execute_action = sql_menu.addAction("Executar SQL", self.execute_selected)
         execute_action.setToolTip("Executar a consulta da janela SQL ativa (F5)")
         # QAction shortcuts can stop reaching the handler when another child
