@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from dataclasses import dataclass
+import os
 import subprocess
 from typing import Any, Callable
 
@@ -21,6 +22,10 @@ def resolve_tool_path(value: Path | str, executable_name: str) -> Path:
 
 def run_command(runner: Callable[..., Any], args: list[str], **kwargs: Any) -> CommandResult:
     """Run a command while keeping timeout and startup handling consistent."""
+    if os.name == "nt" and "creationflags" not in kwargs:
+        # Keep console tools (isql, gbak, gfix and helper scripts) behind the
+        # Qt window instead of briefly opening a black CMD window.
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     try:
         return CommandResult(completed=runner(args, **kwargs))
     except subprocess.TimeoutExpired as exc:
