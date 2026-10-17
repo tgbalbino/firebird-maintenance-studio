@@ -292,6 +292,10 @@ class MainWindow:
             self.activity_auto_refresh,
             self.activity_refresh_interval,
         ) = create_activity_panel(self.inspect_activity, self.export_activity_csv, self.open_activity_sql, self._filter_activity_rows, self._toggle_activity_auto_refresh, self._open_activity_sql_at, self._set_activity_refresh_interval)
+        self.activity_refresh_shortcut = QShortcut(QKeySequence("Ctrl+R"), self.activity_panel)
+        self.activity_refresh_shortcut.setContext(Qt.WidgetWithChildrenShortcut)
+        self.activity_refresh_shortcut.setToolTip("Atualizar o monitor de consultas")
+        self.activity_refresh_shortcut.activated.connect(self.inspect_activity)
         self.activity_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.activity_table.customContextMenuRequested.connect(self._activity_context_menu)
         saved_activity_interval = int(self._settings.value("activity_refresh_interval", 5000))
@@ -3858,6 +3862,8 @@ class MainWindow:
         # window was closed. In that case currentChanged is not emitted, so
         # explicitly show the auxiliary window on every completed refresh.
         self._show_result_window()
+        if self.result_mdi_window.isVisible():
+            self.activity_table.setFocus(Qt.OtherFocusReason)
         self._log_event("Atividade lida", profile=profile.name, statements=len(statements), estimated_size_mb=size or "")
         self.status.setText(f"Painel atualizado: {len(statements)} consulta(s) em execução.")
 
