@@ -1022,7 +1022,10 @@ class MainWindow:
 
     def _query_profile(self):
         name = self.editor.property("query_profile") if self.editor is not None else ""
-        return next((profile for profile in self.profiles if profile.name == name), self._profile_from_form())
+        for profile in self.profiles:
+            if profile.name == name:
+                return profile
+        return self._profile_from_form()
 
     def _configure_sql_editor(self, editor):
         from PySide6.QtWidgets import QCompleter
@@ -1478,7 +1481,11 @@ class MainWindow:
 
     def _password_for(self, profile: ConnectionProfile | None = None) -> str:
         profile_name = profile.name if profile is not None else self.name.text()
-        return self.password.text() or self._stored_password(profile_name) or ""
+        try:
+            entered = self.password.text()
+        except RuntimeError:
+            entered = ""
+        return entered or self._stored_password(profile_name) or ""
 
     def close_sql_tab(self, index: int):
         self.sql_documents.close(index, self._new_sql_tab)
@@ -2962,12 +2969,23 @@ class MainWindow:
             return
         statement = sql_text.lstrip().upper()
         changes_data = is_mutating_statement(sql_text)
-        commit = bool(self.commit_changes.isChecked())
-        if changes_data and self.read_only_mode.isChecked():
+        commit_control = self.commit_changes
+        read_only_control = self.read_only_mode
+        if commit_control is None and self.editor is not None:
+            controls = self.editor.property("execution_controls") or ()
+            commit_control = controls[0] if len(controls) > 0 else None
+            read_only_control = controls[1] if len(controls) > 1 else None
+        commit = bool(commit_control.isChecked()) if commit_control is not None else False
+        if changes_data and read_only_control is not None and read_only_control.isChecked():
             self.status.setText("Modo somente leitura: a instrução foi bloqueada.")
             self._log_event("SQL bloqueado por somente leitura", statement=statement.split(None, 1)[0] if statement else "")
             return
         profile = self._query_profile()
+        if not profile.name or not profile.database:
+            message = "Selecione uma conexão válida antes de executar a SQL."
+            self.status.setText(message)
+            self._show_message("Conexão SQL", message, warning=True)
+            return
         explicit_transaction = self._transaction_session is not None and self._transaction_session.active
         if explicit_transaction and self._transaction_profile_name != profile.name:
             self.status.setText(f"A transação aberta pertence à conexão '{self._transaction_profile_name}'. Faça Commit/Rollback antes de trocar de banco.")
