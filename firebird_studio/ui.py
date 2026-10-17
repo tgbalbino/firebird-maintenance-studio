@@ -1088,7 +1088,11 @@ class MainWindow:
         completer.activated[str].connect(lambda text, target=editor: self._insert_completion(target, text))
         class CompletionKeyFilter(QObject):
             def eventFilter(filter_self, watched, event):
-                if event.type() == QEvent.KeyPress and event.key() in (Qt.Key_Return, Qt.Key_Enter):
+                # Match the editor behavior users expect from SSMS: Tab or
+                # Enter accepts the highlighted completion.  Only consume
+                # the key while the popup is visible; otherwise Tab keeps its
+                # normal editor behavior (indent/focus navigation).
+                if event.type() == QEvent.KeyPress and event.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Tab):
                     popup = completer.popup()
                     if popup.isVisible():
                         index = popup.currentIndex()
