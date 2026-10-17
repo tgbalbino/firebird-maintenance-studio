@@ -3338,6 +3338,9 @@ class MainWindow:
         dialog.setModal(True)
         dialog.resize(620, 430)
         form = QFormLayout()
+        profile_choice = QComboBox()
+        profile_choice.addItem("Nova conexão")
+        profile_choice.addItems([item.name for item in self.profiles])
         name = QLineEdit(source.stem)
         host = QLineEdit("localhost")
         port = QSpinBox(); port.setRange(1, 65535); port.setValue(3050)
@@ -3351,6 +3354,7 @@ class MainWindow:
         target_row = QWidget(); target_layout = QHBoxLayout(target_row); target_layout.setContentsMargins(0, 0, 0, 0); target_layout.addWidget(target, 1); target_layout.addWidget(target_button)
         save_profile = QCheckBox("Adicionar o banco restaurado aos cadastros")
         save_password = QCheckBox("Salvar senha criptografada")
+        form.addRow("Usar cadastro", profile_choice)
         for label, widget in (("Nome do cadastro", name), ("Host", host), ("Porta", port), ("Firebird", version), ("Usuário", user), ("Senha", password), ("Caminho gbak", gbak_path), ("Arquivo FDB", target_row)):
             form.addRow(label, widget)
         form.addRow("", save_profile); form.addRow("", save_password)
@@ -3358,6 +3362,15 @@ class MainWindow:
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(dialog.accept); buttons.rejected.connect(dialog.reject)
         target_button.clicked.connect(lambda: self._choose_restore_target(dialog, target))
+        def load_restore_profile(profile_name):
+            selected = next((item for item in self.profiles if item.name == profile_name), None)
+            if selected is None:
+                return
+            name.setText(f"{selected.name} restaurado")
+            host.setText(selected.host); port.setValue(selected.port); version.setCurrentText(selected.version)
+            user.setText(selected.user); gbak_path.setText(selected.gbak_path)
+            password.setText(self._stored_password(selected.name) or "")
+        profile_choice.currentTextChanged.connect(load_restore_profile)
         layout = QVBoxLayout(dialog); layout.addWidget(hint); layout.addLayout(form); layout.addWidget(buttons)
         if dialog.exec() != QDialog.Accepted:
             return
