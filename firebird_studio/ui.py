@@ -2617,22 +2617,34 @@ class MainWindow:
                 action.triggered.connect(lambda _checked=False, target=item: target.setExpanded(True))
         collapse_all = menu.addAction("Recolher todos os bancos")
         collapse_all.triggered.connect(self._collapse_all_profiles)
-        menu.exec(self.profile_list.viewport().mapToGlobal(position))
+        origin = self.profile_list.viewport().mapToGlobal(position)
+        self._popup_menu_fitting(menu, origin, self.profile_list)
 
     def _show_profile_menu(self, button, menu):
         """Show the connection menu inside the available screen geometry."""
+        from PySide6.QtCore import QPoint
+
+        origin = button.mapToGlobal(QPoint(0, button.height()))
+        self._popup_menu_fitting(menu, origin, button)
+
+    def _popup_menu_fitting(self, menu, origin, reference_widget=None):
+        """Open a menu without allowing it to extend beyond the active screen."""
         from PySide6.QtCore import QPoint
         from PySide6.QtGui import QGuiApplication
 
         menu.ensurePolished()
         menu_size = menu.sizeHint()
-        origin = button.mapToGlobal(QPoint(0, button.height()))
-        screen = QGuiApplication.screenAt(origin) or button.screen()
+        screen = QGuiApplication.screenAt(origin)
+        if screen is None and reference_widget is not None:
+            screen = reference_widget.screen()
         available = screen.availableGeometry() if screen is not None else None
         x, y = origin.x(), origin.y()
         if available is not None:
             if y + menu_size.height() > available.bottom():
-                y = button.mapToGlobal(QPoint(0, 0)).y() - menu_size.height()
+                if reference_widget is not None:
+                    y = reference_widget.mapToGlobal(QPoint(0, 0)).y() - menu_size.height()
+                else:
+                    y = available.bottom() - menu_size.height()
             x = max(available.left(), min(x, available.right() - menu_size.width()))
             y = max(available.top(), min(y, available.bottom() - menu_size.height()))
         menu.popup(QPoint(x, y))
