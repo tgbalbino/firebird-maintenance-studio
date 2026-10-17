@@ -599,6 +599,7 @@ class MainWindow:
     def _setup_main_menu(self):
         """Create the compact application menu for global commands."""
         from PySide6.QtCore import Qt
+        from PySide6.QtGui import QKeySequence, QShortcut
 
         menu_bar = self._window.menuBar()
         # Keep the top level labels readable when the window is restored to a
@@ -629,11 +630,16 @@ class MainWindow:
         sql_menu.addAction("Nova janela SQL", self._new_sql_tab)
         execute_action = sql_menu.addAction("Executar SQL", self.execute_selected)
         execute_action.setToolTip("Executar a consulta da janela SQL ativa (F5)")
-        execute_action.setShortcut("F5")
-        execute_action.setShortcutContext(Qt.ApplicationShortcut)
+        # QAction shortcuts can stop reaching the handler when another child
+        # widget owns the focus. Keep explicit application shortcuts on the
+        # main window so execution remains available from every SQL subview.
+        self.execute_sql_shortcut = QShortcut(QKeySequence("F5"), self._window)
+        self.execute_sql_shortcut.setContext(Qt.ApplicationShortcut)
+        self.execute_sql_shortcut.activated.connect(self.execute_selected)
         selection_menu_action = sql_menu.addAction("Executar seleção", self.execute_selection)
-        selection_menu_action.setShortcut("Ctrl+Shift+F5")
-        selection_menu_action.setShortcutContext(Qt.ApplicationShortcut)
+        self.execute_selection_shortcut = QShortcut(QKeySequence("Ctrl+Shift+F5"), self._window)
+        self.execute_selection_shortcut.setContext(Qt.ApplicationShortcut)
+        self.execute_selection_shortcut.activated.connect(self.execute_selection)
         sql_menu.addAction("Ver plano", self.inspect_plan)
         sql_menu.addAction("Histórico SQL", self._choose_history_query)
         sql_menu.addSeparator()
