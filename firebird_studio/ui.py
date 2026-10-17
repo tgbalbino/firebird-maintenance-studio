@@ -3183,6 +3183,7 @@ class MainWindow:
 
     def _start_background_operation(self, name, operation, on_finished):
         from PySide6.QtCore import QThread, QTimer, Qt
+        from PySide6.QtWidgets import QApplication
 
         if self._operation_thread is not None and self._operation_thread.isRunning():
             self.status.setText(f"A operação '{self._operation_name}' ainda está em execução.")
@@ -3219,6 +3220,7 @@ class MainWindow:
         thread.finished.connect(self._clear_background_operation)
         self.status.setText(f"{name} em execução...")
         self.operation_progress.setVisible(True)
+        QApplication.setOverrideCursor(Qt.WaitCursor)
         self._log_event("Operação iniciada", operation=name)
         thread.start()
         return True
@@ -3233,6 +3235,9 @@ class MainWindow:
         self._operation_started_at = 0.0
         if hasattr(self, "operation_progress"):
             self.operation_progress.setVisible(False)
+        from PySide6.QtWidgets import QApplication
+        if QApplication.overrideCursor() is not None:
+            QApplication.restoreOverrideCursor()
 
     def _operation_result_text(self, result):
         if isinstance(result, Exception):
