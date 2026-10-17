@@ -3578,6 +3578,16 @@ class MainWindow:
 
     def _finish_activity_operation(self, result, profile):
         from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QTableWidgetItem
+
+        class DurationItem(QTableWidgetItem):
+            def __lt__(self, other):
+                left = self.data(Qt.UserRole)
+                right = other.data(Qt.UserRole) if other is not None else None
+                if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+                    return float(left) < float(right)
+                return super().__lt__(other)
+
         if isinstance(result, Exception):
             self._log_event("Falha ao ler atividade", profile=profile.name, error=str(result))
             self.status.setText(f"Falha ao ler informações do banco: {result}")
@@ -3608,8 +3618,7 @@ class MainWindow:
             duration_text = f"{elapsed:.1f} s" if isinstance(elapsed, (int, float)) else "N/D"
             values = [statement.get("id"), statement.get("attachment_id"), statement.get("user"), statement.get("address"), statement.get("application"), started_text, duration_text, statement.get("sql", "")]
             for column, value in enumerate(values):
-                from PySide6.QtWidgets import QTableWidgetItem
-                cell = QTableWidgetItem("" if value is None else str(value))
+                cell = DurationItem("" if value is None else str(value)) if column == 6 else QTableWidgetItem("" if value is None else str(value))
                 if column == 6 and isinstance(elapsed, (int, float)):
                     cell.setData(Qt.UserRole, float(elapsed))
                 self.activity_table.setItem(row, column, cell)
