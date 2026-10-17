@@ -573,6 +573,11 @@ class MainWindow:
             self.sql_tabs.viewport().setPalette(palette)
             self.sql_tabs.viewport().setBackgroundRole(QPalette.Base)
             self.sql_tabs.viewport().setAutoFillBackground(True)
+            # Keep an explicit rule on the viewport as a final guard against
+            # the native style restoring its gray workspace brush.
+            self.sql_tabs.viewport().setStyleSheet(
+                f"background-color: {background.name()}; border: 0px;"
+            )
 
     def _set_theme(self, theme: str):
         self._settings.setValue("theme", theme)
