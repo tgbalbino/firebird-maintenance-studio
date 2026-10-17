@@ -6,6 +6,39 @@ from pathlib import Path
 from .models import ConnectionProfile
 
 
+APPLICATION_NAME = "Firebird Maintenance Studio"
+
+
+def _install_fdb_application_name_hook() -> None:
+    """Label Firebird 2.5 attachments in MON$REMOTE_PROCESS.
+
+    FDB exposes the Firebird DPB attach hook, while its public ``connect``
+    function has no application-name argument.  Setting isc_dpb_process_name
+    here makes the activity monitor identify this client instead of showing a
+    generic Python process name.
+    """
+    try:
+        import fdb
+
+        marker = "_firebird_studio_application_name_hook"
+        if getattr(fdb, marker, False):
+            return
+
+        def set_application_name(_dsn, dpb):
+            dpb.add_string_parameter(fdb.ibase.isc_dpb_process_name, APPLICATION_NAME)
+
+        fdb.fbcore.add_hook(fdb.HOOK_DATABASE_ATTACH_REQUEST, set_application_name)
+        setattr(fdb, marker, True)
+    except Exception:
+        # The FDB dependency is optional until a Firebird 2.5 connection is
+        # requested; a hook failure must not prevent the application from
+        # starting or from using the Firebird 3+ driver.
+        return
+
+
+_install_fdb_application_name_hook()
+
+
 @dataclass(slots=True)
 class ConnectionResult:
     ok: bool
