@@ -3530,7 +3530,7 @@ class MainWindow:
 
     def inspect_schema(self):
         from .catalog import load_schema
-        profile = self._profile_from_form()
+        profile = self._query_profile()
         password = self._password_for(profile)
         self._start_background_operation("Leitura da estrutura", lambda: load_schema(profile, password), lambda result: self._finish_schema_operation(result, profile))
 
@@ -3576,7 +3576,7 @@ class MainWindow:
 
     def inspect_health(self):
         from .health import inspect_health
-        profile = self._profile_from_form()
+        profile = self._query_profile()
         password = self._password_for(profile)
         self._start_background_operation("Saúde", lambda: inspect_health(profile, password), lambda result: self._finish_health_operation(result, profile))
 
@@ -3980,7 +3980,7 @@ class MainWindow:
 
     def inspect_sessions(self):
         from .health import list_sessions
-        profile = self._profile_from_form()
+        profile = self._query_profile()
         password = self._password_for(profile)
         self._start_background_operation("Sessões", lambda: list_sessions(profile, password), lambda result: self._finish_sessions_operation(result, profile))
 
@@ -3994,7 +3994,7 @@ class MainWindow:
         if item is None:
             return
         attachment_id = item.text().strip()
-        profile = self._profile_from_form()
+        profile = self._query_profile()
         answer = QMessageBox.question(
             self._window,
             "Confirmar desconexão",
