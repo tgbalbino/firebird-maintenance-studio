@@ -339,6 +339,8 @@ class MainWindow:
         left_layout.addWidget(self.open_data_button)
         profile_button = QToolButton(); profile_button.setText("Conexão"); profile_button.setObjectName("profileMenuButton"); profile_button.setToolTip("Criar, salvar, abrir ou excluir o cadastro selecionado")
         profile_menu = QMenu(profile_button)
+        profile_menu.setMinimumWidth(220)
+        profile_menu.setStyleSheet("QMenu::item { padding: 6px 24px 6px 12px; }")
         for label, callback in (("Nova conexão", self.new_profile), ("Salvar conexão", self.save_profile), ("Abrir banco", self.open_profile), ("Desconectar banco", self.disconnect_selected), ("Excluir cadastro", self.delete_profile)):
             profile_action = profile_menu.addAction(label)
             profile_action.triggered.connect(callback)
