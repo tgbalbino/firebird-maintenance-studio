@@ -3724,7 +3724,17 @@ class MainWindow:
         # The main profile form is hidden during normal SQL work. Prefer the
         # connection assigned to the active SQL document so the monitor never
         # refreshes a different or stale database profile.
-        profile = self._query_profile() if self.editor is not None else self._profile_from_form()
+        profile = None
+        try:
+            profile = self._query_profile() if self.editor is not None else None
+        except RuntimeError:
+            profile = None
+        if profile is None:
+            selected = getattr(self, "_selected_profile_index", -1)
+            if 0 <= selected < len(self.profiles):
+                profile = self.profiles[selected]
+            else:
+                profile = self._profile_from_form()
         password = self._password_for(profile)
         self._start_background_operation(
             "Painel do banco",
@@ -3787,6 +3797,7 @@ class MainWindow:
             f"ODS: {metrics.get('ods_major') or 'N/D'}.{metrics.get('ods_minor') or 'N/D'} · conexões: {metrics.get('attachments') or 0}",
             f"Transações: oldest={metrics.get('oldest_transaction') or 'N/D'} · active={metrics.get('oldest_active') or 'N/D'} · next={metrics.get('next_transaction') or 'N/D'}",
             f"Consultas em execução: {len(statements)}",
+            "Estado: nenhuma consulta em execução neste instante" if not statements else "Estado: consultas em execução encontradas",
             "Senha: não exposta pelo monitoramento",
         ]
         self.activity_metrics.setPlainText("\n".join(lines))
