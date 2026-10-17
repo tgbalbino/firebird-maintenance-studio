@@ -393,7 +393,10 @@ class MainWindow:
             button.setObjectName("workspaceAction")
             button.setMinimumHeight(30)
             button.setToolTip(tooltip)
-            button.setPopupMode(QToolButton.InstantPopup)
+            # Keep a separate arrow area while routing the main button click
+            # through the bounded popup helper. Native InstantPopup always
+            # opens downward and may be clipped at the bottom edge.
+            button.setPopupMode(QToolButton.MenuButtonPopup)
             menu = QMenu(button)
             menu.setMinimumWidth(340)
             menu.setStyleSheet("QMenu::item { padding: 6px 48px 6px 12px; }")
@@ -401,6 +404,7 @@ class MainWindow:
                 action = menu.addAction(text)
                 action.triggered.connect(callback)
             button.setMenu(menu)
+            button.clicked.connect(lambda: self._show_profile_menu(button, menu))
             return button
 
         self.open_data_action = QAction("Dados da tabela", self._window)
