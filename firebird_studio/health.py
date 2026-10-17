@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from .catalog import open_database
+from .connection import APPLICATION_NAME
 from .models import ConnectionProfile
 
 
@@ -20,6 +22,17 @@ class HealthFinding:
 class HealthReport:
     metrics: dict[str, Any]
     findings: list[HealthFinding]
+
+
+def _application_label(value: Any) -> str:
+    """Use a stable friendly name for this client's process in the monitor."""
+    if not value:
+        return "N/D"
+    raw = str(value).strip()
+    executable = Path(raw.replace("\\", "/")).name.casefold()
+    if executable in {"firebirdmaintenancestudio.exe", "python.exe", "pythonw.exe"}:
+        return APPLICATION_NAME
+    return raw
 
 
 def _fetch_one(connection: Any, query: str) -> tuple:
@@ -182,7 +195,7 @@ def list_statements(profile: ConnectionProfile, password: str | None = None) -> 
             "attachment_id": row[1] if len(row) > 1 else None,
             "user": row[2] if len(row) > 2 and row[2] else "N/D",
             "address": row[3] if len(row) > 3 and row[3] else "N/D",
-            "application": row[4] if len(row) > 4 and row[4] else "N/D",
+            "application": _application_label(row[4] if len(row) > 4 else None),
             "state": row[5] if len(row) > 5 else None,
             "started": timestamp,
             "elapsed_seconds": elapsed,
