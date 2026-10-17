@@ -3685,19 +3685,39 @@ class MainWindow:
             self.activity_table.selectRow(item.row())
         menu = QMenu(self._window)
         open_action = menu.addAction("Abrir consulta SQL")
+        copy_action = menu.addAction("Copiar SQL")
         slow_action = menu.addAction("Ver consulta mais demorada")
         plan_action = menu.addAction("Analisar plano e sugerir índices")
         cancel_action = menu.addAction("Interromper consulta")
         has_row = self.activity_table.currentRow() >= 0
         open_action.setEnabled(has_row)
+        copy_action.setEnabled(has_row)
         plan_action.setEnabled(has_row)
         cancel_action.setEnabled(has_row)
         slow_action.setEnabled(self.activity_table.rowCount() > 0)
         open_action.triggered.connect(self.open_activity_sql)
+        copy_action.triggered.connect(self.copy_activity_sql)
         slow_action.triggered.connect(self._select_slowest_activity)
         plan_action.triggered.connect(self._analyze_activity_plan)
         cancel_action.triggered.connect(self._cancel_activity_statement)
         menu.exec(self.activity_table.viewport().mapToGlobal(position))
+
+    def copy_activity_sql(self):
+        from PySide6.QtWidgets import QApplication
+
+        row = self.activity_table.currentRow()
+        if row < 0:
+            self._show_message("Copiar SQL", "Selecione uma consulta em execução.", warning=True)
+            return
+        item = self.activity_table.item(row, self.activity_table.columnCount() - 1)
+        sql = item.text().strip() if item is not None else ""
+        if not sql:
+            self._show_message("Copiar SQL", "A consulta selecionada não possui SQL disponível.", warning=True)
+            return
+        QApplication.clipboard().setText(sql)
+        self._log_event("SQL da atividade copiado", statement_id=self.activity_table.item(row, 0).text() if self.activity_table.item(row, 0) else "")
+        self._show_toast("SQL copiado para a área de transferência.")
+        self.status.setText("SQL copiado para a área de transferência.")
 
     def _select_slowest_activity(self):
         from PySide6.QtCore import Qt
