@@ -3841,6 +3841,10 @@ class MainWindow:
                     self.activity_table.scrollToItem(item)
                     break
         self.result_tabs.setCurrentWidget(self.activity_panel)
+        # The activity tab may already be selected after the MDI result
+        # window was closed. In that case currentChanged is not emitted, so
+        # explicitly show the auxiliary window on every completed refresh.
+        self._show_result_window()
         self._log_event("Atividade lida", profile=profile.name, statements=len(statements), estimated_size_mb=size or "")
         self.status.setText(f"Painel atualizado: {len(statements)} consulta(s) em execução.")
 
