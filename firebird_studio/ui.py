@@ -1159,7 +1159,10 @@ class MainWindow:
         connection_row.setSpacing(8)
         connection_row.addWidget(profile_combo)
         connection_row.addWidget(connection_status)
-        connection_row.addWidget(connection_badge)
+        # The tree and selected database already show the connection state.
+        # Keep the compatibility label but avoid repeating a large status
+        # pill in every SQL editor.
+        connection_badge.setVisible(False)
         shell = QWidget()
         shell_layout = QVBoxLayout(shell)
         shell_layout.setContentsMargins(0, 0, 0, 0)

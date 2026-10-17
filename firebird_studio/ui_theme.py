@@ -35,8 +35,20 @@ DARK_STYLE += " QListWidget#sqlHistoryList { padding: 6px; } QListWidget#sqlHist
 
 
 def apply_theme(theme: str) -> None:
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtGui import QColor, QPalette
+    from PySide6.QtWidgets import QApplication, QMdiArea
 
     app = QApplication.instance()
     if app is not None:
         app.setStyleSheet(DARK_STYLE if theme == "dark" else LIGHT_STYLE)
+        # Qt can paint an MDI viewport with the platform gray palette even
+        # when the stylesheet targets QMdiArea. Set the viewport palette
+        # explicitly so the workspace never falls back to gray or brown.
+        background = QColor("#171a21" if theme == "dark" else "#f7f9fc")
+        for area in app.findChildren(QMdiArea):
+            palette = area.palette()
+            palette.setColor(QPalette.Window, background)
+            palette.setColor(QPalette.Base, background)
+            area.setPalette(palette)
+            area.viewport().setPalette(palette)
+            area.viewport().setAutoFillBackground(True)
