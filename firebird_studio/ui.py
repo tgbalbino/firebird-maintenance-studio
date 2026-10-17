@@ -2745,6 +2745,11 @@ class MainWindow:
 
         menu.ensurePolished()
         menu_size = menu.sizeHint()
+        # Recalculate after all actions are added so long labels never get
+        # clipped by a narrow platform default width.
+        menu.setMinimumWidth(max(menu.minimumWidth(), menu_size.width() + 12))
+        menu.adjustSize()
+        menu_size = menu.sizeHint()
         screen = QGuiApplication.screenAt(origin)
         if screen is None and reference_widget is not None:
             screen = reference_widget.screen()
