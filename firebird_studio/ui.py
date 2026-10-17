@@ -3653,6 +3653,8 @@ class MainWindow:
             return
         report, statements = result
         self.activity_profile_name = profile.name
+        selected_item = self.activity_table.item(self.activity_table.currentRow(), 0)
+        selected_statement_id = selected_item.text() if selected_item is not None else ""
         metrics = report.metrics
         size = metrics.get("estimated_size_mb")
         lines = [
@@ -3683,6 +3685,13 @@ class MainWindow:
         self.activity_table.resizeColumnsToContents()
         self.activity_table.setSortingEnabled(True)
         self._filter_activity_rows(self.activity_filter.text())
+        if selected_statement_id:
+            for row in range(self.activity_table.rowCount()):
+                item = self.activity_table.item(row, 0)
+                if item is not None and item.text() == selected_statement_id and not self.activity_table.isRowHidden(row):
+                    self.activity_table.selectRow(row)
+                    self.activity_table.scrollToItem(item)
+                    break
         self.result_tabs.setCurrentWidget(self.activity_panel)
         self._log_event("Atividade lida", profile=profile.name, statements=len(statements), estimated_size_mb=size or "")
         self.status.setText(f"Painel atualizado: {len(statements)} consulta(s) em execução.")
