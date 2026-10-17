@@ -666,10 +666,17 @@ class MainWindow:
         database_menu.addAction("Backup", self.execute_backup)
         database_menu.addAction("Restore", self.execute_restore)
 
+        analysis_menu = menu_bar.addMenu("Análise")
+        activity_action = analysis_menu.addAction("Monitorar consultas", self.inspect_activity)
+        activity_action.setToolTip("Abrir o monitor de consultas em execução (Ctrl+Shift+A)")
+        self.activity_open_shortcut = QShortcut(QKeySequence("Ctrl+Shift+A"), self._window)
+        self.activity_open_shortcut.setContext(Qt.ApplicationShortcut)
+        self.activity_open_shortcut.activated.connect(self.inspect_activity)
+
         help_menu = menu_bar.addMenu("Ajuda")
         help_menu.addAction("Sobre", self.show_about)
         help_menu.addAction("Verificar atualizações...", self.check_for_updates)
-        for menu in (app_menu, sql_menu, window_menu, database_menu, help_menu):
+        for menu in (app_menu, sql_menu, window_menu, database_menu, analysis_menu, help_menu):
             menu.setMinimumWidth(240)
 
     def _choose_history_query(self):
