@@ -292,8 +292,10 @@ class MainWindow:
             self.activity_auto_refresh,
             self.activity_refresh_interval,
         ) = create_activity_panel(self.inspect_activity, self.export_activity_csv, self.open_activity_sql, self._filter_activity_rows, self._toggle_activity_auto_refresh, self._open_activity_sql_at, self._set_activity_refresh_interval)
+        # Keep a local reference while wiring the shortcut.  This avoids any
+        # callback or binding lookup seeing a partially initialized window.
         self.activity_panel = activity_panel
-        self.activity_refresh_shortcut = QShortcut(QKeySequence("Ctrl+R"), self.activity_panel)
+        self.activity_refresh_shortcut = QShortcut(QKeySequence("Ctrl+R"), activity_panel)
         self.activity_refresh_shortcut.setContext(Qt.WidgetWithChildrenShortcut)
         self.activity_refresh_shortcut.activated.connect(self.inspect_activity)
         self.activity_table.setContextMenuPolicy(Qt.CustomContextMenu)
