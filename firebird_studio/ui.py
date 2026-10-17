@@ -156,6 +156,7 @@ class MainWindow:
         self._operation_worker = None
         self._operation_name = ""
         self._operation_started_at = 0.0
+        self._operation_status_timer = None
         self.connected_profiles = set()
         self._last_tree_activation_key = None
         self._last_tree_activation_time = 0.0
@@ -3234,6 +3235,10 @@ class MainWindow:
         self.status.setText(f"{name} em execução...")
         self.operation_progress.setVisible(True)
         QApplication.setOverrideCursor(Qt.WaitCursor)
+        self._operation_status_timer = QTimer(self._window)
+        self._operation_status_timer.setInterval(1000)
+        self._operation_status_timer.timeout.connect(self._update_operation_status)
+        self._operation_status_timer.start()
         self._log_event("Operação iniciada", operation=name)
         thread.start()
         return True
@@ -3248,9 +3253,20 @@ class MainWindow:
         self._operation_started_at = 0.0
         if hasattr(self, "operation_progress"):
             self.operation_progress.setVisible(False)
+        timer = self._operation_status_timer
+        self._operation_status_timer = None
+        if timer is not None:
+            timer.stop()
+            timer.deleteLater()
         from PySide6.QtWidgets import QApplication
         if QApplication.overrideCursor() is not None:
             QApplication.restoreOverrideCursor()
+
+    def _update_operation_status(self):
+        if not self._operation_name or not self._operation_started_at:
+            return
+        elapsed = max(0.0, time.monotonic() - self._operation_started_at)
+        self.status.setText(f"{self._operation_name} em execução... {elapsed:.0f}s")
 
     def _operation_result_text(self, result):
         if isinstance(result, Exception):
