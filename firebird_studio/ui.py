@@ -3706,17 +3706,20 @@ class MainWindow:
         menu = QMenu(self._window)
         open_action = menu.addAction("Abrir consulta SQL")
         copy_action = menu.addAction("Copiar SQL")
+        copy_details_action = menu.addAction("Copiar detalhes")
         slow_action = menu.addAction("Ver consulta mais demorada")
         plan_action = menu.addAction("Analisar plano e sugerir índices")
         cancel_action = menu.addAction("Interromper consulta")
         has_row = self.activity_table.currentRow() >= 0
         open_action.setEnabled(has_row)
         copy_action.setEnabled(has_row)
+        copy_details_action.setEnabled(has_row)
         plan_action.setEnabled(has_row)
         cancel_action.setEnabled(has_row)
         slow_action.setEnabled(self.activity_table.rowCount() > 0)
         open_action.triggered.connect(self.open_activity_sql)
         copy_action.triggered.connect(self.copy_activity_sql)
+        copy_details_action.triggered.connect(self.copy_activity_details)
         slow_action.triggered.connect(self._select_slowest_activity)
         plan_action.triggered.connect(self._analyze_activity_plan)
         cancel_action.triggered.connect(self._cancel_activity_statement)
@@ -3738,6 +3741,24 @@ class MainWindow:
         self._log_event("SQL da atividade copiado", statement_id=self.activity_table.item(row, 0).text() if self.activity_table.item(row, 0) else "")
         self._show_toast("SQL copiado para a área de transferência.")
         self.status.setText("SQL copiado para a área de transferência.")
+
+    def copy_activity_details(self):
+        from PySide6.QtWidgets import QApplication
+
+        row = self.activity_table.currentRow()
+        if row < 0:
+            self._show_message("Copiar detalhes", "Selecione uma consulta em execução.", warning=True)
+            return
+        headers = [self.activity_table.horizontalHeaderItem(column).text() for column in range(self.activity_table.columnCount())]
+        values = [self.activity_table.item(row, column).text() if self.activity_table.item(row, column) else "" for column in range(self.activity_table.columnCount())]
+        details = "\n".join(f"{header}: {value}" for header, value in zip(headers, values))
+        if not details.strip():
+            self._show_message("Copiar detalhes", "Não há informações disponíveis para esta consulta.", warning=True)
+            return
+        QApplication.clipboard().setText(details)
+        self._log_event("Detalhes da atividade copiados", statement_id=values[0] if values else "")
+        self._show_toast("Detalhes copiados para a área de transferência.")
+        self.status.setText("Detalhes da consulta copiados para a área de transferência.")
 
     def _select_slowest_activity(self):
         from PySide6.QtCore import Qt
