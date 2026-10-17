@@ -567,6 +567,7 @@ class MainWindow:
     def _setup_main_menu(self):
         """Create the compact application menu for global commands."""
         from PySide6.QtCore import Qt
+        from PySide6.QtGui import QKeySequence, QShortcut
 
         menu_bar = self._window.menuBar()
         # Keep the top level labels readable when the window is restored to a
@@ -596,8 +597,10 @@ class MainWindow:
         sql_menu = menu_bar.addMenu("SQL")
         sql_menu.addAction("Nova janela SQL", self._new_sql_tab)
         execute_action = sql_menu.addAction("Executar SQL", self.execute_selected)
-        execute_action.setShortcut("F5")
-        execute_action.setShortcutContext(Qt.ApplicationShortcut)
+        execute_action.setToolTip("Executar a consulta da janela SQL ativa (F5)")
+        self._execute_f5_shortcut = QShortcut(QKeySequence("F5"), self._window)
+        self._execute_f5_shortcut.setContext(Qt.ApplicationShortcut)
+        self._execute_f5_shortcut.activated.connect(self.execute_selected)
         sql_menu.addAction("Executar seleção", self.execute_selection)
         sql_menu.addAction("Ver plano", self.inspect_plan)
         sql_menu.addAction("Histórico SQL", self._choose_history_query)
@@ -2908,9 +2911,18 @@ class MainWindow:
             self._hide_profile_details()
 
     def execute_selected(self):
-        if self.editor is None:
+        active_editor = self.sql_tabs.currentWidget() if self.sql_tabs.count() else None
+        if active_editor is not None and active_editor.property("document_tabs") is None:
+            active_editor = None
+        if active_editor is not None and active_editor is not self.editor:
+            self._sync_editor(self.sql_tabs.currentIndex())
+        editor = active_editor or self.editor
+        if editor is None:
+            self.status.setText("Abra uma janela SQL antes de executar.")
+            self._log_event("Execução SQL ignorada", reason="nenhuma janela SQL ativa")
             return
-        self._execute_sql_text(self.editor.toPlainText())
+        self._set_active_editor_widgets(editor)
+        self._execute_sql_text(editor.toPlainText())
 
     def _execute_sql_text(self, sql_text: str):
         from PySide6.QtWidgets import QTableWidgetItem
