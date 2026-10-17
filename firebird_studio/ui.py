@@ -855,17 +855,13 @@ class MainWindow:
         if dialog.exec() != QDialog.Accepted:
             return
 
-        # Feed the existing validation and credential handling path so the
-        # modal and the normal profile workflow behave identically.
-        if index is None:
-            self.profile_list.clearSelection()
-            self.profile_list.setCurrentItem(None)
-        else:
-            self.profile_list.setCurrentItem(self.profile_list.topLevelItem(index))
-        for widget, value in ((self.name, name.text()), (self.host, host.text()), (self.database, database.text()), (self.user, user.text()), (self.role, role.text()), (self.charset, charset.text()), (self.isql_path, isql_path.text()), (self.gbak_path, gbak_path.text())):
-            widget.setText(value)
-        self.port.setValue(port.value()); self.version.setCurrentText(version.currentText()); self.password.setText(password.text()); self.save_password.setChecked(save_password.isChecked()); self.favorite.setChecked(favorite.isChecked())
-        self.save_profile()
+        candidate = ConnectionProfile(
+            name=name.text(), host=host.text(), port=port.value(), database=database.text(),
+            version=version.currentText(), user=user.text(), role=role.text(),
+            charset=charset.text(), favorite=favorite.isChecked(),
+            isql_path=isql_path.text(), gbak_path=gbak_path.text(),
+        )
+        self._save_profile_record(candidate, password.text(), save_password.isChecked(), index)
 
     def _set_table_data_enabled(self, enabled: bool):
         self.open_data_button.setEnabled(enabled)
@@ -2720,13 +2716,15 @@ class MainWindow:
         return ConnectionProfile(self.name.text(), self.host.text(), self.port.value(), self.database.text(), self.version.currentText(), self.user.text(), role=self.role.text(), charset=self.charset.text(), favorite=self.favorite.isChecked(), isql_path=self.isql_path.text(), gbak_path=self.gbak_path.text())
 
     def save_profile(self):
-        profile = self._profile_from_form(); errors = profile.validate()
+        self._save_profile_record(self._profile_from_form(), self._password_for(), self.save_password.isChecked(), self._profile_index_for_item())
+
+    def _save_profile_record(self, profile, password, save_password, selected):
+        errors = profile.validate()
         if errors:
             message = " ".join(errors)
             self.status.setText(message)
             self._show_message("Conexão inválida", message, warning=True)
             return
-        selected = self._profile_index_for_item()
         duplicate = next((item for index, item in enumerate(self.profiles) if index != selected and item.name.casefold() == profile.name.casefold()), None)
         if duplicate is not None:
             message = f"Já existe um banco configurado com o nome '{duplicate.name}'. Escolha outro nome."
@@ -2736,13 +2734,26 @@ class MainWindow:
         previous_name = self.profiles[selected].name if 0 <= selected < len(self.profiles) else None
         if 0 <= selected < len(self.profiles): self.profiles[selected] = profile
         else: self.profiles.append(profile)
+        if previous_name and previous_name != profile.name:
+            if previous_name in self.connected_profiles:
+                self.connected_profiles.discard(previous_name)
+                self.connected_profiles.add(profile.name)
+            if previous_name in self.profile_objects:
+                self.profile_objects[profile.name] = self.profile_objects.pop(previous_name)
+            for combo in tuple(self._query_profile_combos):
+                try:
+                    editor = combo.property("sql_editor")
+                    if editor is not None and editor.property("query_profile") == previous_name:
+                        editor.setProperty("query_profile", profile.name)
+                except RuntimeError:
+                    continue
         self.store.save(self.profiles)
         self._log_event("Conexão salva", profile=profile.name, count=len(self.profiles), profile_store=str(self.store.path))
         from .credentials import CredentialStore
         try:
             credentials = CredentialStore()
-            if self.save_password.isChecked() and self.password.text():
-                credentials.set(profile.name, self.password.text())
+            if save_password and password:
+                credentials.set(profile.name, password)
                 message = "Conexão e senha criptografada salvas."
             else:
                 credentials.delete(profile.name)
