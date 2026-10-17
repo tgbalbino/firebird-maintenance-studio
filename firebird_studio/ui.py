@@ -793,14 +793,17 @@ class MainWindow:
         from PySide6.QtWidgets import QMessageBox
         if isinstance(result, Exception):
             self._log_event("Falha ao verificar atualização", error=str(result))
+            self.status.setText("Não foi possível verificar atualizações.")
             if not silent:
                 self._show_message("Atualizações", f"Não foi possível consultar o GitHub.\n\nVersão instalada: {__version__}\n\n{result}", warning=True)
             return
         current, latest = result["current"], result["latest"]
         if not result["is_newer"]:
+            self.status.setText(f"Aplicação atualizada: versão {current}.")
             if not silent:
                 self._show_message("Atualizações", f"Você já está usando a versão mais recente ({current}).")
             return
+        self.status.setText(f"Atualização disponível: versão {latest}.")
         answer = QMessageBox.question(self._window, "Atualização disponível", f"Versão instalada: {current}\nNova versão: {latest} ({result['source']})\n\nAbrir a página de download?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
         if answer == QMessageBox.Yes:
             QDesktopServices.openUrl(QUrl(result["url"]))

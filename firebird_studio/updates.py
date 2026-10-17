@@ -11,6 +11,14 @@ from urllib.request import Request, urlopen
 REPOSITORY_URL = "https://github.com/tgbalbino/firebird-maintenance-studio"
 
 
+def _version_key(value: str) -> tuple[int, int, int]:
+    """Normalize release labels such as ``v0.1.1`` for safe comparison."""
+    match = re.search(r"(\d+)(?:\.(\d+))?(?:\.(\d+))?", str(value))
+    if not match:
+        raise ValueError(f"Versão inválida: {value}")
+    return tuple(int(part or 0) for part in match.groups())
+
+
 def _json(url: str):
     request = Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "FirebirdMaintenanceStudio"})
     with urlopen(request, timeout=5) as response:
@@ -51,5 +59,4 @@ def check_latest(current: str) -> dict:
     latest = tag[1:] if tag.lower().startswith("v") else tag
     if not latest:
         raise ValueError("A versão publicada está vazia.")
-    version_key = lambda value: tuple(int(part or 0) for part in re.search(r"(\d+)(?:\.(\d+))?(?:\.(\d+))?", str(value)).groups())
-    return {"current": current, "latest": latest, "source": source, "url": str(payload.get("html_url", f"{REPOSITORY_URL}/releases")), "is_newer": version_key(latest) > version_key(current)}
+    return {"current": current, "latest": latest, "source": source, "url": str(payload.get("html_url", f"{REPOSITORY_URL}/releases")), "is_newer": _version_key(latest) > _version_key(current)}
