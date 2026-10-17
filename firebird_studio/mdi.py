@@ -109,6 +109,11 @@ try:
             sub = self._subwindow(index)
             return self._editor_for_subwindow(sub)
 
+        def currentWidget(self):
+            """Return the editor belonging to the active SQL subwindow."""
+            index = self.currentIndex()
+            return self.widget(index) if index >= 0 else None
+
         def indexOf(self, widget):
             for index, sub in enumerate(self._sql_subwindows()):
                 if self._editor_for_subwindow(sub) is widget:

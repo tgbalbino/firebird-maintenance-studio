@@ -1037,7 +1037,7 @@ class MainWindow:
         shortcut.activated.connect(self.execute_selected)
         editor.setProperty("execute_shortcut", shortcut)
         selection_shortcut = QShortcut(QKeySequence("Ctrl+Shift+F5"), editor)
-        selection_shortcut.activated.connect(lambda target=editor: (self.sql_tabs.setCurrentWidget(target), self.execute_selection()))
+        selection_shortcut.activated.connect(lambda target=editor: self._execute_selection_editor(target))
         editor.setProperty("execute_selection_shortcut", selection_shortcut)
         save_shortcut = QShortcut(QKeySequence("Ctrl+S"), editor)
         save_shortcut.activated.connect(lambda target=editor: (self.sql_tabs.setCurrentWidget(target), self.save_sql_file()))
@@ -1247,10 +1247,10 @@ class MainWindow:
         more_menu.setMinimumWidth(340)
         more_menu.setStyleSheet("QMenu::item { padding: 6px 48px 6px 12px; }")
         execute_action = more_menu.addAction("Executar SQL")
-        execute_action.triggered.connect(lambda: (self.sql_tabs.setCurrentWidget(editor), self._execute_sql_text(editor.toPlainText())))
+        execute_action.triggered.connect(lambda: self._execute_editor(editor))
         selection_action = more_menu.addAction("Executar seleção")
         selection_action.setShortcut("Ctrl+Shift+F5")
-        selection_action.triggered.connect(lambda: (self.sql_tabs.setCurrentWidget(editor), self.execute_selection()))
+        selection_action.triggered.connect(lambda: self._execute_selection_editor(editor))
         plan_action = more_menu.addAction("Ver plano")
         plan_action.triggered.connect(lambda: (self.sql_tabs.setCurrentWidget(editor), self.inspect_plan()))
         save_action = more_menu.addAction("Salvar SQL")
@@ -1770,6 +1770,19 @@ class MainWindow:
             self._show_message("Executar seleção", "Selecione uma instrução SQL no editor.", warning=True)
             return
         self._execute_sql_text(selected)
+
+    def _execute_selection_editor(self, editor):
+        if editor is None:
+            self.execute_selection()
+            return
+        index = self.sql_tabs.indexOf(editor)
+        if index < 0:
+            self.status.setText("A janela SQL selecionada não está disponível.")
+            return
+        self.sql_tabs.setCurrentIndex(index)
+        self._sync_editor(index)
+        self._set_active_editor_widgets(editor)
+        self.execute_selection()
 
     def _set_transaction_actions(self, active: bool):
         if hasattr(self, "begin_transaction_action"):
@@ -2921,6 +2934,20 @@ class MainWindow:
             self.status.setText("Abra uma janela SQL antes de executar.")
             self._log_event("Execução SQL ignorada", reason="nenhuma janela SQL ativa")
             return
+        self._set_active_editor_widgets(editor)
+        self._execute_sql_text(editor.toPlainText())
+
+    def _execute_editor(self, editor):
+        """Activate an editor and execute it through the single SQL path."""
+        if editor is None:
+            self.execute_selected()
+            return
+        index = self.sql_tabs.indexOf(editor)
+        if index < 0:
+            self.status.setText("A janela SQL selecionada não está disponível.")
+            return
+        self.sql_tabs.setCurrentIndex(index)
+        self._sync_editor(index)
         self._set_active_editor_widgets(editor)
         self._execute_sql_text(editor.toPlainText())
 
