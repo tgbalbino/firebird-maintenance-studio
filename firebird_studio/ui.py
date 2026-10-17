@@ -1032,7 +1032,7 @@ class MainWindow:
 
     def _configure_sql_editor(self, editor):
         from PySide6.QtWidgets import QCompleter
-        from PySide6.QtCore import QStringListModel, Qt
+        from PySide6.QtCore import QEvent, QObject, QStringListModel, Qt
         from PySide6.QtGui import QKeySequence, QShortcut
         editor.setFont(QFont("Consolas", 10))
         editor.setPlaceholderText("Execute uma instrução SQL...")
@@ -1063,6 +1063,23 @@ class MainWindow:
         completer.setCompletionMode(QCompleter.PopupCompletion)
         completer.setWidget(editor)
         completer.activated.connect(lambda text, target=editor: self._insert_completion(target, text))
+        class CompletionKeyFilter(QObject):
+            def eventFilter(filter_self, watched, event):
+                if event.type() == QEvent.KeyPress and event.key() in (Qt.Key_Return, Qt.Key_Enter):
+                    popup = completer.popup()
+                    if popup.isVisible():
+                        index = popup.currentIndex()
+                        if not index.isValid() and completer.completionCount() > 0:
+                            index = completer.completionModel().index(0, completer.completionColumn())
+                        text = index.data(Qt.DisplayRole) if index.isValid() else ""
+                        if text:
+                            self._insert_completion(editor, str(text))
+                            popup.hide()
+                            return True
+                return super().eventFilter(watched, event)
+        completion_filter = CompletionKeyFilter(editor)
+        editor.installEventFilter(completion_filter)
+        editor.setProperty("completion_key_filter", completion_filter)
         editor.textChanged.connect(lambda target=editor: self._auto_complete_sql(target))
         completion_shortcut = QShortcut(QKeySequence("Ctrl+Space"), editor)
         completion_shortcut.activated.connect(lambda target=editor: self._show_sql_completions(target))
