@@ -1406,6 +1406,8 @@ class MainWindow:
         self._sync_sql_window_bar(index)
 
     def _close_all_sql_tabs(self):
+        if not self._confirm_pending_transaction_close():
+            return False
         self.sql_documents.close_all(self._new_sql_tab)
         self.editor = None
         # Keep the auxiliary document bar and workspace state synchronized
@@ -1416,6 +1418,7 @@ class MainWindow:
         if self.workspace_status is not None:
             self.workspace_status.setText("Nenhuma consulta SQL aberta")
         self.status.setText("Todas as janelas SQL foram fechadas.")
+        return True
 
     def _choose_sql_window(self):
         from PySide6.QtWidgets import QInputDialog
@@ -1568,7 +1571,36 @@ class MainWindow:
             entered = ""
         return entered or self._stored_password(profile_name) or ""
 
+    def _confirm_pending_transaction_close(self, profile_name: str | None = None) -> bool:
+        session = self._transaction_session
+        if session is None or not session.active or not getattr(session, "dirty", False):
+            return True
+        if profile_name and self._transaction_profile_name != profile_name:
+            return True
+        from PySide6.QtWidgets import QMessageBox
+        answer = QMessageBox.question(
+            self._window,
+            "Alterações pendentes",
+            f"A conexão '{self._transaction_profile_name}' possui alterações sem commit.\n\n"
+            "Deseja fazer rollback e fechar a janela SQL?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            self.status.setText("Fechamento cancelado; as alterações continuam pendentes.")
+            return False
+        self._close_transaction(rollback=True)
+        return True
+
     def close_sql_tab(self, index: int):
+        if 0 <= index < self.sql_tabs.count():
+            editor = self.sql_tabs.widget(index)
+            try:
+                profile_name = editor.property("query_profile") if editor is not None else ""
+            except RuntimeError:
+                profile_name = ""
+            if not self._confirm_pending_transaction_close(profile_name):
+                return
         self.sql_documents.close(index, self._new_sql_tab)
         if self.sql_tabs.count() == 0 and self.result_mdi_window is not None:
             self.result_mdi_window.hide()
@@ -1873,15 +1905,16 @@ class MainWindow:
         self.execute_selection()
 
     def _set_transaction_actions(self, active: bool):
+        dirty = bool(active and self._transaction_session is not None and getattr(self._transaction_session, "dirty", False))
         if hasattr(self, "begin_transaction_action"):
             self.begin_transaction_action.setEnabled(not active)
-            self.commit_transaction_action.setEnabled(active)
-            self.rollback_transaction_action.setEnabled(active)
-        self._set_transaction_controls_enabled(active)
+            self.commit_transaction_action.setEnabled(dirty)
+            self.rollback_transaction_action.setEnabled(dirty)
+        self._set_transaction_controls_enabled(dirty)
 
     def _set_transaction_controls_enabled(self, active=None):
         if active is None:
-            active = bool(self._transaction_session is not None and self._transaction_session.active)
+            active = bool(self._transaction_session is not None and self._transaction_session.active and getattr(self._transaction_session, "dirty", False))
         if self.editor is None:
             return
         controls = self.editor.property("sql_toolbar_controls") or ()
@@ -1915,7 +1948,8 @@ class MainWindow:
             self._show_message("Falha ao iniciar transação", str(exc), warning=True)
 
     def _commit_transaction(self):
-        if self._transaction_session is None or not self._transaction_session.active:
+        if self._transaction_session is None or not self._transaction_session.active or not self._transaction_session.dirty:
+            self.status.setText("Não há alterações pendentes para commit.")
             return
         from PySide6.QtWidgets import QMessageBox
 
@@ -1940,7 +1974,8 @@ class MainWindow:
         self._close_transaction(rollback=False)
 
     def _rollback_transaction(self):
-        if self._transaction_session is None or not self._transaction_session.active:
+        if self._transaction_session is None or not self._transaction_session.active or not self._transaction_session.dirty:
+            self.status.setText("Não há alterações pendentes para rollback.")
             return
         try:
             profile_name = self._transaction_profile_name
@@ -2808,7 +2843,8 @@ class MainWindow:
             if answer != QMessageBox.Yes:
                 self.status.setText("Desconexão cancelada; as janelas SQL foram mantidas.")
                 return
-            self._close_all_sql_tabs()
+            if not self._close_all_sql_tabs():
+                return
         self.connected_profiles.discard(profile.name)
         self.profile_objects.pop(profile.name, None)
         self.selected_object = None
@@ -2875,7 +2911,8 @@ class MainWindow:
         if confirmation.exec() != QMessageBox.Yes:
             return
         if open_queries:
-            self._close_all_sql_tabs()
+            if not self._close_all_sql_tabs():
+                return
         self.connected_profiles.discard(profile.name)
         self.profiles.pop(selected)
         self.store.save(self.profiles)
@@ -3125,6 +3162,8 @@ class MainWindow:
             while QApplication.overrideCursor() is not None:
                 QApplication.restoreOverrideCursor()
         self._log_event("SQL executado", profile=profile.name, statement=statement.split(None, 1)[0] if statement else "", commit=commit, ok=result.ok, rows=len(result.rows), elapsed_ms=f"{result.elapsed_ms:.1f}", detail=result.message)
+        if explicit_transaction:
+            self._set_transaction_actions(True)
         self._add_query_history(sql_text)
         if not result.ok:
             self._show_message("Falha ao executar SQL", result.message, warning=True)

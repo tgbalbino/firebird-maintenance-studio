@@ -6,6 +6,7 @@ import time
 from .connection import _dsn
 from .models import ConnectionProfile
 from .sql import DEFAULT_MAX_RESULT_ROWS, QueryResult
+from .sql import is_mutating_statement
 
 
 class TransactionSession:
@@ -32,6 +33,7 @@ class TransactionSession:
 
         self.connection = connect(**kwargs)
         self.profile_name = profile.name
+        self.dirty = False
 
     @property
     def active(self) -> bool:
@@ -62,15 +64,20 @@ class TransactionSession:
                 affected = f"Primeiras {len(rows)} linha(s) exibidas; resultado limitado a {max_rows}."
             else:
                 affected = f"{len(rows)} linha(s) retornada(s)."
-            return QueryResult(True, columns, rows, affected, (time.perf_counter() - started) * 1000)
+            result = QueryResult(True, columns, rows, affected, (time.perf_counter() - started) * 1000)
+            if is_mutating_statement(sql):
+                self.dirty = True
+            return result
         except Exception as exc:
             return QueryResult(False, [], [], f"Falha ao executar SQL: {exc}", (time.perf_counter() - started) * 1000)
 
     def commit(self) -> None:
         self.connection.commit()
+        self.dirty = False
 
     def rollback(self) -> None:
         self.connection.rollback()
+        self.dirty = False
 
     def close(self, rollback: bool = True) -> None:
         if self.connection is None:
