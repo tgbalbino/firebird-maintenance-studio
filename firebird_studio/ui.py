@@ -3622,6 +3622,9 @@ class MainWindow:
             return
         self._settings.setValue("activity_refresh_interval", interval)
         self._settings.sync()
+        seconds = interval // 1000
+        self.activity_auto_refresh.setText(f"Auto {seconds} s")
+        self.activity_auto_refresh.setToolTip(f"Atualizar automaticamente a cada {seconds} segundos")
         timer = getattr(self, "activity_refresh_timer", None)
         if timer is not None:
             timer.setInterval(interval)
