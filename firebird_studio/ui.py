@@ -3778,12 +3778,15 @@ class MainWindow:
             return
         slowest_row, slowest_value = -1, -1.0
         for row in range(self.activity_table.rowCount()):
+            if self.activity_table.isRowHidden(row):
+                continue
             item = self.activity_table.item(row, 6)
             value = item.data(Qt.UserRole) if item is not None else None
             if isinstance(value, (int, float)) and float(value) > slowest_value:
                 slowest_row, slowest_value = row, float(value)
         if slowest_row < 0:
-            slowest_row = 0
+            self.status.setText("Nenhuma consulta visível corresponde ao filtro atual.")
+            return
         self.activity_table.selectRow(slowest_row)
         self.activity_table.scrollToItem(self.activity_table.item(slowest_row, 0))
         self.status.setText("Consulta mais demorada selecionada.")
