@@ -184,7 +184,15 @@ def list_statements(profile: ConnectionProfile, password: str | None = None) -> 
     now = datetime.now(timezone.utc)
     statements = []
     for row in rows:
-        timestamp = row[6] if len(row) > 6 else None
+        # Firebird 3+ returns the attachment process column here; older
+        # monitoring projections may omit it and return seven fields.
+        if len(row) >= 8:
+            user, address, application, state, timestamp, sql = row[2:8]
+        elif len(row) == 7:
+            user, address, state, timestamp, sql = row[2:7]
+            application = None
+        else:
+            user = address = application = state = timestamp = sql = None
         elapsed = None
         if isinstance(timestamp, datetime):
             if timestamp.tzinfo is None:
@@ -193,12 +201,12 @@ def list_statements(profile: ConnectionProfile, password: str | None = None) -> 
         statements.append({
             "id": row[0] if len(row) > 0 else None,
             "attachment_id": row[1] if len(row) > 1 else None,
-            "user": row[2] if len(row) > 2 and row[2] else "N/D",
-            "address": row[3] if len(row) > 3 and row[3] else "N/D",
-            "application": _application_label(row[4] if len(row) > 4 else None),
-            "state": row[5] if len(row) > 5 else None,
+            "user": user or "N/D",
+            "address": address or "N/D",
+            "application": _application_label(application),
+            "state": state,
             "started": timestamp,
             "elapsed_seconds": elapsed,
-            "sql": str(row[7] or "").strip() if len(row) > 7 else "",
+            "sql": str(sql or "").strip(),
         })
     return statements
