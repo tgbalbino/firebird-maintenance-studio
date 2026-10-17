@@ -2621,11 +2621,34 @@ class MainWindow:
         self.status.setText(f"{label} copiado para a área de transferência.")
 
     def disconnect_selected(self):
+        from PySide6.QtWidgets import QMessageBox
+
         index = self._profile_index_for_item()
         if index < 0 or index >= len(self.profiles):
             self._show_message("Desconectar banco", "Selecione um banco conectado na árvore.", warning=True)
             return
         profile = self.profiles[index]
+        open_queries = []
+        for query_index in range(self.sql_tabs.count()):
+            editor = self.sql_tabs.widget(query_index)
+            try:
+                if editor is not None and editor.property("query_profile") == profile.name:
+                    open_queries.append(query_index)
+            except RuntimeError:
+                continue
+        if open_queries:
+            answer = QMessageBox.question(
+                self._window,
+                "Desconectar banco",
+                f"Há {len(open_queries)} janela(s) SQL usando '{profile.name}'.\n\n"
+                "Deseja fechar todas as janelas SQL e desconectar?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if answer != QMessageBox.Yes:
+                self.status.setText("Desconexão cancelada; as janelas SQL foram mantidas.")
+                return
+            self._close_all_sql_tabs()
         self.connected_profiles.discard(profile.name)
         self.profile_objects.pop(profile.name, None)
         self.selected_object = None
