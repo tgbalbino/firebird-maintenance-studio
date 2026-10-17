@@ -1136,6 +1136,7 @@ class MainWindow:
                         text = index.data(Qt.DisplayRole) if index.isValid() else ""
                         if text:
                             self._insert_completion(editor, str(text))
+                            event.accept()
                             popup.hide()
                             return True
                 return super().eventFilter(watched, event)
