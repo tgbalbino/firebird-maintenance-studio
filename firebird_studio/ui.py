@@ -567,7 +567,6 @@ class MainWindow:
     def _setup_main_menu(self):
         """Create the compact application menu for global commands."""
         from PySide6.QtCore import Qt
-        from PySide6.QtGui import QKeySequence, QShortcut
 
         menu_bar = self._window.menuBar()
         # Keep the top level labels readable when the window is restored to a
@@ -598,13 +597,11 @@ class MainWindow:
         sql_menu.addAction("Nova janela SQL", self._new_sql_tab)
         execute_action = sql_menu.addAction("Executar SQL", self.execute_selected)
         execute_action.setToolTip("Executar a consulta da janela SQL ativa (F5)")
-        self._execute_f5_shortcut = QShortcut(QKeySequence("F5"), self._window)
-        self._execute_f5_shortcut.setContext(Qt.ApplicationShortcut)
-        self._execute_f5_shortcut.activated.connect(self.execute_selected)
-        self._execute_selection_shortcut = QShortcut(QKeySequence("Ctrl+Shift+F5"), self._window)
-        self._execute_selection_shortcut.setContext(Qt.ApplicationShortcut)
-        self._execute_selection_shortcut.activated.connect(self.execute_selection)
-        sql_menu.addAction("Executar seleção", self.execute_selection)
+        execute_action.setShortcut("F5")
+        execute_action.setShortcutContext(Qt.ApplicationShortcut)
+        selection_menu_action = sql_menu.addAction("Executar seleção", self.execute_selection)
+        selection_menu_action.setShortcut("Ctrl+Shift+F5")
+        selection_menu_action.setShortcutContext(Qt.ApplicationShortcut)
         sql_menu.addAction("Ver plano", self.inspect_plan)
         sql_menu.addAction("Histórico SQL", self._choose_history_query)
         sql_menu.addSeparator()
@@ -1062,7 +1059,7 @@ class MainWindow:
         completer.setCaseSensitivity(Qt.CaseInsensitive)
         completer.setCompletionMode(QCompleter.PopupCompletion)
         completer.setWidget(editor)
-        completer.activated.connect(lambda text, target=editor: self._insert_completion(target, text))
+        completer.activated[str].connect(lambda text, target=editor: self._insert_completion(target, text))
         class CompletionKeyFilter(QObject):
             def eventFilter(filter_self, watched, event):
                 if event.type() == QEvent.KeyPress and event.key() in (Qt.Key_Return, Qt.Key_Enter):
@@ -1079,6 +1076,7 @@ class MainWindow:
                 return super().eventFilter(watched, event)
         completion_filter = CompletionKeyFilter(editor)
         editor.installEventFilter(completion_filter)
+        completer.popup().installEventFilter(completion_filter)
         editor.setProperty("completion_key_filter", completion_filter)
         editor.textChanged.connect(lambda target=editor: self._auto_complete_sql(target))
         completion_shortcut = QShortcut(QKeySequence("Ctrl+Space"), editor)
