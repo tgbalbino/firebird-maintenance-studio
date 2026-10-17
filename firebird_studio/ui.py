@@ -295,7 +295,6 @@ class MainWindow:
         self.activity_panel = activity_panel
         self.activity_refresh_shortcut = QShortcut(QKeySequence("Ctrl+R"), self.activity_panel)
         self.activity_refresh_shortcut.setContext(Qt.WidgetWithChildrenShortcut)
-        self.activity_refresh_shortcut.setToolTip("Atualizar o monitor de consultas")
         self.activity_refresh_shortcut.activated.connect(self.inspect_activity)
         self.activity_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.activity_table.customContextMenuRequested.connect(self._activity_context_menu)
