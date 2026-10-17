@@ -2692,15 +2692,31 @@ class MainWindow:
         from PySide6.QtWidgets import QMessageBox
 
         profile = self.profiles[selected]
+        open_queries = []
+        for query_index in range(self.sql_tabs.count()):
+            editor = self.sql_tabs.widget(query_index)
+            try:
+                if editor is not None and editor.property("query_profile") == profile.name:
+                    open_queries.append(query_index)
+            except RuntimeError:
+                continue
         confirmation = QMessageBox(self._window)
         confirmation.setWindowTitle("Confirmar exclusão do cadastro")
         confirmation.setText(f"Excluir o cadastro '{profile.name}'?")
-        confirmation.setInformativeText("Somente o cadastro da conexão será removido. O arquivo do banco não será excluído.")
+        details = ["Somente o cadastro da conexão será removido. O arquivo do banco não será excluído."]
+        if profile.name in self.connected_profiles:
+            details.append("O banco está conectado e será desconectado.")
+        if open_queries:
+            details.append(f"Há {len(open_queries)} janela(s) SQL aberta(s); elas serão fechadas.")
+        confirmation.setInformativeText("\n".join(details))
         confirmation.setIcon(QMessageBox.Warning)
         confirmation.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
         confirmation.setDefaultButton(QMessageBox.No)
         if confirmation.exec() != QMessageBox.Yes:
             return
+        if open_queries:
+            self._close_all_sql_tabs()
+        self.connected_profiles.discard(profile.name)
         self.profiles.pop(selected)
         self.store.save(self.profiles)
         self._log_event("Cadastro excluído", profile=profile.name, remaining=len(self.profiles), profile_store=str(self.store.path))
@@ -2712,7 +2728,21 @@ class MainWindow:
         self.profile_objects.pop(profile.name, None)
         self.refresh_profiles()
         self._update_query_connection_status()
-        self.name.clear(); self.database.clear(); self.role.clear(); self.password.clear(); self.save_password.setChecked(False); self.favorite.setChecked(False)
+        for widget, action in (
+            (getattr(self, "name", None), "clear"), (getattr(self, "database", None), "clear"),
+            (getattr(self, "role", None), "clear"), (getattr(self, "password", None), "clear"),
+        ):
+            try:
+                if widget is not None:
+                    getattr(widget, action)()
+            except RuntimeError:
+                pass
+        for widget in (getattr(self, "save_password", None), getattr(self, "favorite", None)):
+            try:
+                if widget is not None:
+                    widget.setChecked(False)
+            except RuntimeError:
+                pass
         self.status.setText("Cadastro excluído. O arquivo do banco foi mantido.")
 
     def select_profile(self, index: int):
