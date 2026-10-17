@@ -3368,10 +3368,12 @@ class MainWindow:
             return
         target_path = Path(target.text()).expanduser()
         entered_password = password.text()
+        register_profile = save_profile.isChecked()
+        store_password = save_password.isChecked()
         self._start_background_operation(
             "Restore",
             lambda: run_gbak(candidate, "restore", source, target_path, entered_password, Path(gbak_path.text())),
-            lambda result: self._finish_restore_operation(result, candidate, str(source), str(target_path), entered_password, save_profile.isChecked(), save_password.isChecked()),
+            lambda result: self._finish_restore_operation(result, candidate, str(source), str(target_path), entered_password, register_profile, store_password),
         )
 
     @staticmethod
