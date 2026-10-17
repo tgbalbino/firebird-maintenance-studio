@@ -653,7 +653,11 @@ class MainWindow:
         window_menu.addAction("Próxima consulta", self.sql_tabs.activate_next)
         window_menu.addAction("Consulta anterior", self.sql_tabs.activate_previous)
         window_menu.addAction("Fechar consulta atual", lambda: self.close_sql_tab(self.sql_tabs.currentIndex()))
-        window_menu.addAction("Fechar todas as consultas", self._close_all_sql_tabs)
+        close_all_action = window_menu.addAction("Fechar todas as consultas", self._close_all_sql_tabs)
+        close_all_action.setToolTip("Fechar todas as janelas SQL (Ctrl+Shift+W)")
+        self.close_all_sql_shortcut = QShortcut(QKeySequence("Ctrl+Shift+W"), self._window)
+        self.close_all_sql_shortcut.setContext(Qt.ApplicationShortcut)
+        self.close_all_sql_shortcut.activated.connect(self._close_all_sql_tabs)
         window_menu.addSeparator()
         window_menu.addAction(self.menu_always_top_action)
 
