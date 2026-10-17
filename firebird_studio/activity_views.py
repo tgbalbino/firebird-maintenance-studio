@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 
-def create_activity_panel(on_refresh, on_export, on_open_sql, on_filter, on_auto_refresh, on_double_click):
-    from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLineEdit, QPushButton, QTableWidget, QTextEdit, QVBoxLayout, QWidget
+def create_activity_panel(on_refresh, on_export, on_open_sql, on_filter, on_auto_refresh, on_double_click, on_interval_changed):
+    from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTableWidget, QTextEdit, QVBoxLayout, QWidget
     from PySide6.QtCore import Qt
 
     metrics = QTextEdit()
@@ -29,19 +29,27 @@ def create_activity_panel(on_refresh, on_export, on_open_sql, on_filter, on_auto
     auto_refresh = QCheckBox("Auto 5 s")
     auto_refresh.setToolTip("Atualizar automaticamente a cada 5 segundos")
     auto_refresh.toggled.connect(on_auto_refresh)
+    interval = QComboBox()
+    interval.addItem("5 s", 5000)
+    interval.addItem("10 s", 10000)
+    interval.addItem("30 s", 30000)
+    interval.setToolTip("Intervalo da atualização automática")
+    interval.currentIndexChanged.connect(lambda _index: on_interval_changed(interval.currentData()))
     table.cellDoubleClicked.connect(on_double_click)
     controls = QHBoxLayout()
     for widget in (refresh, open_sql, export):
         controls.addWidget(widget)
     controls.addWidget(filter_edit, 1)
     controls.addWidget(auto_refresh)
+    controls.addWidget(QLabel("Intervalo:"))
+    controls.addWidget(interval)
     controls.addStretch()
     panel = QWidget()
     layout = QVBoxLayout(panel)
     layout.addLayout(controls)
     layout.addWidget(metrics)
     layout.addWidget(table, 1)
-    return panel, metrics, table, refresh, export, open_sql, filter_edit, auto_refresh
+    return panel, metrics, table, refresh, export, open_sql, filter_edit, auto_refresh, interval
 
 
 def create_sessions_panel(on_filter, on_disconnect):

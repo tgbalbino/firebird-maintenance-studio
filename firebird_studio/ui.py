@@ -289,10 +289,14 @@ class MainWindow:
             self.activity_open_sql_button,
             self.activity_filter,
             self.activity_auto_refresh,
-        ) = create_activity_panel(self.inspect_activity, self.export_activity_csv, self.open_activity_sql, self._filter_activity_rows, self._toggle_activity_auto_refresh, self._open_activity_sql_at)
+            self.activity_refresh_interval,
+        ) = create_activity_panel(self.inspect_activity, self.export_activity_csv, self.open_activity_sql, self._filter_activity_rows, self._toggle_activity_auto_refresh, self._open_activity_sql_at, self._set_activity_refresh_interval)
         self.activity_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.activity_table.customContextMenuRequested.connect(self._activity_context_menu)
-        self.activity_refresh_timer = QTimer(self._window); self.activity_refresh_timer.setInterval(5000); self.activity_refresh_timer.timeout.connect(self.inspect_activity)
+        saved_activity_interval = int(self._settings.value("activity_refresh_interval", 5000))
+        interval_index = self.activity_refresh_interval.findData(saved_activity_interval)
+        self.activity_refresh_interval.setCurrentIndex(interval_index if interval_index >= 0 else 0)
+        self.activity_refresh_timer = QTimer(self._window); self.activity_refresh_timer.setInterval(saved_activity_interval if interval_index >= 0 else 5000); self.activity_refresh_timer.timeout.connect(self.inspect_activity)
         self.activity_panel = activity_panel
         from .activity_views import create_sessions_panel
         sessions_panel, self.sessions_table, self.sessions_filter, self.disconnect_session_button = create_sessions_panel(self._filter_session_rows, self.terminate_selected_session)
@@ -3610,6 +3614,19 @@ class MainWindow:
         else:
             self.activity_refresh_timer.stop()
             self.status.setText("Atualização automática do painel desativada.")
+
+    def _set_activity_refresh_interval(self, interval_ms):
+        try:
+            interval = max(1000, int(interval_ms))
+        except (TypeError, ValueError):
+            return
+        self._settings.setValue("activity_refresh_interval", interval)
+        self._settings.sync()
+        timer = getattr(self, "activity_refresh_timer", None)
+        if timer is not None:
+            timer.setInterval(interval)
+            if self.activity_auto_refresh.isChecked():
+                timer.start()
 
     def _finish_activity_operation(self, result, profile):
         from PySide6.QtCore import Qt
