@@ -71,3 +71,10 @@ def apply_theme(theme: str) -> None:
             area.viewport().setPalette(palette)
             area.viewport().setBackgroundRole(QPalette.Base)
             area.viewport().setAutoFillBackground(True)
+            # Some Windows styles keep a native brush on the viewport even
+            # after the palette is updated. An explicit local rule prevents
+            # the gray/brown fallback from returning when the last MDI child
+            # is closed or the main window is maximized.
+            area.viewport().setStyleSheet(
+                f"background-color: {background.name()}; border: 0px;"
+            )
