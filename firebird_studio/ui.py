@@ -3324,6 +3324,63 @@ class MainWindow:
             lambda result: self._finish_restore_operation(result, profile, source, target, password),
         )
 
+    def restore_backup_file(self, source):
+        """Open a .fbk/.gbk received from Windows and prepare its restore."""
+        from .backup import run_gbak
+        from PySide6.QtWidgets import QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QHBoxLayout, QLineEdit, QSpinBox, QVBoxLayout, QLabel, QWidget, QPushButton
+
+        source = Path(source).expanduser()
+        if not source.exists():
+            self._show_message("Restaurar backup", f"Arquivo não encontrado:\n{source}", warning=True)
+            return
+        dialog = QDialog(self._window)
+        dialog.setWindowTitle(f"Restaurar backup — {source.name}")
+        dialog.setModal(True)
+        dialog.resize(620, 430)
+        form = QFormLayout()
+        name = QLineEdit(source.stem)
+        host = QLineEdit("localhost")
+        port = QSpinBox(); port.setRange(1, 65535); port.setValue(3050)
+        version = QComboBox(); version.addItems(SUPPORTED_VERSIONS); version.setCurrentText("5")
+        user = QLineEdit("SYSDBA")
+        password = QLineEdit(); password.setEchoMode(QLineEdit.Password)
+        gbak_path = QLineEdit()
+        target = QLineEdit(str(source.with_suffix(".fdb")))
+        target_button = QPushButton("...")
+        target_button.setFixedWidth(34)
+        target_row = QWidget(); target_layout = QHBoxLayout(target_row); target_layout.setContentsMargins(0, 0, 0, 0); target_layout.addWidget(target, 1); target_layout.addWidget(target_button)
+        save_profile = QCheckBox("Adicionar o banco restaurado aos cadastros")
+        save_password = QCheckBox("Salvar senha criptografada")
+        for label, widget in (("Nome do cadastro", name), ("Host", host), ("Porta", port), ("Firebird", version), ("Usuário", user), ("Senha", password), ("Caminho gbak", gbak_path), ("Arquivo FDB", target_row)):
+            form.addRow(label, widget)
+        form.addRow("", save_profile); form.addRow("", save_password)
+        hint = QLabel(f"Backup selecionado:\n{source}"); hint.setWordWrap(True)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept); buttons.rejected.connect(dialog.reject)
+        target_button.clicked.connect(lambda: self._choose_restore_target(dialog, target))
+        layout = QVBoxLayout(dialog); layout.addWidget(hint); layout.addLayout(form); layout.addWidget(buttons)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        candidate = ConnectionProfile(name=name.text(), host=host.text(), port=port.value(), database=target.text(), version=version.currentText(), user=user.text(), isql_path="", gbak_path=gbak_path.text())
+        errors = candidate.validate()
+        if errors:
+            self._show_message("Restaurar backup", " ".join(errors), warning=True)
+            return
+        target_path = Path(target.text()).expanduser()
+        entered_password = password.text()
+        self._start_background_operation(
+            "Restore",
+            lambda: run_gbak(candidate, "restore", source, target_path, entered_password, Path(gbak_path.text())),
+            lambda result: self._finish_restore_operation(result, candidate, str(source), str(target_path), entered_password, save_profile.isChecked(), save_password.isChecked()),
+        )
+
+    @staticmethod
+    def _choose_restore_target(parent, target):
+        from PySide6.QtWidgets import QFileDialog
+        filename, _ = QFileDialog.getSaveFileName(parent, "Salvar banco restaurado", target.text(), "Banco Firebird (*.fdb *.gdb);;Todos (*.*)")
+        if filename:
+            target.setText(filename)
+
     def export_database_sql(self):
         from PySide6.QtWidgets import QFileDialog, QInputDialog
         from datetime import datetime
@@ -3360,12 +3417,13 @@ class MainWindow:
             self.status.setText(f"Exportação SQL falhou: {result.error}")
             self._show_message("Falha na exportação SQL", result.error)
 
-    def _finish_restore_operation(self, result, profile, source, target, password):
+    def _finish_restore_operation(self, result, profile, source, target, password, register_profile=False, save_password=False):
         output, error = self._operation_result_text(result)
         ok = bool(getattr(result, "ok", False)) if not isinstance(result, Exception) else False
         self._record_backup_history("Restore", profile, str(source), str(target), ok, error or output[-300:])
         self._log_event("Restore concluído" if ok else "Restore falhou", profile=profile.name, source=str(source), target=str(target), ok=ok, error=error)
-        self.editor.setPlainText(output + ("\n" + error if error else ""))
+        if self.editor is not None:
+            self.editor.setPlainText(output + ("\n" + error if error else ""))
         if not ok:
             message = error or output or "O gbak retornou uma falha sem detalhes."
             self.status.setText(f"Restore falhou: {message}")
@@ -3376,6 +3434,9 @@ class MainWindow:
         restored_profile = replace(profile, database=str(target), host="localhost", port=3050)
         validation = test_connection(restored_profile, password)
         if validation.ok:
+            if register_profile:
+                selected = next((index for index, item in enumerate(self.profiles) if item.name.casefold() == profile.name.casefold()), -1)
+                self._save_profile_record(profile, password, save_password, selected)
             self.status.setText("Restore concluído e banco restaurado validado.")
             self._show_toast("Restore concluído com sucesso.")
             self._log_event("Restore validado", target=str(target))
