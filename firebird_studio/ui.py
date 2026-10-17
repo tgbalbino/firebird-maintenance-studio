@@ -3598,7 +3598,10 @@ class MainWindow:
     def inspect_activity(self):
         from .health import inspect_health, list_statements
 
-        profile = self._profile_from_form()
+        # The main profile form is hidden during normal SQL work. Prefer the
+        # connection assigned to the active SQL document so the monitor never
+        # refreshes a different or stale database profile.
+        profile = self._query_profile() if self.editor is not None else self._profile_from_form()
         password = self._password_for(profile)
         self._start_background_operation(
             "Painel do banco",
