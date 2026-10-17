@@ -46,7 +46,7 @@ BLUE_STYLE = DARK_STYLE + " QWidget { background: #101d31; color: #edf4ff; } QMa
 
 
 def apply_theme(theme: str) -> None:
-    from PySide6.QtGui import QColor, QPalette
+    from PySide6.QtGui import QColor, QPalette, QBrush
     from PySide6.QtWidgets import QApplication, QMdiArea
 
     app = QApplication.instance()
@@ -62,5 +62,12 @@ def apply_theme(theme: str) -> None:
             palette.setColor(QPalette.Window, background)
             palette.setColor(QPalette.Base, background)
             area.setPalette(palette)
+            # QMdiArea has a separate viewport and can otherwise retain the
+            # platform default gray/brown brush.  Set both the MDI background
+            # brush and the viewport palette so empty workspace areas always
+            # follow the selected application theme.
+            area.setBackground(QBrush(background))
+            area.setAutoFillBackground(True)
             area.viewport().setPalette(palette)
+            area.viewport().setBackgroundRole(QPalette.Base)
             area.viewport().setAutoFillBackground(True)

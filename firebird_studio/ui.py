@@ -358,6 +358,9 @@ class MainWindow:
         # Connection fields are kept as state for the existing operation
         # handlers. Their form lives only in the modal connection dialog.
         right = QWidget(); right.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding); right.setObjectName("workspacePanel")
+        # Fill the complete workspace explicitly.  This prevents the native
+        # palette from showing through in empty areas beside/below MDI forms.
+        right.setAutoFillBackground(True)
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(12, 12, 12, 12)
         right_layout.setSpacing(8)
@@ -515,6 +518,10 @@ class MainWindow:
         splitter.setStretchFactor(1, 1)
         splitter.splitterMoved.connect(lambda _position, _index: self._save_splitter_state(splitter))
         self._window.setCentralWidget(splitter)
+        # The first theme pass runs before the MDI is created.  Apply it once
+        # more after the central widget exists so its viewport receives the
+        # explicit themed background instead of Qt's native gray brush.
+        self._apply_theme(str(self._settings.value("theme", "light")))
         self._setup_main_menu()
         app_instance = QApplication.instance()
         if app_instance is not None:
@@ -552,6 +559,20 @@ class MainWindow:
     def _apply_theme(self, theme: str):
         from .ui_theme import apply_theme
         apply_theme(theme)
+        # Top-level windows are not QObject children of QApplication, so the
+        # generic theme helper cannot discover this MDI area reliably. Apply
+        # the background directly whenever the application theme changes.
+        if getattr(self, "sql_tabs", None) is not None:
+            from PySide6.QtGui import QColor, QBrush, QPalette
+            background = QColor({"dark": "#171a21", "blue": "#101d31", "gray": "#e7e9ed"}.get(theme, "#f7f9fc"))
+            palette = self.sql_tabs.palette()
+            palette.setColor(QPalette.Window, background)
+            palette.setColor(QPalette.Base, background)
+            self.sql_tabs.setPalette(palette)
+            self.sql_tabs.setBackground(QBrush(background))
+            self.sql_tabs.viewport().setPalette(palette)
+            self.sql_tabs.viewport().setBackgroundRole(QPalette.Base)
+            self.sql_tabs.viewport().setAutoFillBackground(True)
 
     def _set_theme(self, theme: str):
         self._settings.setValue("theme", theme)
