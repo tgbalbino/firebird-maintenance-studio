@@ -33,6 +33,12 @@ DARK_STYLE += " QTabWidget#sqlDocumentTabs::pane { border-color: #8490a3; } QTab
 LIGHT_STYLE += " QListWidget#sqlHistoryList { padding: 6px; } QListWidget#sqlHistoryList::item { padding: 7px 8px; border-bottom: 1px solid #dbe2ec; } QListWidget#sqlHistoryList::item:hover { background: #e1ebf8; }"
 DARK_STYLE += " QListWidget#sqlHistoryList { padding: 6px; } QListWidget#sqlHistoryList::item { padding: 7px 8px; border-bottom: 1px solid #3b4658; } QListWidget#sqlHistoryList::item:hover { background: #303b4e; }"
 
+# Additional palettes keep the same layout and controls while offering
+# neutral gray and navy blue alternatives. Explicit tree item colors avoid
+# the low-contrast platform focus color seen in the light palette.
+GRAY_STYLE = LIGHT_STYLE + " QWidget { background: #e7e9ed; color: #20242b; } QMainWindow, QGroupBox, QMdiArea { background: #e7e9ed; color: #20242b; } QWidget#sidebarPanel { background: #dfe3e8; border-color: #aeb7c4; } QWidget#workspacePanel, QMdiArea, QMdiArea::viewport, QMdiArea > QWidget, QMdiSubWindow { background: #e7e9ed; } QLineEdit, QTextEdit, QTableWidget, QTreeWidget, QComboBox, QSpinBox { background: #f7f8fa; color: #20242b; border-color: #7b8491; } QTreeWidget::item:selected, QTableWidget::item:selected { background: #687585; color: #ffffff; } QTreeWidget::item:hover { background: #d2d8e0; color: #20242b; } QMenuBar#mainMenuBar { background: #e7e9ed; color: #20242b; } QStatusBar { background: #d9dde3; color: #20242b; }"
+BLUE_STYLE = DARK_STYLE + " QWidget { background: #101d31; color: #edf4ff; } QMainWindow, QGroupBox, QMdiArea { background: #101d31; color: #edf4ff; } QWidget#sidebarPanel { background: #142844; border-color: #41648e; } QWidget#workspacePanel, QMdiArea, QMdiArea::viewport, QMdiArea > QWidget, QMdiSubWindow { background: #101d31; } QLineEdit, QTextEdit, QTableWidget, QTreeWidget, QComboBox, QSpinBox { background: #182f50; color: #edf4ff; border-color: #6f91bb; } QPushButton, QToolButton { background: #244a78; color: #edf4ff; border-color: #7fa7d8; } QTreeWidget::item:selected, QTableWidget::item:selected { background: #2f6fbd; color: #ffffff; } QTreeWidget::item:hover { background: #254b78; color: #ffffff; } QMenuBar#mainMenuBar { background: #101d31; color: #edf4ff; } QStatusBar { background: #142844; color: #edf4ff; }"
+
 
 def apply_theme(theme: str) -> None:
     from PySide6.QtGui import QColor, QPalette
@@ -40,11 +46,12 @@ def apply_theme(theme: str) -> None:
 
     app = QApplication.instance()
     if app is not None:
-        app.setStyleSheet(DARK_STYLE if theme == "dark" else LIGHT_STYLE)
+        styles = {"light": LIGHT_STYLE, "dark": DARK_STYLE, "gray": GRAY_STYLE, "blue": BLUE_STYLE}
+        app.setStyleSheet(styles.get(theme, LIGHT_STYLE))
         # Qt can paint an MDI viewport with the platform gray palette even
         # when the stylesheet targets QMdiArea. Set the viewport palette
         # explicitly so the workspace never falls back to gray or brown.
-        background = QColor("#171a21" if theme == "dark" else "#f7f9fc")
+        background = QColor({"dark": "#171a21", "blue": "#101d31", "gray": "#e7e9ed"}.get(theme, "#f7f9fc"))
         for area in app.findChildren(QMdiArea):
             palette = area.palette()
             palette.setColor(QPalette.Window, background)

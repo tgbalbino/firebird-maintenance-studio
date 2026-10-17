@@ -546,8 +546,9 @@ class MainWindow:
         for index in range(self.sql_tabs.count()):
             highlighter = self.sql_tabs.widget(index).property("sql_highlighter")
             if highlighter is not None and hasattr(highlighter, "set_theme"):
-                highlighter.set_theme(theme == "dark")
-        self.status.setText("Tema escuro aplicado." if theme == "dark" else "Tema claro aplicado.")
+                highlighter.set_theme(theme in {"dark", "blue"})
+        labels = {"light": "Tema claro", "dark": "Tema escuro", "gray": "Tema cinza", "blue": "Tema azul escuro"}
+        self.status.setText(f"{labels.get(theme, 'Tema aplicado') } aplicado.")
 
     def _setup_main_menu(self):
         """Create the compact application menu for global commands."""
@@ -634,8 +635,9 @@ class MainWindow:
         layout = QVBoxLayout(dialog)
         layout.addWidget(QLabel("Preferências do Studio aplicadas ao usuário atual."))
         form = QFormLayout()
-        theme = QComboBox(); theme.addItem("Claro", "light"); theme.addItem("Escuro", "dark")
-        theme.setCurrentIndex(1 if self._settings.value("theme", "light") == "dark" else 0)
+        theme = QComboBox(); theme.addItem("Claro", "light"); theme.addItem("Escuro", "dark"); theme.addItem("Cinza", "gray"); theme.addItem("Azul escuro", "blue")
+        saved_theme = str(self._settings.value("theme", "light"))
+        theme.setCurrentIndex(max(0, theme.findData(saved_theme)))
         page_size = QComboBox(); page_size.addItems(["50", "200", "500", "1000"])
         page_size.setCurrentText(str(self._settings.value("data_page_size", "200")))
         always_top = QCheckBox("Manter a janela sempre no topo")
