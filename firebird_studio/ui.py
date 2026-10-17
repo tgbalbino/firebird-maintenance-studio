@@ -1048,7 +1048,11 @@ class MainWindow:
         self.connection_badge.style().polish(self.connection_badge)
 
     def _query_profile(self):
-        name = self.editor.property("query_profile") if self.editor is not None else ""
+        try:
+            editor = self.editor
+            name = editor.property("query_profile") if editor is not None else ""
+        except RuntimeError:
+            name = ""
         for profile in self.profiles:
             if profile.name == name:
                 return profile
@@ -2092,7 +2096,14 @@ class MainWindow:
         return self.profile_list.topLevelItem(index)
 
     def _show_object_sql(self, obj, new_tab=False):
-        if new_tab:
+        # A database object can be opened directly after all SQL windows were
+        # closed.  Ensure there is a live editor before writing the DDL.
+        try:
+            current_editor = self.editor
+        except RuntimeError:
+            current_editor = None
+            self.editor = None
+        if new_tab or current_editor is None:
             self._new_sql_tab()
         dml = ""
         if obj.kind.upper() == "TABLE":
@@ -2878,7 +2889,16 @@ class MainWindow:
         self._update_query_connection_status()
 
     def _profile_from_form(self):
-        return ConnectionProfile(self.name.text(), self.host.text(), self.port.value(), self.database.text(), self.version.currentText(), self.user.text(), role=self.role.text(), charset=self.charset.text(), favorite=self.favorite.isChecked(), isql_path=self.isql_path.text(), gbak_path=self.gbak_path.text())
+        try:
+            return ConnectionProfile(self.name.text(), self.host.text(), self.port.value(), self.database.text(), self.version.currentText(), self.user.text(), role=self.role.text(), charset=self.charset.text(), favorite=self.favorite.isChecked(), isql_path=self.isql_path.text(), gbak_path=self.gbak_path.text())
+        except RuntimeError:
+            # The connection form is modal and its widgets may have already
+            # been deleted.  The selected tree profile remains authoritative
+            # for object preview, DDL loading and database operations.
+            selected = getattr(self, "_selected_profile_index", -1)
+            if 0 <= selected < len(self.profiles):
+                return self.profiles[selected]
+            raise
 
     def save_profile(self):
         self._save_profile_record(self._profile_from_form(), self._password_for(), self.save_password.isChecked(), self._profile_index_for_item())
