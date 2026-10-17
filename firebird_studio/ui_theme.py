@@ -33,6 +33,11 @@ DARK_STYLE += " QTabWidget#sqlDocumentTabs::pane { border-color: #8490a3; } QTab
 LIGHT_STYLE += " QListWidget#sqlHistoryList { padding: 6px; } QListWidget#sqlHistoryList::item { padding: 7px 8px; border-bottom: 1px solid #dbe2ec; } QListWidget#sqlHistoryList::item:hover { background: #e1ebf8; }"
 DARK_STYLE += " QListWidget#sqlHistoryList { padding: 6px; } QListWidget#sqlHistoryList::item { padding: 7px 8px; border-bottom: 1px solid #3b4658; } QListWidget#sqlHistoryList::item:hover { background: #303b4e; }"
 
+# When focus moves to the SQL editor Qt uses the inactive selection palette
+# for the tree. Set that state explicitly so focused object names remain dark
+# and readable on the pale blue selection background.
+LIGHT_STYLE += " QTreeWidget::item:selected:!active { color: #1f2937; background: #dbeafe; } QTreeWidget::item:focus { color: #111827; }"
+
 # Additional palettes keep the same layout and controls while offering
 # neutral gray and navy blue alternatives. Explicit tree item colors avoid
 # the low-contrast platform focus color seen in the light palette.
