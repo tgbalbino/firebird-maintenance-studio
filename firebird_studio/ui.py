@@ -3770,6 +3770,7 @@ class MainWindow:
     def _finish_activity_operation(self, result, profile):
         from PySide6.QtCore import Qt
         from PySide6.QtWidgets import QTableWidgetItem
+        from datetime import datetime
 
         class DurationItem(QTableWidgetItem):
             def __lt__(self, other):
@@ -3798,6 +3799,7 @@ class MainWindow:
             f"Transações: oldest={metrics.get('oldest_transaction') or 'N/D'} · active={metrics.get('oldest_active') or 'N/D'} · next={metrics.get('next_transaction') or 'N/D'}",
             f"Consultas em execução: {len(statements)}",
             "Estado: nenhuma consulta em execução neste instante" if not statements else "Estado: consultas em execução encontradas",
+            f"Última atualização: {datetime.now():%d/%m/%Y %H:%M:%S}",
             "Senha: não exposta pelo monitoramento",
         ]
         self.activity_metrics.setPlainText("\n".join(lines))
@@ -3818,6 +3820,9 @@ class MainWindow:
                 self.activity_table.setItem(row, column, cell)
         self.activity_table.resizeColumnsToContents()
         self.activity_table.setSortingEnabled(True)
+        # Put the longest running statement first so the expensive query is
+        # visible immediately, while keeping the column sortable by the user.
+        self.activity_table.sortItems(6, Qt.DescendingOrder)
         self._filter_activity_rows(self.activity_filter.text())
         if selected_statement_id:
             for row in range(self.activity_table.rowCount()):
