@@ -290,6 +290,8 @@ class MainWindow:
             self.activity_filter,
             self.activity_auto_refresh,
         ) = create_activity_panel(self.inspect_activity, self.export_activity_csv, self.open_activity_sql, self._filter_activity_rows, self._toggle_activity_auto_refresh, self._open_activity_sql_at)
+        self.activity_table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.activity_table.customContextMenuRequested.connect(self._activity_context_menu)
         self.activity_refresh_timer = QTimer(self._window); self.activity_refresh_timer.setInterval(5000); self.activity_refresh_timer.timeout.connect(self.inspect_activity)
         self.activity_panel = activity_panel
         from .activity_views import create_sessions_panel
@@ -3575,6 +3577,7 @@ class MainWindow:
             self.status.setText("Atualização automática do painel desativada.")
 
     def _finish_activity_operation(self, result, profile):
+        from PySide6.QtCore import Qt
         if isinstance(result, Exception):
             self._log_event("Falha ao ler atividade", profile=profile.name, error=str(result))
             self.status.setText(f"Falha ao ler informações do banco: {result}")
@@ -3606,7 +3609,10 @@ class MainWindow:
             values = [statement.get("id"), statement.get("attachment_id"), statement.get("user"), statement.get("address"), statement.get("application"), started_text, duration_text, statement.get("sql", "")]
             for column, value in enumerate(values):
                 from PySide6.QtWidgets import QTableWidgetItem
-                self.activity_table.setItem(row, column, QTableWidgetItem("" if value is None else str(value)))
+                cell = QTableWidgetItem("" if value is None else str(value))
+                if column == 6 and isinstance(elapsed, (int, float)):
+                    cell.setData(Qt.UserRole, float(elapsed))
+                self.activity_table.setItem(row, column, cell)
         self.activity_table.resizeColumnsToContents()
         self.activity_table.setSortingEnabled(True)
         self._filter_activity_rows(self.activity_filter.text())
@@ -3626,6 +3632,61 @@ class MainWindow:
     def _open_activity_sql_at(self, row: int, _column: int):
         self.activity_table.selectRow(row)
         self.open_activity_sql()
+
+    def _activity_context_menu(self, position):
+        from PySide6.QtWidgets import QMenu
+
+        item = self.activity_table.itemAt(position)
+        if item is not None:
+            self.activity_table.selectRow(item.row())
+        menu = QMenu(self._window)
+        open_action = menu.addAction("Abrir consulta SQL")
+        slow_action = menu.addAction("Ver consulta mais demorada")
+        plan_action = menu.addAction("Analisar plano e sugerir índices")
+        has_row = self.activity_table.currentRow() >= 0
+        open_action.setEnabled(has_row)
+        plan_action.setEnabled(has_row)
+        slow_action.setEnabled(self.activity_table.rowCount() > 0)
+        open_action.triggered.connect(self.open_activity_sql)
+        slow_action.triggered.connect(self._select_slowest_activity)
+        plan_action.triggered.connect(self._analyze_activity_plan)
+        menu.exec(self.activity_table.viewport().mapToGlobal(position))
+
+    def _select_slowest_activity(self):
+        from PySide6.QtCore import Qt
+        if self.activity_table.rowCount() == 0:
+            return
+        slowest_row, slowest_value = -1, -1.0
+        for row in range(self.activity_table.rowCount()):
+            item = self.activity_table.item(row, 6)
+            value = item.data(Qt.UserRole) if item is not None else None
+            if isinstance(value, (int, float)) and float(value) > slowest_value:
+                slowest_row, slowest_value = row, float(value)
+        if slowest_row < 0:
+            slowest_row = 0
+        self.activity_table.selectRow(slowest_row)
+        self.activity_table.scrollToItem(self.activity_table.item(slowest_row, 0))
+        self.status.setText("Consulta mais demorada selecionada.")
+
+    def _analyze_activity_plan(self):
+        row = self.activity_table.currentRow()
+        if row < 0:
+            self._show_message("Analisar consulta", "Selecione uma consulta em execução.", warning=True)
+            return
+        sql_item = self.activity_table.item(row, self.activity_table.columnCount() - 1)
+        sql = sql_item.text().strip() if sql_item else ""
+        if not sql:
+            self._show_message("Analisar consulta", "A consulta selecionada não possui SQL disponível.", warning=True)
+            return
+        profile = next((item for item in self.profiles if item.name == getattr(self, "activity_profile_name", "")), None)
+        if profile is None:
+            self._show_message("Analisar consulta", "Não foi possível localizar o cadastro da conexão.", warning=True)
+            return
+        self._new_sql_tab()
+        self.editor.setPlainText(sql)
+        self.editor.setProperty("query_profile", profile.name)
+        self._sync_editor(self.sql_tabs.currentIndex())
+        self.inspect_plan()
 
     def open_activity_sql(self):
         row = self.activity_table.currentRow()
