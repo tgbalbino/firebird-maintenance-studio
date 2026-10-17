@@ -920,6 +920,18 @@ class MainWindow:
                 self.workspace_status.setText("Ctrl+Tab alterna as janelas")
         elif self.workspace_status is not None:
             self.workspace_status.setText("Resultados e diagnóstico · use o menu Janelas para voltar ao SQL")
+            # These controls belong to the editor that was just destroyed.
+            # Drop the aliases so later actions cannot call deleted Qt
+            # objects while the workspace is empty.
+            self.query_profile_combo = None
+            self.query_connection_status = None
+            self.connection_badge = None
+            self.query_cursor_status = None
+            self.history_combo = None
+            self.object_breadcrumb = None
+            self.workspace_status = None
+            self.commit_changes = None
+            self.read_only_mode = None
 
     def _sync_sql_window_bar(self, active_index: int | None = None):
         """Keep the local SQL document bar aligned with the MDI windows."""
