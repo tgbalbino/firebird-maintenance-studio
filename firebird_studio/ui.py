@@ -292,6 +292,7 @@ class MainWindow:
             self.activity_auto_refresh,
             self.activity_refresh_interval,
         ) = create_activity_panel(self.inspect_activity, self.export_activity_csv, self.open_activity_sql, self._filter_activity_rows, self._toggle_activity_auto_refresh, self._open_activity_sql_at, self._set_activity_refresh_interval)
+        self.activity_panel = activity_panel
         self.activity_refresh_shortcut = QShortcut(QKeySequence("Ctrl+R"), self.activity_panel)
         self.activity_refresh_shortcut.setContext(Qt.WidgetWithChildrenShortcut)
         self.activity_refresh_shortcut.setToolTip("Atualizar o monitor de consultas")
@@ -302,7 +303,6 @@ class MainWindow:
         interval_index = self.activity_refresh_interval.findData(saved_activity_interval)
         self.activity_refresh_interval.setCurrentIndex(interval_index if interval_index >= 0 else 0)
         self.activity_refresh_timer = QTimer(self._window); self.activity_refresh_timer.setInterval(saved_activity_interval if interval_index >= 0 else 5000); self.activity_refresh_timer.timeout.connect(self.inspect_activity)
-        self.activity_panel = activity_panel
         from .activity_views import create_sessions_panel
         sessions_panel, self.sessions_table, self.sessions_filter, self.disconnect_session_button = create_sessions_panel(self._filter_session_rows, self.terminate_selected_session)
         self.sessions_panel = sessions_panel
