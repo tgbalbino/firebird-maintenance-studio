@@ -3652,13 +3652,16 @@ class MainWindow:
         open_action = menu.addAction("Abrir consulta SQL")
         slow_action = menu.addAction("Ver consulta mais demorada")
         plan_action = menu.addAction("Analisar plano e sugerir índices")
+        cancel_action = menu.addAction("Interromper consulta")
         has_row = self.activity_table.currentRow() >= 0
         open_action.setEnabled(has_row)
         plan_action.setEnabled(has_row)
+        cancel_action.setEnabled(has_row)
         slow_action.setEnabled(self.activity_table.rowCount() > 0)
         open_action.triggered.connect(self.open_activity_sql)
         slow_action.triggered.connect(self._select_slowest_activity)
         plan_action.triggered.connect(self._analyze_activity_plan)
+        cancel_action.triggered.connect(self._cancel_activity_statement)
         menu.exec(self.activity_table.viewport().mapToGlobal(position))
 
     def _select_slowest_activity(self):
@@ -3696,6 +3699,54 @@ class MainWindow:
         self.editor.setProperty("query_profile", profile.name)
         self._sync_editor(self.sql_tabs.currentIndex())
         self.inspect_plan()
+
+    def _cancel_activity_statement(self):
+        """Cancel the selected monitored statement while keeping its attachment connected."""
+        from PySide6.QtWidgets import QMessageBox
+
+        row = self.activity_table.currentRow()
+        if row < 0:
+            self._show_message("Interromper consulta", "Selecione uma consulta em execução.", warning=True)
+            return
+        statement_item = self.activity_table.item(row, 0)
+        try:
+            statement_id = int(statement_item.text().strip()) if statement_item is not None else 0
+        except (TypeError, ValueError):
+            statement_id = 0
+        if statement_id <= 0:
+            self._show_message("Interromper consulta", "O identificador da consulta não está disponível.", warning=True)
+            return
+        profile_name = getattr(self, "activity_profile_name", "")
+        profile = next((item for item in self.profiles if item.name == profile_name), None)
+        if profile is None:
+            self._show_message("Interromper consulta", "Não foi possível localizar o cadastro da conexão.", warning=True)
+            return
+        answer = QMessageBox.question(
+            self._window,
+            "Confirmar interrupção",
+            f"Interromper a consulta {statement_id}?\nA conexão permanecerá ativa.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        password = self._stored_password(profile.name)
+        from .health import terminate_statement
+        self._start_background_operation(
+            "Interrupção de consulta",
+            lambda: terminate_statement(profile, password, statement_id),
+            lambda result: self._finish_cancel_statement(result, profile, statement_id),
+        )
+
+    def _finish_cancel_statement(self, result, profile, statement_id):
+        if isinstance(result, Exception):
+            self._log_event("Falha ao interromper consulta", profile=profile.name, statement_id=statement_id, error=str(result))
+            self._show_message("Falha ao interromper consulta", str(result))
+            return
+        self._log_event("Consulta interrompida", profile=profile.name, statement_id=statement_id)
+        self._show_toast("Consulta interrompida; conexão mantida.")
+        self.status.setText(f"Consulta {statement_id} interrompida.")
+        self.inspect_activity()
 
     def open_activity_sql(self):
         row = self.activity_table.currentRow()

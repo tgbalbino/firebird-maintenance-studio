@@ -134,6 +134,17 @@ def terminate_session(profile: ConnectionProfile, password: str | None, attachme
             cursor.close()
 
 
+def terminate_statement(profile: ConnectionProfile, password: str | None, statement_id: int) -> None:
+    """Cancel one running statement; Firebird enforces administrator rights."""
+    with open_database(profile, password) as connection:
+        cursor = connection.cursor()
+        try:
+            cursor.execute("DELETE FROM MON$STATEMENTS WHERE MON$STATEMENT_ID = ?", (int(statement_id),))
+            connection.commit()
+        finally:
+            cursor.close()
+
+
 def list_statements(profile: ConnectionProfile, password: str | None = None) -> list[dict[str, Any]]:
     """Return currently active statements with a best-effort elapsed time."""
     with open_database(profile, password) as connection:
