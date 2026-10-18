@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from typing import Any
 import time
 
-from .connection import _dsn
+from .connection import _connect_callable, _connection_kwargs
 from .models import ConnectionProfile
 from .sql import DEFAULT_MAX_RESULT_ROWS, QueryResult
 from .sql import is_mutating_statement
@@ -16,22 +15,8 @@ class TransactionSession:
         errors = profile.validate()
         if errors:
             raise ValueError(" ".join(errors))
-        kwargs: dict[str, Any] = {
-            "dsn": _dsn(profile),
-            "user": profile.user,
-            "password": password or "",
-            "charset": profile.charset,
-        }
-        if profile.role:
-            kwargs["role"] = profile.role
-        if profile.version == "2.5":
-            import fdb
-
-            connect = fdb.connect
-        else:
-            from firebird.driver import connect
-
-        self.connection = connect(**kwargs)
+        connect = _connect_callable(profile)
+        self.connection = connect(**_connection_kwargs(profile, password))
         self.profile_name = profile.name
         self.dirty = False
 

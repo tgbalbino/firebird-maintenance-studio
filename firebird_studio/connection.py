@@ -71,29 +71,39 @@ def _client_library(profile: ConnectionProfile) -> str | None:
     return next((str(path) for path in candidates if path.exists()), None)
 
 
+def _connection_kwargs(profile: ConnectionProfile, password: str | None = None) -> dict[str, object]:
+    """Build the driver arguments shared by probes and live sessions."""
+    kwargs: dict[str, object] = {
+        "dsn": _dsn(profile),
+        "user": profile.user,
+        "password": password or "",
+        "charset": profile.charset,
+    }
+    client_library = _client_library(profile)
+    if client_library:
+        kwargs["fb_library_name"] = client_library
+    if profile.role:
+        kwargs["role"] = profile.role
+    return kwargs
+
+
+def _connect_callable(profile: ConnectionProfile):
+    if profile.version == "2.5":
+        import fdb
+
+        return fdb.connect
+    from firebird.driver import connect
+
+    return connect
+
+
 def test_connection(profile: ConnectionProfile, password: str | None = None) -> ConnectionResult:
     errors = profile.validate()
     if errors:
         return ConnectionResult(False, " ".join(errors))
-    if profile.version == "2.5":
-        import fdb
-
-        connect = fdb.connect
-    else:
-        from firebird.driver import connect
-
     try:
-        kwargs = {
-            "dsn": _dsn(profile),
-            "user": profile.user,
-            "password": password or "",
-            "charset": profile.charset,
-        }
-        client_library = _client_library(profile)
-        if client_library:
-            kwargs["fb_library_name"] = client_library
-        if profile.role:
-            kwargs["role"] = profile.role
+        connect = _connect_callable(profile)
+        kwargs = _connection_kwargs(profile, password)
         with connect(**kwargs) as con:
             server_version = getattr(con, "server_version", None)
         return ConnectionResult(True, "Conexão realizada com sucesso.", server_version)
