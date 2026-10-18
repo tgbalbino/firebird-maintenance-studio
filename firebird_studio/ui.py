@@ -311,13 +311,19 @@ class MainWindow:
         self.activity_refresh_shortcut.activated.connect(self.inspect_activity)
         self.activity_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.activity_table.customContextMenuRequested.connect(self._activity_context_menu)
-        saved_activity_interval = int(self._settings.value("activity_refresh_interval", 5000))
+        saved_activity_interval = int(self._settings.value("activity_refresh_interval", 1000))
         interval_index = self.activity_refresh_interval.findData(saved_activity_interval)
         self.activity_refresh_interval.setCurrentIndex(interval_index if interval_index >= 0 else 0)
-        refresh_interval = saved_activity_interval if interval_index >= 0 else 5000
+        refresh_interval = saved_activity_interval if interval_index >= 0 else 1000
         self.activity_refresh_timer = QTimer(self._window)
         self.activity_refresh_timer.setInterval(refresh_interval)
         self.activity_refresh_timer.timeout.connect(self.inspect_activity)
+        # Keep the monitor ready for continuous polling without querying the
+        # database while the main window is still being constructed.  The
+        # first opening of the activity panel starts the timer below.
+        self.activity_auto_refresh.blockSignals(True)
+        self.activity_auto_refresh.setChecked(True)
+        self.activity_auto_refresh.blockSignals(False)
         from .activity_views import create_sessions_panel
         sessions_panel, self.sessions_table, self.sessions_filter, self.disconnect_session_button = create_sessions_panel(self._filter_session_rows, self.terminate_selected_session)
         self.sessions_panel = sessions_panel
@@ -3999,6 +4005,12 @@ class MainWindow:
     def inspect_activity(self):
         from .health import inspect_health, list_statements
 
+        # Start polling only once the activity panel is actually opened. This
+        # keeps startup local and lets the panel be reopened after its MDI
+        # child was closed.
+        if self.activity_auto_refresh.isChecked() and not self.activity_refresh_timer.isActive():
+            self.activity_refresh_timer.start()
+
         # Reopen the shared result form immediately.  After the user closes
         # the MDI child, the activity tab is still selected and no tab-change
         # signal is emitted on the next request; waiting for the worker would
@@ -4182,8 +4194,10 @@ class MainWindow:
             f"ODS: {metrics.get('ods_major') or 'N/D'}.{metrics.get('ods_minor') or 'N/D'} · conexões: {metrics.get('attachments') or 0}",
             f"Transações: oldest={metrics.get('oldest_transaction') or 'N/D'} · active={metrics.get('oldest_active') or 'N/D'} · next={metrics.get('next_transaction') or 'N/D'}",
             f"Consultas em execução: {len(statements)}",
+            "Escopo: consultas ativas de todas as aplicações/conexões visíveis para a conta do banco.",
             "Estado: nenhuma consulta em execução neste instante" if not statements else "Estado: consultas em execução encontradas",
-            "Este painel mostra apenas consultas ainda em execução; consultas concluídas não ficam no snapshot.",
+            "Este painel é atualizado automaticamente e mostra apenas consultas ainda em execução no instante da leitura.",
+            "Consultas muito rápidas podem terminar entre duas leituras; use o histórico Trace para capturar consultas concluídas.",
             "Histórico completo: use o botão 'Iniciar histórico' para capturar consultas concluídas pelo Trace Service.",
             f"Última atualização: {datetime.now():%d/%m/%Y %H:%M:%S}",
             "Senha: não exposta pelo monitoramento",

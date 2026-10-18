@@ -166,6 +166,7 @@ class TransactionTests(unittest.TestCase):
 
             def execute(self, query):
                 self.query = query
+                Cursor.last_query = query
 
             def fetchall(self):
                 return [(7, 3, "SYSDBA", "10.0.0.5", 1, datetime.now() - timedelta(seconds=4), "SELECT * FROM CUSTOMER")]
@@ -185,6 +186,8 @@ class TransactionTests(unittest.TestCase):
         self.assertEqual(statements[0]["user"], "SYSDBA")
         self.assertGreaterEqual(statements[0]["elapsed_seconds"], 3)
         self.assertLess(statements[0]["elapsed_seconds"], 10)
+        self.assertIn("MON$STATE = 1", Cursor.last_query)
+        self.assertIn("NOT LIKE '%MON$STATEMENTS%'", Cursor.last_query)
 
     def test_terminate_session_uses_attachment_id_and_commits(self):
         class Cursor:
