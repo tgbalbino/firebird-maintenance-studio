@@ -2861,7 +2861,7 @@ class MainWindow:
 
     def _new_table_dialog(self, profile_index: int):
         """Build a table statement through a small visual column editor."""
-        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout
+        from PySide6.QtWidgets import QCheckBox, QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout
 
         dialog = QDialog(self._window)
         dialog.setWindowTitle("Nova tabela")
@@ -2879,6 +2879,9 @@ class MainWindow:
         columns.setItem(0, 2, QTableWidgetItem("Sim"))
         columns.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(columns)
+        primary_key = QCheckBox("Usar a primeira coluna como chave primária")
+        primary_key.setChecked(True)
+        layout.addWidget(primary_key)
         row_buttons = QHBoxLayout()
         add_column = QPushButton("Adicionar coluna")
         remove_column = QPushButton("Remover coluna")
@@ -2909,6 +2912,10 @@ class MainWindow:
         if 0 <= profile_index < len(self.profiles):
             self.select_profile(profile_index)
         quoted_name = '"' + name.replace('"', '""') + '"'
+        if primary_key.isChecked() and fields:
+            first_column = fields[0].split()[0]
+            constraint_name = '"' + f"{name}_PK".replace('"', '""') + '"'
+            fields.append(f"    CONSTRAINT {constraint_name} PRIMARY KEY ({first_column})")
         sql = f"CREATE TABLE {quoted_name} (\n" + ",\n".join(fields) + "\n);"
         self._new_sql_tab()
         self.editor.setPlainText(sql)
