@@ -296,6 +296,16 @@ class MainWindow:
         # Keep a local reference while wiring the shortcut.  This avoids any
         # callback or binding lookup seeing a partially initialized window.
         self.activity_panel = activity_panel
+        from PySide6.QtWidgets import QPushButton
+        self.activity_trace_button = QPushButton("Iniciar histórico")
+        self.activity_trace_button.setToolTip("Capturar consultas concluídas usando o Trace Service do Firebird")
+        self.activity_trace_button.clicked.connect(self._toggle_trace_monitor)
+        activity_controls = activity_panel.layout().itemAt(0).layout()
+        if activity_controls is not None:
+            activity_controls.insertWidget(3, self.activity_trace_button)
+        self.trace_process = None
+        self.trace_config_path = None
+        self.trace_lines = []
         self.activity_refresh_shortcut = QShortcut(QKeySequence("Ctrl+R"), activity_panel)
         self.activity_refresh_shortcut.setContext(Qt.WidgetWithChildrenShortcut)
         self.activity_refresh_shortcut.activated.connect(self.inspect_activity)
@@ -536,6 +546,7 @@ class MainWindow:
         app_instance = QApplication.instance()
         if app_instance is not None:
             app_instance.aboutToQuit.connect(self._stop_activity_refresh)
+            app_instance.aboutToQuit.connect(self._stop_trace_monitor)
             app_instance.aboutToQuit.connect(self._close_transaction)
             app_instance.aboutToQuit.connect(self._save_window_geometry)
         self.profile_list.itemClicked.connect(self._on_profile_clicked)
@@ -4042,6 +4053,79 @@ class MainWindow:
         timer = getattr(self, "activity_refresh_timer", None)
         if timer is not None and timer.isActive():
             timer.stop()
+
+    def _toggle_trace_monitor(self):
+        from PySide6.QtCore import QProcess
+        from tempfile import NamedTemporaryFile
+        from .trace_monitor import build_trace_config, find_trace_manager
+
+        process = getattr(self, "trace_process", None)
+        if process is not None and process.state() != QProcess.NotRunning:
+            self._stop_trace_monitor()
+            return
+        try:
+            profile = self._query_profile()
+            executable = find_trace_manager(profile)
+            if executable is None:
+                self._show_message("Histórico de consultas", "fbtracemgr.exe não foi encontrado na instalação do Firebird.", warning=True)
+                return
+            config = NamedTemporaryFile("w", encoding="utf-8", suffix=".conf", delete=False)
+            config.write(build_trace_config(profile))
+            config.close()
+            self.trace_config_path = Path(config.name)
+            password = self._password_for(profile)
+            service = "service_mgr" if profile.host.strip().lower() in {"", "localhost", "127.0.0.1"} else f"{profile.host}:service_mgr"
+            process = QProcess(self._window)
+            process.setProcessChannelMode(QProcess.MergedChannels)
+            process.readyReadStandardOutput.connect(self._read_trace_output)
+            process.finished.connect(self._trace_finished)
+            self.trace_process = process
+            self.trace_lines = []
+            process.start(str(executable), ["-SE", service, "-USER", profile.user, "-PASSWORD", password, "-START", "-NAME", "Firebird Maintenance Studio", "-CONFIG", str(self.trace_config_path)])
+            self.activity_trace_button.setText("Parar histórico")
+            self.status.setText("Histórico de consultas iniciado pelo Trace Service.")
+        except Exception as exc:
+            self._show_message("Histórico de consultas", str(exc), warning=True)
+
+    def _read_trace_output(self):
+        process = getattr(self, "trace_process", None)
+        if process is None:
+            return
+        text = bytes(process.readAllStandardOutput()).decode("utf-8", errors="replace")
+        if not text:
+            return
+        self.trace_lines.extend(line for line in text.splitlines() if line.strip())
+        self.trace_lines = self.trace_lines[-200:]
+        self.activity_metrics.setPlainText(
+            "HISTÓRICO DE CONSULTAS (TRACE)\n\n"
+            "O Trace registra consultas concluídas e em execução.\n"
+            "\n".join(self.trace_lines)
+        )
+
+    def _trace_finished(self):
+        self._read_trace_output()
+        if getattr(self, "activity_trace_button", None) is not None:
+            self.activity_trace_button.setText("Iniciar histórico")
+        self.trace_process = None
+        config_path = getattr(self, "trace_config_path", None)
+        self.trace_config_path = None
+        if config_path is not None:
+            try:
+                config_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    def _stop_trace_monitor(self):
+        from PySide6.QtCore import QProcess
+
+        process = getattr(self, "trace_process", None)
+        if process is None:
+            return
+        if process.state() != QProcess.NotRunning:
+            process.terminate()
+            if not process.waitForFinished(1500):
+                process.kill()
+        self._trace_finished()
 
     def _set_activity_refresh_interval(self, interval_ms):
         try:
