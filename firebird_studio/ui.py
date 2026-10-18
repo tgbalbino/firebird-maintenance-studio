@@ -2800,7 +2800,8 @@ class MainWindow:
         }
         if category in object_kinds and 0 <= profile_index < len(self.profiles):
             label, kind = object_kinds[category]
-            new_object = menu.addAction(f"Novo {label}...")
+            action_prefix = "Nova" if label in {"tabela", "view", "procedure", "trigger", "exceção", "function"} else "Novo"
+            new_object = menu.addAction(f"{action_prefix} {label}...")
             new_object.setToolTip(f"Criar um modelo SQL de {label} no editor")
             new_object.triggered.connect(
                 lambda _checked=False, selected=profile_index, object_kind=kind: self._new_object_script(selected, object_kind)
@@ -2813,6 +2814,8 @@ class MainWindow:
             else:
                 action = menu.addAction("Expandir objetos")
                 action.triggered.connect(lambda _checked=False, target=item: target.setExpanded(True))
+        collapse_objects = menu.addAction("Recolher todos os objetos")
+        collapse_objects.triggered.connect(self._collapse_all_objects)
         collapse_all = menu.addAction("Recolher todos os bancos")
         collapse_all.triggered.connect(self._collapse_all_profiles)
         origin = self.profile_list.viewport().mapToGlobal(position)
@@ -2830,6 +2833,9 @@ class MainWindow:
             "FUNCTION": "function", "ROLE": "role", "INDEX": "índice",
         }
         label = labels.get(kind, "objeto")
+        if kind == "TABLE":
+            self._new_table_dialog(profile_index)
+            return
         name, accepted = QInputDialog.getText(self._window, f"Novo {label}", f"Nome do {label}:")
         name = name.strip()
         if not accepted or not name:
@@ -2852,6 +2858,63 @@ class MainWindow:
         self.editor.setProperty("document_title", f"Novo {label}: {name}")
         self._update_sql_tab_title()
         self.status.setText(f"Modelo de {label} criado no editor SQL.")
+
+    def _new_table_dialog(self, profile_index: int):
+        """Build a table statement through a small visual column editor."""
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout
+
+        dialog = QDialog(self._window)
+        dialog.setWindowTitle("Nova tabela")
+        dialog.setMinimumWidth(560)
+        layout = QVBoxLayout(dialog)
+        name_row = QHBoxLayout()
+        name_row.addWidget(QLabel("Nome da tabela:"))
+        table_name = QLineEdit("NOVA_TABELA")
+        name_row.addWidget(table_name)
+        layout.addLayout(name_row)
+        columns = QTableWidget(1, 3)
+        columns.setHorizontalHeaderLabels(["Coluna", "Tipo", "Obrigatória"])
+        columns.setItem(0, 0, QTableWidgetItem("ID"))
+        columns.setItem(0, 1, QTableWidgetItem("INTEGER"))
+        columns.setItem(0, 2, QTableWidgetItem("Sim"))
+        columns.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(columns)
+        row_buttons = QHBoxLayout()
+        add_column = QPushButton("Adicionar coluna")
+        remove_column = QPushButton("Remover coluna")
+        row_buttons.addWidget(add_column)
+        row_buttons.addWidget(remove_column)
+        row_buttons.addStretch()
+        layout.addLayout(row_buttons)
+        add_column.clicked.connect(lambda: columns.insertRow(columns.rowCount()))
+        remove_column.clicked.connect(lambda: columns.removeRow(columns.currentRow()) if columns.currentRow() >= 0 and columns.rowCount() > 1 else None)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        name = table_name.text().strip()
+        fields = []
+        for row in range(columns.rowCount()):
+            field_name = columns.item(row, 0).text().strip() if columns.item(row, 0) else ""
+            field_type = columns.item(row, 1).text().strip() if columns.item(row, 1) else ""
+            required = columns.item(row, 2).text().strip().casefold() if columns.item(row, 2) else ""
+            if field_name and field_type:
+                quoted_field = '"' + field_name.replace('"', '""') + '"'
+                fields.append(f"    {quoted_field} {field_type}{' NOT NULL' if required in {'sim', 'yes', '1'} else ''}")
+        if not name or not fields:
+            self._show_message("Nova tabela", "Informe o nome e pelo menos uma coluna válida.", warning=True)
+            return
+        if 0 <= profile_index < len(self.profiles):
+            self.select_profile(profile_index)
+        quoted_name = '"' + name.replace('"', '""') + '"'
+        sql = f"CREATE TABLE {quoted_name} (\n" + ",\n".join(fields) + "\n);"
+        self._new_sql_tab()
+        self.editor.setPlainText(sql)
+        self.editor.setProperty("document_title", f"Nova tabela: {name}")
+        self._update_sql_tab_title()
+        self.status.setText("Modelo visual de tabela criado no editor SQL.")
 
     def _show_profile_menu(self, button, menu):
         """Show the connection menu inside the available screen geometry."""
@@ -2935,6 +2998,13 @@ class MainWindow:
         for index in range(self.profile_list.topLevelItemCount()):
             self.profile_list.topLevelItem(index).setExpanded(False)
         self.status.setText("Objetos dos bancos recolhidos.")
+
+    def _collapse_all_objects(self):
+        for index in range(self.profile_list.topLevelItemCount()):
+            profile_item = self.profile_list.topLevelItem(index)
+            for child_index in range(profile_item.childCount()):
+                profile_item.child(child_index).setExpanded(False)
+        self.status.setText("Grupos de objetos recolhidos.")
 
     def _browse_database_file(self):
         from PySide6.QtWidgets import QFileDialog
