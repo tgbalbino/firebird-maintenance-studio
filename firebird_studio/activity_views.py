@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 
-def create_activity_panel(on_refresh, on_export, on_open_sql, on_filter, on_auto_refresh, on_double_click, on_interval_changed):
+def create_activity_panel(on_refresh, on_export, on_open_sql, on_filter, on_auto_refresh, on_double_click, on_interval_changed, on_export_trace):
     from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTableWidget, QTabWidget, QTextEdit, QVBoxLayout, QWidget
     from PySide6.QtCore import Qt
 
@@ -27,6 +27,9 @@ def create_activity_panel(on_refresh, on_export, on_open_sql, on_filter, on_auto
     export = QPushButton("Exportar CSV")
     export.setToolTip("Exportar a lista de atividade para CSV")
     export.clicked.connect(on_export)
+    export_trace = QPushButton("Exportar Trace")
+    export_trace.setToolTip("Salvar o histórico Trace em CSV")
+    export_trace.clicked.connect(on_export_trace)
     open_sql = QPushButton("Abrir SQL")
     open_sql.setToolTip("Abrir o SQL da consulta selecionada em uma janela de edição")
     open_sql.clicked.connect(on_open_sql)
@@ -45,7 +48,7 @@ def create_activity_panel(on_refresh, on_export, on_open_sql, on_filter, on_auto
     interval.currentIndexChanged.connect(lambda _index: on_interval_changed(interval.currentData()))
     table.cellDoubleClicked.connect(on_double_click)
     controls = QHBoxLayout()
-    for widget in (refresh, open_sql, export):
+    for widget in (refresh, open_sql, export, export_trace):
         controls.addWidget(widget)
     controls.addWidget(filter_edit, 1)
     controls.addWidget(auto_refresh)
@@ -60,7 +63,7 @@ def create_activity_panel(on_refresh, on_export, on_open_sql, on_filter, on_auto
     tabs.addTab(table, "Consultas ativas")
     tabs.addTab(trace_table, "Histórico Trace")
     layout.addWidget(tabs, 1)
-    return panel, metrics, table, trace_table, refresh, export, open_sql, filter_edit, auto_refresh, interval
+    return panel, metrics, table, trace_table, refresh, export, export_trace, open_sql, filter_edit, auto_refresh, interval
 
 
 def create_sessions_panel(on_filter, on_disconnect):

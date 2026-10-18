@@ -289,11 +289,12 @@ class MainWindow:
             self.activity_trace_table,
             self.activity_refresh_button,
             self.activity_export_button,
+            self.activity_trace_export_button,
             self.activity_open_sql_button,
             self.activity_filter,
             self.activity_auto_refresh,
             self.activity_refresh_interval,
-        ) = create_activity_panel(self.inspect_activity, self.export_activity_csv, self.open_activity_sql, self._filter_activity_rows, self._toggle_activity_auto_refresh, self._open_activity_sql_at, self._set_activity_refresh_interval)
+        ) = create_activity_panel(self.inspect_activity, self.export_activity_csv, self.open_activity_sql, self._filter_activity_rows, self._toggle_activity_auto_refresh, self._open_activity_sql_at, self._set_activity_refresh_interval, self.export_trace_csv)
         # Keep a local reference while wiring the shortcut.  This avoids any
         # callback or binding lookup seeing a partially initialized window.
         self.activity_panel = activity_panel
@@ -4661,6 +4662,36 @@ class MainWindow:
         except Exception as exc:
             self._log_event("Falha ao exportar atividade", filename=filename, error=str(exc))
             self._show_message("Falha ao exportar atividade", str(exc))
+
+    def export_trace_csv(self):
+        """Export captured Trace events independently from active statements."""
+        from PySide6.QtWidgets import QFileDialog
+        import csv
+
+        if not self.trace_lines:
+            self._show_message("Exportar Trace", "Inicie o histórico e aguarde eventos antes de exportar.", warning=True)
+            return
+        filename, _ = QFileDialog.getSaveFileName(
+            self._window, "Exportar histórico Trace", "historico_trace.csv", "CSV (*.csv);;Todos (*.*)"
+        )
+        if not filename:
+            return
+        table = self.activity_trace_table
+        try:
+            headers = [table.horizontalHeaderItem(column).text() for column in range(table.columnCount())]
+            with open(filename, "w", newline="", encoding="utf-8-sig") as handle:
+                writer = csv.writer(handle, delimiter=";")
+                writer.writerow(headers)
+                for row in range(table.rowCount()):
+                    writer.writerow([
+                        table.item(row, column).text() if table.item(row, column) else ""
+                        for column in range(table.columnCount())
+                    ])
+            self._log_event("Histórico Trace exportado", filename=filename, rows=table.rowCount())
+            self.status.setText(f"Histórico Trace exportado: {filename}")
+        except Exception as exc:
+            self._log_event("Falha ao exportar Trace", filename=filename, error=str(exc))
+            self._show_message("Falha ao exportar Trace", str(exc))
 
     def save_health_report(self):
         """Save the most recent health report without exposing credentials."""
