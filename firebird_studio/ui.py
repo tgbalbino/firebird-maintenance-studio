@@ -304,7 +304,10 @@ class MainWindow:
         saved_activity_interval = int(self._settings.value("activity_refresh_interval", 5000))
         interval_index = self.activity_refresh_interval.findData(saved_activity_interval)
         self.activity_refresh_interval.setCurrentIndex(interval_index if interval_index >= 0 else 0)
-        self.activity_refresh_timer = QTimer(self._window); self.activity_refresh_timer.setInterval(saved_activity_interval if interval_index >= 0 else 5000); self.activity_refresh_timer.timeout.connect(self.inspect_activity)
+        refresh_interval = saved_activity_interval if interval_index >= 0 else 5000
+        self.activity_refresh_timer = QTimer(self._window)
+        self.activity_refresh_timer.setInterval(refresh_interval)
+        self.activity_refresh_timer.timeout.connect(self.inspect_activity)
         from .activity_views import create_sessions_panel
         sessions_panel, self.sessions_table, self.sessions_filter, self.disconnect_session_button = create_sessions_panel(self._filter_session_rows, self.terminate_selected_session)
         self.sessions_panel = sessions_panel

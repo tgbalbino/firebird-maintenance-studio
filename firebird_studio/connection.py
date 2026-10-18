@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Callable
 
 from .models import ConnectionProfile
 
@@ -71,7 +72,7 @@ def _client_library(profile: ConnectionProfile) -> str | None:
     return next((str(path) for path in candidates if path.exists()), None)
 
 
-def _connection_kwargs(profile: ConnectionProfile, password: str | None = None) -> dict[str, object]:
+def _connection_kwargs(profile: ConnectionProfile, password: str | None = None) -> dict[str, Any]:
     """Build the driver arguments shared by probes and live sessions."""
     kwargs: dict[str, object] = {
         "dsn": _dsn(profile),
@@ -87,7 +88,7 @@ def _connection_kwargs(profile: ConnectionProfile, password: str | None = None) 
     return kwargs
 
 
-def _connect_callable(profile: ConnectionProfile):
+def _connect_callable(profile: ConnectionProfile) -> Callable[..., Any]:
     if profile.version == "2.5":
         import fdb
 
