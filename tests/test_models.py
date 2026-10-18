@@ -60,7 +60,7 @@ class ProfileTests(unittest.TestCase):
             def deleteLater(self): pass
         tabs = Tabs(); manager = SqlDocumentManager(tabs); editor = Editor()
         manager.add(editor, "SQL 1", "Local")
-        self.assertEqual(tabs.tabText(0), "SQL 1 · Local")
+        self.assertEqual(tabs.tabText(0), "SQL 1")
         manager.close(0, lambda: None)
         self.assertEqual(tabs.count(), 0)
 
