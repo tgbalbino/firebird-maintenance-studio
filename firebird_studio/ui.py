@@ -297,8 +297,8 @@ class MainWindow:
         # callback or binding lookup seeing a partially initialized window.
         self.activity_panel = activity_panel
         from PySide6.QtWidgets import QPushButton
-        self.activity_trace_button = QPushButton("Iniciar histórico")
-        self.activity_trace_button.setToolTip("Capturar consultas concluídas usando o Trace Service do Firebird")
+        self.activity_trace_button = QPushButton("Iniciar histórico (Trace)")
+        self.activity_trace_button.setToolTip("Opcional: capturar também consultas já concluídas usando o Trace Service do Firebird")
         self.activity_trace_button.clicked.connect(self._toggle_trace_monitor)
         activity_controls = activity_panel.layout().itemAt(0).layout()
         if activity_controls is not None:
@@ -4010,6 +4010,7 @@ class MainWindow:
         # child was closed.
         if self.activity_auto_refresh.isChecked() and not self.activity_refresh_timer.isActive():
             self.activity_refresh_timer.start()
+            self.status.setText("Monitor automático iniciado: consultas ativas do banco.")
 
         # Reopen the shared result form immediately.  After the user closes
         # the MDI child, the activity tab is still selected and no tab-change
@@ -4118,7 +4119,7 @@ class MainWindow:
     def _trace_finished(self):
         self._read_trace_output()
         if getattr(self, "activity_trace_button", None) is not None:
-            self.activity_trace_button.setText("Iniciar histórico")
+            self.activity_trace_button.setText("Iniciar histórico (Trace)")
         self.trace_process = None
         config_path = getattr(self, "trace_config_path", None)
         self.trace_config_path = None
@@ -4198,7 +4199,7 @@ class MainWindow:
             "Estado: nenhuma consulta em execução neste instante" if not statements else "Estado: consultas em execução encontradas",
             "Este painel é atualizado automaticamente e mostra apenas consultas ainda em execução no instante da leitura.",
             "Consultas muito rápidas podem terminar entre duas leituras; use o histórico Trace para capturar consultas concluídas.",
-            "Histórico completo: use o botão 'Iniciar histórico' para capturar consultas concluídas pelo Trace Service.",
+            "Histórico completo: use o botão 'Iniciar histórico (Trace)' para capturar consultas concluídas.",
             f"Última atualização: {datetime.now():%d/%m/%Y %H:%M:%S}",
             "Senha: não exposta pelo monitoramento",
         ]
