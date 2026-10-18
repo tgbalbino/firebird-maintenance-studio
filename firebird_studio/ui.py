@@ -4102,7 +4102,10 @@ class MainWindow:
             process.finished.connect(self._trace_finished)
             self.trace_process = process
             self.trace_lines = []
-            process.start(str(executable), ["-SE", service, "-USER", profile.user, "-PASSWORD", password, "-START", "-NAME", "Firebird Maintenance Studio", "-CONFIG", str(self.trace_config_path)])
+            # Firebird 2.5 does not preserve spaces in the -NAME value and
+            # treats the remaining words as unknown switches. Keep the trace
+            # session name as one token for all supported Firebird versions.
+            process.start(str(executable), ["-SE", service, "-USER", profile.user, "-PASSWORD", password, "-START", "-NAME", "FirebirdMaintenanceStudio", "-CONFIG", str(self.trace_config_path)])
             self.activity_trace_button.setText("Parar histórico")
             self.status.setText("Histórico de consultas iniciado pelo Trace Service.")
         except Exception as exc:
@@ -4117,10 +4120,17 @@ class MainWindow:
             return
         self.trace_lines.extend(line for line in text.splitlines() if line.strip())
         self.trace_lines = self.trace_lines[-200:]
+        # Keep the active-query summary visible while the automatic monitor
+        # continues refreshing; otherwise each one-second refresh would hide
+        # the trace events immediately after they arrive.
+        current = self.activity_metrics.toPlainText()
+        marker = "\n\nHISTÓRICO DE CONSULTAS (TRACE)"
+        prefix = current.split(marker, 1)[0].rstrip()
         self.activity_metrics.setPlainText(
-            "HISTÓRICO DE CONSULTAS (TRACE)\n\n"
-            "O Trace registra consultas concluídas e em execução.\n"
-            "\n".join(self.trace_lines)
+            prefix
+            + marker
+            + "\nO Trace registra consultas concluídas e em execução.\n"
+            + "\n".join(self.trace_lines)
         )
 
     def _trace_finished(self):
@@ -4210,6 +4220,13 @@ class MainWindow:
             f"Última atualização: {datetime.now():%d/%m/%Y %H:%M:%S}",
             "Senha: não exposta pelo monitoramento",
         ]
+        if self.trace_lines:
+            lines.extend([
+                "",
+                "HISTÓRICO DE CONSULTAS (TRACE)",
+                "O Trace registra consultas concluídas e em execução.",
+                *self.trace_lines[-200:],
+            ])
         self.activity_metrics.setPlainText("\n".join(lines))
         headers = ["ID", "Conexão", "Usuário", "Terminal", "Aplicação", "Início", "Duração", "SQL"]
         self.activity_table.setSortingEnabled(False)
