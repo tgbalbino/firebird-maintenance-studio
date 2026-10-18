@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 def create_activity_panel(on_refresh, on_export, on_open_sql, on_filter, on_auto_refresh, on_double_click, on_interval_changed):
-    from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTableWidget, QTextEdit, QVBoxLayout, QWidget
+    from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTableWidget, QTabWidget, QTextEdit, QVBoxLayout, QWidget
     from PySide6.QtCore import Qt
 
     metrics = QTextEdit()
@@ -14,6 +14,13 @@ def create_activity_panel(on_refresh, on_export, on_open_sql, on_filter, on_auto
     table.setEditTriggers(QTableWidget.NoEditTriggers)
     table.setSelectionMode(QTableWidget.ExtendedSelection)
     table.setSortingEnabled(True)
+    trace_table = QTableWidget()
+    trace_table.setEditTriggers(QTableWidget.NoEditTriggers)
+    trace_table.setSelectionBehavior(QTableWidget.SelectRows)
+    trace_table.setSortingEnabled(True)
+    trace_table.setColumnCount(3)
+    trace_table.setHorizontalHeaderLabels(["Data/hora", "Evento", "SQL / detalhes"])
+    trace_table.horizontalHeader().setStretchLastSection(True)
     refresh = QPushButton("Atualizar")
     refresh.setToolTip("Atualizar agora as consultas em execução")
     refresh.clicked.connect(on_refresh)
@@ -49,8 +56,11 @@ def create_activity_panel(on_refresh, on_export, on_open_sql, on_filter, on_auto
     layout = QVBoxLayout(panel)
     layout.addLayout(controls)
     layout.addWidget(metrics)
-    layout.addWidget(table, 1)
-    return panel, metrics, table, refresh, export, open_sql, filter_edit, auto_refresh, interval
+    tabs = QTabWidget()
+    tabs.addTab(table, "Consultas ativas")
+    tabs.addTab(trace_table, "Histórico Trace")
+    layout.addWidget(tabs, 1)
+    return panel, metrics, table, trace_table, refresh, export, open_sql, filter_edit, auto_refresh, interval
 
 
 def create_sessions_panel(on_filter, on_disconnect):

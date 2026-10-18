@@ -286,6 +286,7 @@ class MainWindow:
             activity_panel,
             self.activity_metrics,
             self.activity_table,
+            self.activity_trace_table,
             self.activity_refresh_button,
             self.activity_export_button,
             self.activity_open_sql_button,
@@ -308,6 +309,7 @@ class MainWindow:
         self.trace_lines = []
         self._trace_last_render = 0.0
         self.trace_status = ""
+        self._trace_rows = []
         self.activity_refresh_shortcut = QShortcut(QKeySequence("Ctrl+R"), activity_panel)
         self.activity_refresh_shortcut.setContext(Qt.WidgetWithChildrenShortcut)
         self.activity_refresh_shortcut.activated.connect(self.inspect_activity)
@@ -4182,6 +4184,7 @@ class MainWindow:
             process.started.connect(self._trace_started)
             self.trace_process = process
             self.trace_lines = []
+            self._trace_rows = []
             self._trace_last_render = 0.0
             self.trace_status = "Trace ativo · aguardando eventos do banco..."
             # Firebird 2.5 does not preserve spaces in the -NAME value and
@@ -4211,6 +4214,7 @@ class MainWindow:
             return
         self.trace_lines.extend(line for line in text.splitlines() if line.strip())
         self.trace_lines = self.trace_lines[-200:]
+        self._update_trace_table()
         self.trace_status = f"Trace ativo · {len(self.trace_lines)} evento(s) recebido(s)"
         self.status.setText(self.trace_status)
         # Trace can emit a large burst of lines. Keep collecting immediately,
@@ -4221,6 +4225,36 @@ class MainWindow:
             return
         self._trace_last_render = now
         self._render_trace_output()
+
+    def _update_trace_table(self):
+        """Show raw Trace events in a sortable grid, separate from active SQL."""
+        table = getattr(self, "activity_trace_table", None)
+        if table is None:
+            return
+        from PySide6.QtWidgets import QTableWidgetItem
+        import re
+
+        table.setRowCount(0)
+        for line in self.trace_lines[-200:]:
+            timestamp = ""
+            match = re.match(r"(\d{4}-\d\d-\d\d\s+\d\d:\d\d:\d\d(?:\.\d+)?)", line)
+            if match:
+                timestamp = match.group(1)
+            event = ""
+            for candidate in ("EXECUTE_STATEMENT_START", "EXECUTE_STATEMENT_FINISH", "ATTACH_DATABASE", "DETACH_DATABASE", "TRACE_INIT", "TRACE_FINI"):
+                if candidate in line:
+                    event = candidate
+                    break
+            if not event:
+                event = "Trace"
+            row = table.rowCount()
+            table.insertRow(row)
+            table.setItem(row, 0, QTableWidgetItem(timestamp))
+            table.setItem(row, 1, QTableWidgetItem(event))
+            table.setItem(row, 2, QTableWidgetItem(line))
+        table.resizeColumnsToContents()
+        if table.columnCount() >= 3:
+            table.horizontalHeader().setStretchLastSection(True)
 
     def _render_trace_output(self):
         """Render the buffered trace tail without hiding the active summary."""
@@ -4260,6 +4294,7 @@ class MainWindow:
             self.status.setText("O Trace Service foi encerrado sem registrar eventos. Verifique usuário, senha e permissões de monitoramento.")
         else:
             self.status.setText(self.trace_status)
+        self._update_trace_table()
 
     def _trace_error(self, error):
         self._read_trace_output()
