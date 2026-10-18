@@ -535,6 +535,7 @@ class MainWindow:
         self._setup_main_menu()
         app_instance = QApplication.instance()
         if app_instance is not None:
+            app_instance.aboutToQuit.connect(self._stop_activity_refresh)
             app_instance.aboutToQuit.connect(self._close_transaction)
             app_instance.aboutToQuit.connect(self._save_window_geometry)
         self.profile_list.itemClicked.connect(self._on_profile_clicked)
@@ -3901,6 +3902,12 @@ class MainWindow:
         else:
             self.activity_refresh_timer.stop()
             self.status.setText("Atualização automática do painel desativada.")
+
+    def _stop_activity_refresh(self):
+        """Stop background activity polling before the application exits."""
+        timer = getattr(self, "activity_refresh_timer", None)
+        if timer is not None and timer.isActive():
+            timer.stop()
 
     def _set_activity_refresh_interval(self, interval_ms):
         try:
