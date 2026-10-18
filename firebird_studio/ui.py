@@ -4078,6 +4078,7 @@ class MainWindow:
             process = QProcess(self._window)
             process.setProcessChannelMode(QProcess.MergedChannels)
             process.readyReadStandardOutput.connect(self._read_trace_output)
+            process.errorOccurred.connect(self._trace_error)
             process.finished.connect(self._trace_finished)
             self.trace_process = process
             self.trace_lines = []
@@ -4114,6 +4115,13 @@ class MainWindow:
                 config_path.unlink(missing_ok=True)
             except OSError:
                 pass
+
+        if not self.trace_lines:
+            self.status.setText("O Trace Service foi encerrado sem registrar eventos. Verifique usuário, senha e permissões de monitoramento.")
+
+    def _trace_error(self, error):
+        self._read_trace_output()
+        self.status.setText(f"Falha no Trace Service: {error}")
 
     def _stop_trace_monitor(self):
         from PySide6.QtCore import QProcess
