@@ -2784,6 +2784,28 @@ class MainWindow:
                 disconnect = menu.addAction("Desconectar banco")
                 disconnect.triggered.connect(self.disconnect_selected)
                 menu.addSeparator()
+        category_item = item if item.parent() is None else item.parent()
+        category = category_item.text(0).rsplit(" (", 1)[0]
+        object_kinds = {
+            "Domínios": ("domínio", "DOMAIN"),
+            "Tabelas": ("tabela", "TABLE"),
+            "Views": ("view", "VIEW"),
+            "Procedures": ("procedure", "PROCEDURE"),
+            "Triggers": ("trigger", "TRIGGER"),
+            "Generators": ("generator", "GENERATOR"),
+            "Exceções": ("exceção", "EXCEPTION"),
+            "Functions": ("function", "FUNCTION"),
+            "Roles": ("role", "ROLE"),
+            "Índices": ("índice", "INDEX"),
+        }
+        if category in object_kinds and 0 <= profile_index < len(self.profiles):
+            label, kind = object_kinds[category]
+            new_object = menu.addAction(f"Novo {label}...")
+            new_object.setToolTip(f"Criar um modelo SQL de {label} no editor")
+            new_object.triggered.connect(
+                lambda _checked=False, selected=profile_index, object_kind=kind: self._new_object_script(selected, object_kind)
+            )
+            menu.addSeparator()
         if item.childCount():
             if item.isExpanded():
                 action = menu.addAction("Recolher objetos")
@@ -2795,6 +2817,41 @@ class MainWindow:
         collapse_all.triggered.connect(self._collapse_all_profiles)
         origin = self.profile_list.viewport().mapToGlobal(position)
         self._popup_menu_fitting(menu, origin, self.profile_list)
+
+    def _new_object_script(self, profile_index: int, kind: str):
+        """Create an editable SQL template for a database object."""
+        from PySide6.QtWidgets import QInputDialog
+
+        if 0 <= profile_index < len(self.profiles):
+            self.select_profile(profile_index)
+        labels = {
+            "DOMAIN": "domínio", "TABLE": "tabela", "VIEW": "view", "PROCEDURE": "procedure",
+            "TRIGGER": "trigger", "GENERATOR": "generator", "EXCEPTION": "exceção",
+            "FUNCTION": "function", "ROLE": "role", "INDEX": "índice",
+        }
+        label = labels.get(kind, "objeto")
+        name, accepted = QInputDialog.getText(self._window, f"Novo {label}", f"Nome do {label}:")
+        name = name.strip()
+        if not accepted or not name:
+            return
+        quoted = '"' + name.replace('"', '""') + '"'
+        templates = {
+            "DOMAIN": f"CREATE DOMAIN {quoted} AS VARCHAR(100);",
+            "TABLE": f"CREATE TABLE {quoted} (\n    ID INTEGER NOT NULL,\n    -- adicione as colunas\n    CONSTRAINT {quoted}_PK PRIMARY KEY (ID)\n);",
+            "VIEW": f"CREATE VIEW {quoted} AS\nSELECT\n    *\nFROM TABELA;",
+            "PROCEDURE": f"CREATE PROCEDURE {quoted}\nAS\nBEGIN\n    -- implemente a procedure\nEND",
+            "TRIGGER": f"CREATE TRIGGER {quoted} FOR TABELA\nACTIVE BEFORE INSERT POSITION 0\nAS\nBEGIN\n    -- implemente o trigger\nEND",
+            "GENERATOR": f"CREATE SEQUENCE {quoted};",
+            "EXCEPTION": f"CREATE EXCEPTION {quoted} 'Mensagem da exceção';",
+            "FUNCTION": f"CREATE FUNCTION {quoted}()\nRETURNS INTEGER\nAS\nBEGIN\n    RETURN 0;\nEND",
+            "ROLE": f"CREATE ROLE {quoted};",
+            "INDEX": f"CREATE INDEX {quoted} ON TABELA (CAMPO);",
+        }
+        self._new_sql_tab()
+        self.editor.setPlainText(templates.get(kind, f"-- Novo {label}\n"))
+        self.editor.setProperty("document_title", f"Novo {label}: {name}")
+        self._update_sql_tab_title()
+        self.status.setText(f"Modelo de {label} criado no editor SQL.")
 
     def _show_profile_menu(self, button, menu):
         """Show the connection menu inside the available screen geometry."""
