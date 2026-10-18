@@ -1911,9 +1911,13 @@ class MainWindow:
             self.commit_transaction_action.setEnabled(dirty)
             self.rollback_transaction_action.setEnabled(dirty)
             if dirty:
+                self.commit_transaction_action.setText("Commit")
+                self.rollback_transaction_action.setText("Rollback")
                 self.commit_transaction_action.setToolTip("Confirmar as alterações pendentes da transação")
                 self.rollback_transaction_action.setToolTip("Desfazer as alterações pendentes da transação")
             else:
+                self.commit_transaction_action.setText("Commit (sem alterações)")
+                self.rollback_transaction_action.setText("Rollback (sem alterações)")
                 message = "Execute uma alteração dentro da transação para habilitar esta opção."
                 self.commit_transaction_action.setToolTip(message)
                 self.rollback_transaction_action.setToolTip(message)
