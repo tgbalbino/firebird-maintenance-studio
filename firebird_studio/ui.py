@@ -4169,7 +4169,24 @@ class MainWindow:
             self._stop_trace_monitor()
             return
         try:
-            profile = self._query_profile()
+            # The activity panel can outlive a SQL child window. Resolve the
+            # profile from the active editor or tree directly so this action
+            # never touches the deleted modal connection fields.
+            profile = None
+            editor = getattr(self, "editor", None)
+            try:
+                profile_name = editor.property("query_profile") if editor is not None else ""
+            except RuntimeError:
+                profile_name = ""
+            if profile_name:
+                profile = next((item for item in self.profiles if item.name == profile_name), None)
+            if profile is None:
+                selected = getattr(self, "_selected_profile_index", -1)
+                if 0 <= selected < len(self.profiles):
+                    profile = self.profiles[selected]
+            if profile is None:
+                self._show_message("Histórico de consultas", "Selecione um banco conectado para iniciar o Trace.", warning=True)
+                return
             executable = find_trace_manager(profile)
             if executable is None:
                 self._show_message("Histórico de consultas", "fbtracemgr.exe não foi encontrado na instalação do Firebird.", warning=True)
