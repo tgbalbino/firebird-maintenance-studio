@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from firebird_studio.models import ConnectionProfile
+from firebird_studio.connection import _connection_kwargs
 from firebird_studio.transaction import TransactionSession
 from firebird_studio.plan import explain_query
 from firebird_studio.health import list_statements, terminate_session
@@ -48,6 +49,24 @@ class _Connection:
 
 
 class TransactionTests(unittest.TestCase):
+    def test_shared_connection_arguments_include_profile_settings(self):
+        profile = ConnectionProfile(
+            "Local",
+            host="db.example",
+            port=3051,
+            database="/srv/data.fdb",
+            user="APP",
+            role="RDB$ADMIN",
+            charset="WIN1252",
+            version="5",
+        )
+        kwargs = _connection_kwargs(profile, "secret")
+        self.assertEqual(kwargs["dsn"], "db.example/3051:/srv/data.fdb")
+        self.assertEqual(kwargs["user"], "APP")
+        self.assertEqual(kwargs["password"], "secret")
+        self.assertEqual(kwargs["role"], "RDB$ADMIN")
+        self.assertEqual(kwargs["charset"], "WIN1252")
+
     def test_transaction_result_is_bounded(self):
         class BoundedCursor(_Cursor):
             description = [("VALUE",)]
