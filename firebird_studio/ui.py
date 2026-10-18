@@ -315,6 +315,8 @@ class MainWindow:
         self.activity_refresh_shortcut.activated.connect(self.inspect_activity)
         self.activity_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.activity_table.customContextMenuRequested.connect(self._activity_context_menu)
+        self.activity_trace_table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.activity_trace_table.customContextMenuRequested.connect(self._trace_context_menu)
         saved_activity_interval = int(self._settings.value("activity_refresh_interval", 1000))
         interval_index = self.activity_refresh_interval.findData(saved_activity_interval)
         self.activity_refresh_interval.setCurrentIndex(interval_index if interval_index >= 0 else 0)
@@ -4234,6 +4236,12 @@ class MainWindow:
         from PySide6.QtWidgets import QTableWidgetItem
         import re
 
+        selected_detail = ""
+        selected = table.currentItem()
+        if selected is not None:
+            selected_row = selected.row()
+            detail = table.item(selected_row, 2)
+            selected_detail = detail.text() if detail is not None else ""
         table.setRowCount(0)
         for line in self.trace_lines[-200:]:
             timestamp = ""
@@ -4252,9 +4260,33 @@ class MainWindow:
             table.setItem(row, 0, QTableWidgetItem(timestamp))
             table.setItem(row, 1, QTableWidgetItem(event))
             table.setItem(row, 2, QTableWidgetItem(line))
+            if selected_detail and line == selected_detail:
+                table.selectRow(row)
         table.resizeColumnsToContents()
         if table.columnCount() >= 3:
             table.horizontalHeader().setStretchLastSection(True)
+
+    def _trace_context_menu(self, position):
+        from PySide6.QtWidgets import QApplication, QMenu
+
+        table = self.activity_trace_table
+        item = table.itemAt(position)
+        if item is not None:
+            table.selectRow(item.row())
+        row = table.currentRow()
+        menu = QMenu(self._window)
+        copy_action = menu.addAction("Copiar evento")
+        copy_sql_action = menu.addAction("Copiar SQL/detalhes")
+        copy_action.setEnabled(row >= 0)
+        copy_sql_action.setEnabled(row >= 0)
+        copy_action.triggered.connect(lambda: QApplication.clipboard().setText(" | ".join(
+            table.item(row, column).text() if table.item(row, column) is not None else ""
+            for column in range(table.columnCount())
+        )))
+        copy_sql_action.triggered.connect(lambda: QApplication.clipboard().setText(
+            table.item(row, 2).text() if table.item(row, 2) is not None else ""
+        ))
+        menu.exec(table.viewport().mapToGlobal(position))
 
     def _render_trace_output(self):
         """Render the buffered trace tail without hiding the active summary."""
