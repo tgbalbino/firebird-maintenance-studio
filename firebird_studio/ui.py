@@ -306,6 +306,7 @@ class MainWindow:
         self.trace_process = None
         self.trace_config_path = None
         self.trace_lines = []
+        self._trace_last_render = 0.0
         self.activity_refresh_shortcut = QShortcut(QKeySequence("Ctrl+R"), activity_panel)
         self.activity_refresh_shortcut.setContext(Qt.WidgetWithChildrenShortcut)
         self.activity_refresh_shortcut.activated.connect(self.inspect_activity)
@@ -3495,7 +3496,13 @@ class MainWindow:
         from PySide6.QtCore import QThread, QTimer, Qt
         from PySide6.QtWidgets import QApplication
 
-        if self._operation_thread is not None and self._operation_thread.isRunning():
+        # The thread may not report isRunning() during the short interval
+        # between construction and start(). Treat the worker reference as
+        # busy too, otherwise repeated clicks can launch concurrent DDL jobs
+        # against the same database and appear to freeze the application.
+        if self._operation_thread is not None and (
+            self._operation_thread.isRunning() or self._operation_worker is not None
+        ):
             self.status.setText(f"A operação '{self._operation_name}' ainda está em execução.")
             return False
         if OperationWorker is None:
@@ -4078,7 +4085,9 @@ class MainWindow:
         # A refresh is asynchronous. Do not repeatedly raise the result
         # window or queue another request while the previous database read is
         # still running; this keeps the editor responsive on busy databases.
-        if self._operation_thread is not None and self._operation_thread.isRunning():
+        if self._operation_thread is not None and (
+            self._operation_thread.isRunning() or self._operation_worker is not None
+        ):
             return
 
         # Start polling only once the activity panel is actually opened. This
@@ -4171,6 +4180,7 @@ class MainWindow:
             process.finished.connect(self._trace_finished)
             self.trace_process = process
             self.trace_lines = []
+            self._trace_last_render = 0.0
             # Firebird 2.5 does not preserve spaces in the -NAME value and
             # treats the remaining words as unknown switches. Keep the trace
             # session name as one token for all supported Firebird versions.
@@ -4189,9 +4199,17 @@ class MainWindow:
             return
         self.trace_lines.extend(line for line in text.splitlines() if line.strip())
         self.trace_lines = self.trace_lines[-200:]
-        # Keep the active-query summary visible while the automatic monitor
-        # continues refreshing; otherwise each one-second refresh would hide
-        # the trace events immediately after they arrive.
+        # Trace can emit a large burst of lines. Keep collecting immediately,
+        # but redraw the Qt text widget at most four times per second so the
+        # application remains responsive while another tool is querying.
+        now = time.monotonic()
+        if now - self._trace_last_render < 0.25:
+            return
+        self._trace_last_render = now
+        self._render_trace_output()
+
+    def _render_trace_output(self):
+        """Render the buffered trace tail without hiding the active summary."""
         current = self.activity_metrics.toPlainText()
         marker = "\n\nHISTÓRICO DE CONSULTAS (TRACE)"
         prefix = current.split(marker, 1)[0].rstrip()
@@ -4204,6 +4222,8 @@ class MainWindow:
 
     def _trace_finished(self):
         self._read_trace_output()
+        if self.trace_lines:
+            self._render_trace_output()
         if getattr(self, "activity_trace_button", None) is not None:
             self.activity_trace_button.setText("Iniciar histórico (Trace)")
         self.trace_process = None
