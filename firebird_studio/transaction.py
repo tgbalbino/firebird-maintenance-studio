@@ -45,6 +45,7 @@ class TransactionSession:
         if max_rows < 1:
             return QueryResult(False, [], [], "O limite de linhas deve ser maior que zero.")
         started = time.perf_counter()
+        cursor = None
         try:
             cursor = self.connection.cursor()
             cursor.execute(sql)
@@ -70,6 +71,12 @@ class TransactionSession:
             return result
         except Exception as exc:
             return QueryResult(False, [], [], f"Falha ao executar SQL: {exc}", (time.perf_counter() - started) * 1000)
+        finally:
+            if cursor is not None:
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
 
     def commit(self) -> None:
         self.connection.commit()
