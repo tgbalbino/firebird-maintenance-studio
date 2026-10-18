@@ -3144,17 +3144,28 @@ class MainWindow:
         if explicit_transaction and self._transaction_profile_name != profile.name:
             self.status.setText(f"A transação aberta pertence à conexão '{self._transaction_profile_name}'. Faça Commit/Rollback antes de trocar de banco.")
             return
-        if changes_data and commit and not explicit_transaction:
-            from PySide6.QtWidgets import QMessageBox
-            answer = QMessageBox.question(
-                self._window,
-                "Confirmar alteração no banco",
-                "A instrução pode alterar a estrutura ou os dados. Deseja confirmar a transação?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No,
+        if explicit_transaction and getattr(self._transaction_session, "dirty", False):
+            message = (
+                "Existe uma transação não finalizada com alterações pendentes. "
+                "Faça Commit ou Rollback antes de executar outro comando."
             )
-            if answer != QMessageBox.Yes:
-                self.status.setText("Execução cancelada; nenhuma alteração foi aplicada.")
+            self.status.setText(message)
+            self._show_message("Transação não finalizada", message, warning=True)
+            return
+        auto_transaction = False
+        if changes_data and not explicit_transaction:
+            # DML is always explicit now: the user must decide whether to
+            # commit or undo it before another SQL command can run.
+            from .transaction import TransactionSession
+            try:
+                self._transaction_session = TransactionSession(profile, self._password_for(profile))
+                self._transaction_profile_name = profile.name
+                explicit_transaction = True
+                auto_transaction = True
+            except Exception as exc:
+                self._transaction_session = None
+                self._transaction_profile_name = ""
+                self._show_message("Falha ao iniciar transação", str(exc), warning=True)
                 return
         from PySide6.QtWidgets import QApplication
         from PySide6.QtCore import Qt
@@ -3168,6 +3179,8 @@ class MainWindow:
             self._log_event("Falha inesperada na execução SQL", profile=profile.name, statement=statement.split(None, 1)[0] if statement else "", error=detail)
             self.status.setText(f"Falha ao executar SQL: {detail}")
             self.result_summary.setText("Resultado: falha na execução")
+            if auto_transaction:
+                self._close_transaction(rollback=True)
             self._show_message("Falha ao executar SQL", detail, warning=True)
             return
         finally:
@@ -3176,10 +3189,12 @@ class MainWindow:
         self._log_event("SQL executado", profile=profile.name, statement=statement.split(None, 1)[0] if statement else "", commit=commit, ok=result.ok, rows=len(result.rows), elapsed_ms=f"{result.elapsed_ms:.1f}", detail=result.message)
         if explicit_transaction:
             self._set_transaction_actions(True)
+        if auto_transaction and not result.ok:
+            self._close_transaction(rollback=True)
         self._add_query_history(sql_text)
         if not result.ok:
             self._show_message("Falha ao executar SQL", result.message, warning=True)
-        suffix = " Transação aberta; escolha Commit ou Rollback." if explicit_transaction and result.ok else (" Alterações confirmadas." if changes_data and commit and result.ok else (" Alterações desfeitas (modo seguro)." if changes_data and result.ok else ""))
+        suffix = " Transação pendente; escolha Commit ou Rollback." if explicit_transaction and changes_data and result.ok else (" Alterações confirmadas." if changes_data and commit and result.ok else (" Alterações desfeitas (modo seguro)." if changes_data and result.ok else ""))
         self.status.setText(f"{result.message} ({result.elapsed_ms:.1f} ms)." + suffix)
         self.result_summary.setText(f"Resultado: {'OK' if result.ok else 'falha'} · {len(result.rows)} linha(s) · {result.elapsed_ms:.1f} ms")
         self._show_sql_result()
