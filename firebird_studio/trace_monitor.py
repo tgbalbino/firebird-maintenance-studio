@@ -25,23 +25,19 @@ def find_trace_manager(profile: ConnectionProfile) -> Path | None:
 
 def build_trace_config(profile: ConnectionProfile) -> str:
     """Return a trace configuration compatible with Firebird 2.5 and newer."""
-    database = profile.database.strip().replace("\\", "/")
     if profile.version == "2.5":
         # Firebird 2.5 interprets a database selector as a regular expression
         # (the examples use %[\\\\/] to match either Windows separator).
         # Escape the configured path so dots and other filename characters do
         # not change the selector, while accepting both slash styles emitted
         # by the server.
-        # The trace matcher receives the fully qualified path but the drive
-        # prefix is not stable across client/server setups. Match the path
-        # from its first separator, as recommended by Firebird's template.
-        path = database[2:] if len(database) >= 2 and database[1] == ":" else database
-        # The Firebird trace matcher uses SIMILAR TO syntax; filename dots
-        # are accepted directly in its examples, while slashes need the
-        # explicit separator class.
-        pattern = "%" + path.replace("/", r"[\\/]")
+        # Firebird 2.5 resolves aliases and server-side paths before tracing.
+        # A path-specific selector can therefore silently miss the database
+        # when the client profile uses a different alias or slash style. Use
+        # the default database section so every database event reaches the
+        # monitor; the selected connection remains the scope shown by the UI.
         return (
-            f"<database {pattern}>\n"
+            "<database>\n"
             "    enabled true\n"
             "    log_connections true\n"
             "    log_statement_start true\n"

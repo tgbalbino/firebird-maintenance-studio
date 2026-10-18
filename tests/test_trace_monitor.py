@@ -8,7 +8,7 @@ class TraceMonitorTests(unittest.TestCase):
     def test_firebird_25_trace_configuration(self):
         profile = ConnectionProfile("Local", database="C:/data/test.fdb", version="2.5")
         config = build_trace_config(profile)
-        self.assertIn("<database %[\\\\/]data[\\\\/]test.fdb>", config)
+        self.assertIn("<database>\n", config)
         self.assertNotIn("<database C:/data/test.fdb>", config)
         self.assertIn("log_connections true", config)
         self.assertIn("log_statement_finish true", config)
