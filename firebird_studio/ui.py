@@ -4091,6 +4091,7 @@ class MainWindow:
             f"Transações: oldest={metrics.get('oldest_transaction') or 'N/D'} · active={metrics.get('oldest_active') or 'N/D'} · next={metrics.get('next_transaction') or 'N/D'}",
             f"Consultas em execução: {len(statements)}",
             "Estado: nenhuma consulta em execução neste instante" if not statements else "Estado: consultas em execução encontradas",
+            "Este painel mostra apenas consultas ainda em execução; consultas concluídas não ficam no snapshot.",
             f"Última atualização: {datetime.now():%d/%m/%Y %H:%M:%S}",
             "Senha: não exposta pelo monitoramento",
         ]

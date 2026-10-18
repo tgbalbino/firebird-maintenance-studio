@@ -170,6 +170,7 @@ def list_statements(profile: ConnectionProfile, password: str | None = None) -> 
                 FROM MON$STATEMENTS s
                 LEFT JOIN MON$ATTACHMENTS a ON a.MON$ATTACHMENT_ID = s.MON$ATTACHMENT_ID
                 WHERE s.MON$STATE = 1 AND s.MON$SQL_TEXT IS NOT NULL
+                  AND UPPER(s.MON$SQL_TEXT) NOT LIKE '%MON$STATEMENTS%'
                 ORDER BY s.MON$TIMESTAMP
             """)
         except Exception:
@@ -179,6 +180,7 @@ def list_statements(profile: ConnectionProfile, password: str | None = None) -> 
                        MON$STATE, MON$TIMESTAMP, MON$SQL_TEXT
                 FROM MON$STATEMENTS
                 WHERE MON$STATE = 1 AND MON$SQL_TEXT IS NOT NULL
+                  AND UPPER(MON$SQL_TEXT) NOT LIKE '%MON$STATEMENTS%'
                 ORDER BY MON$TIMESTAMP
             """)
     now = datetime.now(timezone.utc)
@@ -196,8 +198,11 @@ def list_statements(profile: ConnectionProfile, password: str | None = None) -> 
         elapsed = None
         if isinstance(timestamp, datetime):
             if timestamp.tzinfo is None:
-                timestamp = timestamp.replace(tzinfo=timezone.utc)
-            elapsed = max(0.0, (now - timestamp.astimezone(timezone.utc)).total_seconds())
+                # Firebird returns MON$TIMESTAMP without timezone. Treat it
+                # as local server time so UTC offsets do not add fake hours.
+                elapsed = max(0.0, (datetime.now() - timestamp).total_seconds())
+            else:
+                elapsed = max(0.0, (now - timestamp.astimezone(timezone.utc)).total_seconds())
         statements.append({
             "id": row[0] if len(row) > 0 else None,
             "attachment_id": row[1] if len(row) > 1 else None,

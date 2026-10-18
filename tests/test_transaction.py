@@ -184,6 +184,7 @@ class TransactionTests(unittest.TestCase):
         self.assertEqual(statements[0]["id"], 7)
         self.assertEqual(statements[0]["user"], "SYSDBA")
         self.assertGreaterEqual(statements[0]["elapsed_seconds"], 3)
+        self.assertLess(statements[0]["elapsed_seconds"], 10)
 
     def test_terminate_session_uses_attachment_id_and_commits(self):
         class Cursor:
