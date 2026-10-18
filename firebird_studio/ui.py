@@ -290,11 +290,12 @@ class MainWindow:
             self.activity_refresh_button,
             self.activity_export_button,
             self.activity_trace_export_button,
+            self.activity_trace_clear_button,
             self.activity_open_sql_button,
             self.activity_filter,
             self.activity_auto_refresh,
             self.activity_refresh_interval,
-        ) = create_activity_panel(self.inspect_activity, self.export_activity_csv, self.open_activity_sql, self._filter_activity_rows, self._toggle_activity_auto_refresh, self._open_activity_sql_at, self._set_activity_refresh_interval, self.export_trace_csv)
+        ) = create_activity_panel(self.inspect_activity, self.export_activity_csv, self.open_activity_sql, self._filter_activity_rows, self._toggle_activity_auto_refresh, self._open_activity_sql_at, self._set_activity_refresh_interval, self.export_trace_csv, self.clear_trace_history)
         # Keep a local reference while wiring the shortcut.  This avoids any
         # callback or binding lookup seeing a partially initialized window.
         self.activity_panel = activity_panel
@@ -4692,6 +4693,20 @@ class MainWindow:
         except Exception as exc:
             self._log_event("Falha ao exportar Trace", filename=filename, error=str(exc))
             self._show_message("Falha ao exportar Trace", str(exc))
+
+    def clear_trace_history(self):
+        """Clear displayed Trace events while keeping fbtracemgr running."""
+        self.trace_lines = []
+        self._trace_rows = []
+        table = getattr(self, "activity_trace_table", None)
+        if table is not None:
+            table.setRowCount(0)
+        if getattr(self, "trace_process", None) is not None:
+            self.trace_status = "Trace ativo · aguardando novos eventos..."
+        else:
+            self.trace_status = "Histórico Trace limpo"
+        self._render_trace_output()
+        self.status.setText("Histórico Trace limpo.")
 
     def save_health_report(self):
         """Save the most recent health report without exposing credentials."""
