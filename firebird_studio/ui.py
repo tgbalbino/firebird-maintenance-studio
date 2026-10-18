@@ -2797,6 +2797,19 @@ class MainWindow:
             monitor = menu.addAction("Monitorar consultas")
             monitor.setToolTip("Abrir atividade e consultas em execução deste banco")
             monitor.triggered.connect(lambda _checked=False, selected=profile_index: self._open_activity_for_profile(selected))
+            maintenance_menu = menu.addMenu("Manutenção do banco")
+            maintenance_menu.addAction(
+                "Recalcular seletividade de todos os índices",
+                lambda _checked=False, selected=profile_index: self._run_database_maintenance(selected, "indexes"),
+            )
+            maintenance_menu.addAction(
+                "Recompilar todas as procedures",
+                lambda _checked=False, selected=profile_index: self._run_database_maintenance(selected, "procedures"),
+            )
+            maintenance_menu.addAction(
+                "Recompilar todos os triggers",
+                lambda _checked=False, selected=profile_index: self._run_database_maintenance(selected, "triggers"),
+            )
             menu.addSeparator()
             if profile.name in self.connected_profiles:
                 disconnect = menu.addAction("Desconectar banco")
@@ -2838,6 +2851,62 @@ class MainWindow:
         collapse_all.triggered.connect(self._collapse_all_profiles)
         origin = self.profile_list.viewport().mapToGlobal(position)
         self._popup_menu_fitting(menu, origin, self.profile_list)
+
+    def _run_database_maintenance(self, profile_index: int, action: str):
+        from PySide6.QtWidgets import QMessageBox
+
+        if not (0 <= profile_index < len(self.profiles)):
+            return
+        profile = self.profiles[profile_index]
+        labels = {
+            "indexes": "recalcular a seletividade de todos os índices",
+            "procedures": "recompilar todas as procedures",
+            "triggers": "recompilar todos os triggers",
+        }
+        label = labels.get(action)
+        if label is None:
+            return
+        answer = QMessageBox.question(
+            self._window,
+            "Manutenção do banco",
+            f"Deseja {label} no banco {profile.name}?\n\nA operação pode atualizar metadados e invalidar planos em cache.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        password = self._password_for(profile)
+        from .maintenance import recompute_index_selectivity, recompile_procedures, recompile_triggers
+        operations = {
+            "indexes": recompute_index_selectivity,
+            "procedures": recompile_procedures,
+            "triggers": recompile_triggers,
+        }
+        operation = operations[action]
+
+        def finish(result):
+            if isinstance(result, Exception):
+                self._show_message("Manutenção do banco", str(result), warning=True)
+                self.status.setText(f"Falha na manutenção: {result}")
+                return
+            detail = f"{result.processed} objeto(s) processado(s)"
+            if result.failed:
+                detail += f"; {len(result.failed)} com falha"
+            self.status.setText(f"{result.operation}: {detail}.")
+            if result.failed:
+                self._show_message(
+                    "Manutenção concluída com falhas",
+                    detail + "\n\n" + "\n".join(result.failed[:20]),
+                    warning=True,
+                )
+            else:
+                self._show_toast(f"{result.operation} concluído: {detail}.")
+
+        self._start_background_operation(
+            "Manutenção do banco",
+            lambda: operation(profile, password),
+            finish,
+        )
 
     def _new_object_script(self, profile_index: int, kind: str):
         """Create an editable SQL template for a database object."""
