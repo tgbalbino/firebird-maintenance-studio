@@ -89,6 +89,24 @@ class TransactionTests(unittest.TestCase):
         self.assertEqual(result.rows, [(1,), (2,)])
         self.assertIn("limitado", result.message)
 
+    def test_transaction_uses_shared_driver_arguments(self):
+        connection = _Connection()
+        received = {}
+        fake_driver = types.ModuleType("firebird.driver")
+
+        def connect(**kwargs):
+            received.update(kwargs)
+            return connection
+
+        fake_driver.connect = connect
+        profile = ConnectionProfile("Local", database="sample.fdb", version="5", role="RDB$ADMIN")
+        with patch.dict(sys.modules, {"firebird.driver": fake_driver}):
+            session = TransactionSession(profile, "secret")
+            session.close()
+        self.assertEqual(received["dsn"], "localhost:sample.fdb")
+        self.assertEqual(received["password"], "secret")
+        self.assertEqual(received["role"], "RDB$ADMIN")
+
     def test_commands_wait_for_commit_and_close(self):
         connection = _Connection()
         fake_driver = types.ModuleType("firebird.driver")
