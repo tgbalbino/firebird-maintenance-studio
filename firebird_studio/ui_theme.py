@@ -37,12 +37,16 @@ DARK_STYLE += " QListWidget#sqlHistoryList { padding: 6px; } QListWidget#sqlHist
 # for the tree. Set that state explicitly so focused object names remain dark
 # and readable on the pale blue selection background.
 LIGHT_STYLE += " QTreeWidget::item:selected:!active { color: #1f2937; background: #dbeafe; } QTreeWidget::item:focus { color: #111827; }"
+LIGHT_STYLE += " QAbstractScrollArea { background: #f7f9fc; }"
+DARK_STYLE += " QAbstractScrollArea { background: #171a21; }"
 
 # Additional palettes keep the same layout and controls while offering
 # neutral gray and navy blue alternatives. Explicit tree item colors avoid
 # the low-contrast platform focus color seen in the light palette.
 GRAY_STYLE = LIGHT_STYLE + " QWidget { background: #e7e9ed; color: #20242b; } QMainWindow, QGroupBox, QMdiArea { background: #e7e9ed; color: #20242b; } QWidget#sidebarPanel { background: #dfe3e8; border-color: #aeb7c4; } QWidget#workspacePanel, QMdiArea, QMdiArea::viewport, QMdiArea > QWidget, QMdiSubWindow { background: #e7e9ed; } QLineEdit, QTextEdit, QTableWidget, QTreeWidget, QComboBox, QSpinBox { background: #f7f8fa; color: #20242b; border-color: #7b8491; } QTreeWidget::item:selected, QTableWidget::item:selected { background: #687585; color: #ffffff; } QTreeWidget::item:hover { background: #d2d8e0; color: #20242b; } QMenuBar#mainMenuBar { background: #e7e9ed; color: #20242b; } QStatusBar { background: #d9dde3; color: #20242b; } QMenu::item:disabled { color: #8b949e; }"
 BLUE_STYLE = DARK_STYLE + " QWidget { background: #101d31; color: #edf4ff; } QMainWindow, QGroupBox, QMdiArea { background: #101d31; color: #edf4ff; } QWidget#sidebarPanel { background: #142844; border-color: #41648e; } QWidget#workspacePanel, QMdiArea, QMdiArea::viewport, QMdiArea > QWidget, QMdiSubWindow { background: #101d31; } QLineEdit, QTextEdit, QTableWidget, QTreeWidget, QComboBox, QSpinBox { background: #182f50; color: #edf4ff; border-color: #6f91bb; } QPushButton, QToolButton { background: #244a78; color: #edf4ff; border-color: #7fa7d8; } QTreeWidget::item:selected, QTableWidget::item:selected { background: #2f6fbd; color: #ffffff; } QTreeWidget::item:hover { background: #254b78; color: #ffffff; } QMenuBar#mainMenuBar { background: #101d31; color: #edf4ff; } QStatusBar { background: #142844; color: #edf4ff; } QMenu::item:disabled { color: #7184a0; }"
+GRAY_STYLE += " QAbstractScrollArea { background: #e7e9ed; }"
+BLUE_STYLE += " QAbstractScrollArea { background: #101d31; }"
 
 
 def apply_theme(theme: str) -> None:
