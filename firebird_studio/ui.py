@@ -317,6 +317,7 @@ class MainWindow:
         refresh_interval = saved_activity_interval if interval_index >= 0 else 1000
         self.activity_refresh_timer = QTimer(self._window)
         self.activity_refresh_timer.setInterval(refresh_interval)
+        self.activity_refresh_timer.setTimerType(Qt.CoarseTimer)
         self.activity_refresh_timer.timeout.connect(self.inspect_activity)
         # Keep the monitor ready for continuous polling without querying the
         # database while the main window is still being constructed.  The
@@ -4004,6 +4005,12 @@ class MainWindow:
 
     def inspect_activity(self):
         from .health import inspect_health, list_statements
+
+        # A refresh is asynchronous. Do not repeatedly raise the result
+        # window or queue another request while the previous database read is
+        # still running; this keeps the editor responsive on busy databases.
+        if self._operation_thread is not None and self._operation_thread.isRunning():
+            return
 
         # Start polling only once the activity panel is actually opened. This
         # keeps startup local and lets the panel be reopened after its MDI
