@@ -1924,6 +1924,11 @@ class MainWindow:
             active = bool(self._transaction_session is not None and self._transaction_session.active and getattr(self._transaction_session, "dirty", False))
         if self.editor is None:
             return
+        if active and self._transaction_profile_name:
+            try:
+                active = self.editor.property("query_profile") == self._transaction_profile_name
+            except RuntimeError:
+                active = False
         controls = self.editor.property("sql_toolbar_controls") or ()
         if len(controls) == 2:
             controls[0].setEnabled(active)
