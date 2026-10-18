@@ -22,6 +22,17 @@ def _prepare_qt_runtime() -> None:
     existing = [str(path) for path in candidates if path.is_dir()]
     if existing:
         os.environ["PATH"] = os.pathsep.join(existing + [os.environ.get("PATH", "")])
+        # Prefer the bundled Qt directory even when another Qt installation
+        # is present in the Windows process search path.  Without this, the
+        # correct QtWidgets extension can be paired with an unrelated QtCore
+        # DLL and fail with an entry-point error before the UI is created.
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                qt_dir = next((path for path in existing if Path(path).name.lower() == "pyside6"), existing[0])
+                ctypes.windll.kernel32.SetDllDirectoryW(qt_dir)
+            except (OSError, AttributeError):
+                pass
         if hasattr(os, "add_dll_directory"):
             for path in existing:
                 try:
