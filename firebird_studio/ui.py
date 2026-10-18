@@ -4458,6 +4458,14 @@ class MainWindow:
                 item = self.activity_table.item(row, column)
                 values.append(item.text() if item else "")
             self.activity_table.setRowHidden(row, bool(needle) and needle not in " ".join(values).casefold())
+        trace_table = getattr(self, "activity_trace_table", None)
+        if trace_table is not None:
+            for row in range(trace_table.rowCount()):
+                values = []
+                for column in range(trace_table.columnCount()):
+                    item = trace_table.item(row, column)
+                    values.append(item.text() if item else "")
+                trace_table.setRowHidden(row, bool(needle) and needle not in " ".join(values).casefold())
 
     def _open_activity_sql_at(self, row: int, _column: int):
         self.activity_table.selectRow(row)
