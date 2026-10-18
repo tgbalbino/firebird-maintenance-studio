@@ -64,10 +64,14 @@ class TransactionSession:
                     pass
 
     def commit(self) -> None:
+        if self.connection is None:
+            return
         self.connection.commit()
         self.dirty = False
 
     def rollback(self) -> None:
+        if self.connection is None:
+            return
         self.connection.rollback()
         self.dirty = False
 

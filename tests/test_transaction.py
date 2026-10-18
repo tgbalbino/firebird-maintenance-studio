@@ -135,6 +135,18 @@ class TransactionTests(unittest.TestCase):
         self.assertEqual(connection.rollbacks, 1)
         self.assertTrue(connection.closed)
 
+    def test_commit_and_rollback_are_safe_after_close(self):
+        connection = _Connection()
+        fake_driver = types.ModuleType("firebird.driver")
+        fake_driver.connect = lambda **kwargs: connection
+        profile = ConnectionProfile("Local", database="sample.fdb", version="5")
+        with patch.dict(sys.modules, {"firebird.driver": fake_driver}):
+            session = TransactionSession(profile)
+            session.close()
+            session.commit()
+            session.rollback()
+        self.assertTrue(connection.closed)
+
     def test_plan_supplies_connect_through_stdin(self):
         completed = types.SimpleNamespace(returncode=0, stdout="PLAN (T NATURAL)", stderr="")
         profile = ConnectionProfile("Local", database="sample.fdb", version="5")
