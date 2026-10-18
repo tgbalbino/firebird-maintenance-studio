@@ -25,6 +25,7 @@ def find_trace_manager(profile: ConnectionProfile) -> Path | None:
 
 def build_trace_config(profile: ConnectionProfile) -> str:
     """Return a trace configuration compatible with Firebird 2.5 and newer."""
+    database = profile.database.strip().replace("\\", "/")
     if profile.version == "2.5":
         # Firebird 2.5 interprets a database selector as a regular expression
         # (the examples use %[\\\\/] to match either Windows separator).
