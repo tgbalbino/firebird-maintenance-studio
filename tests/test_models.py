@@ -43,6 +43,16 @@ class ProfileTests(unittest.TestCase):
         grouped = group_objects(objects)
         self.assertEqual([item.name for item in grouped["Tabelas"]], ["Alpha", "zebra"])
 
+    def test_tree_groups_follow_administration_order(self):
+        objects = [
+            SchemaObject("INDEX", "IDX", ""),
+            SchemaObject("TRIGGER", "TRG", ""),
+            SchemaObject("DOMAIN", "DOM", ""),
+            SchemaObject("TABLE", "TAB", ""),
+            SchemaObject("PROCEDURE", "PRC", ""),
+        ]
+        self.assertEqual(list(group_objects(objects)), ["Domínios", "Tabelas", "Procedures", "Triggers", "Índices"])
+
     def test_sql_document_manager_titles_and_close(self):
         class Tabs:
             def __init__(self): self.items = []; self.current = -1

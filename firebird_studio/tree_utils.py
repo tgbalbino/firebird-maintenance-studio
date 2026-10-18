@@ -6,6 +6,14 @@ GROUP_LABELS = {
     "SEQUENCE": "Sequências", "GENERATOR": "Generators", "EXCEPTION": "Exceções", "PACKAGE": "Packages",
 }
 
+# Keep the catalog tree in the same order used by Firebird administration
+# tools. Types not listed here are appended alphabetically afterwards.
+GROUP_ORDER = (
+    "Domínios", "Tabelas", "Views", "Procedures", "Triggers", "Generators",
+    "Exceções", "Functions", "Roles", "Índices", "Scripts", "Restrições",
+    "Sequências", "Packages",
+)
+
 
 def object_group_label(kind: str) -> str:
     clean_kind = str(kind or "").upper()
@@ -17,7 +25,12 @@ def group_objects(objects):
     groups = {}
     for obj in objects:
         groups.setdefault(object_group_label(getattr(obj, "kind", "")), []).append(obj)
-    return {label: sorted(items, key=lambda item: str(getattr(item, "name", "")).casefold()) for label, items in groups.items()}
+    ordered_labels = [label for label in GROUP_ORDER if label in groups]
+    ordered_labels.extend(sorted(label for label in groups if label not in GROUP_ORDER))
+    return {
+        label: sorted(groups[label], key=lambda item: str(getattr(item, "name", "")).casefold())
+        for label in ordered_labels
+    }
 
 
 def make_database_icon(connected: bool):
@@ -64,7 +77,7 @@ def populate_profile_children(profile_item, objects) -> None:
     from PySide6.QtGui import QFont
 
     groups = group_objects(objects)
-    for label in sorted(groups):
+    for label in groups:
         parent = QTreeWidgetItem([f"{label} ({len(groups[label])})"])
         parent.setIcon(0, make_group_icon(label))
         font = QFont(parent.font(0))
