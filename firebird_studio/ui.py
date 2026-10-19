@@ -1255,6 +1255,7 @@ class MainWindow:
         # windows never appear to share one connection or cursor status.
         profile_combo = QComboBox()
         profile_combo.setMinimumWidth(200)
+        profile_combo.setMaximumWidth(360)
         profile_combo.setPlaceholderText("Selecionar conexão")
         profile_combo.setToolTip("Conexão usada por esta janela SQL")
         profile_combo.addItems([profile.name for profile in self.profiles])
@@ -1286,8 +1287,10 @@ class MainWindow:
         context_row.addWidget(workspace_status, 1)
         connection_row = QHBoxLayout()
         connection_row.setSpacing(8)
+        connection_row.addWidget(QLabel("Banco"))
         connection_row.addWidget(profile_combo)
         connection_row.addWidget(connection_status)
+        connection_row.addStretch()
         # The tree and selected database already show the connection state.
         # Keep the compatibility label but avoid repeating a large status
         # pill in every SQL editor.
@@ -1296,6 +1299,7 @@ class MainWindow:
         shell_layout = QVBoxLayout(shell)
         shell_layout.setContentsMargins(0, 0, 0, 0)
         shell_layout.addLayout(connection_row)
+        shell_layout.addLayout(context_row)
         shell_layout.addWidget(document_tabs, 1)
         editor_footer = QHBoxLayout()
         editor_footer.addStretch()
