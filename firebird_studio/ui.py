@@ -663,8 +663,34 @@ class MainWindow:
 
     def _setup_main_menu(self):
         """Create the compact application menu for global commands."""
-        from PySide6.QtCore import Qt
+        from PySide6.QtCore import QObject, QEvent, Qt
         from PySide6.QtGui import QKeySequence, QShortcut
+
+        class SqlExecutionKeyFilter(QObject):
+            """Handle execution keys before an MDI child can consume them."""
+
+            def __init__(self, owner, parent=None):
+                super().__init__(parent)
+                self.owner = owner
+
+            def eventFilter(self, watched, event):
+                if event.type() == QEvent.KeyPress and event.key() == Qt.Key_F5:
+                    modifiers = event.modifiers()
+                    if modifiers & Qt.ControlModifier and modifiers & Qt.ShiftModifier:
+                        self.owner.execute_selection()
+                    elif not (modifiers & (Qt.ControlModifier | Qt.ShiftModifier | Qt.AltModifier)):
+                        self.owner.execute_selected()
+                    else:
+                        return super().eventFilter(watched, event)
+                    event.accept()
+                    return True
+                return super().eventFilter(watched, event)
+
+        from PySide6.QtWidgets import QApplication
+        app = QApplication.instance()
+        self._sql_execution_key_filter = SqlExecutionKeyFilter(self, app)
+        if app is not None:
+            app.installEventFilter(self._sql_execution_key_filter)
 
         menu_bar = self._window.menuBar()
         # Keep the top level labels readable when the window is restored to a
