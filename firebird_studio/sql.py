@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import re
 import time
 
-from .connection import _dsn
+from .connection import _connection_kwargs
 from .models import ConnectionProfile
 
 
@@ -57,9 +57,7 @@ def execute_sql(
     errors = profile.validate()
     if errors:
         return QueryResult(False, [], [], " ".join(errors))
-    kwargs = {"dsn": _dsn(profile), "user": profile.user, "password": password or "", "charset": profile.charset}
-    if profile.role:
-        kwargs["role"] = profile.role
+    kwargs = _connection_kwargs(profile, password)
     started = time.perf_counter()
     try:
         if profile.version == "2.5":

@@ -61,7 +61,7 @@ class TransactionTests(unittest.TestCase):
             version="5",
         )
         kwargs = _connection_kwargs(profile, "secret")
-        self.assertEqual(kwargs["dsn"], "db.example/3051:/srv/data.fdb")
+        self.assertEqual(kwargs["database"], "db.example/3051:/srv/data.fdb")
         self.assertEqual(kwargs["user"], "APP")
         self.assertEqual(kwargs["password"], "secret")
         self.assertEqual(kwargs["role"], "RDB$ADMIN")
@@ -103,7 +103,7 @@ class TransactionTests(unittest.TestCase):
         with patch.dict(sys.modules, {"firebird.driver": fake_driver}):
             session = TransactionSession(profile, "secret")
             session.close()
-        self.assertEqual(received["dsn"], "localhost:sample.fdb")
+        self.assertEqual(received["database"], "localhost:sample.fdb")
         self.assertEqual(received["password"], "secret")
         self.assertEqual(received["role"], "RDB$ADMIN")
 

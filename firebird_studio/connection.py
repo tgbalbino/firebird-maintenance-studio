@@ -74,8 +74,13 @@ def _client_library(profile: ConnectionProfile) -> str | None:
 
 def _connection_kwargs(profile: ConnectionProfile, password: str | None = None) -> dict[str, Any]:
     """Build the driver arguments shared by probes and live sessions."""
+    # fdb (Firebird 2.5) calls the positional database target ``dsn``;
+    # firebird-driver (Firebird 3+) calls the same target ``database``.
+    # Passing dsn to firebird-driver raises the opaque "unexpected keyword
+    # argument 'dsn'" error seen on machines using the newer driver.
+    target_key = "dsn" if profile.version == "2.5" else "database"
     kwargs: dict[str, object] = {
-        "dsn": _dsn(profile),
+        target_key: _dsn(profile),
         "user": profile.user,
         "password": password or "",
         "charset": profile.charset,
