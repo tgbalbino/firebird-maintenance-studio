@@ -34,7 +34,7 @@ A senha agora pode ser salva somente quando a caixa `Salvar senha criptografada 
 
 A inspeção de objetos agora mostra o grid de colunas da tabela com tipo, tamanho, escala e nulabilidade. O DDL de tabelas, views, procedures e triggers é carregado na aba SQL; tabelas também recebem modelos de DML. O botão `Ver plano` analisa o SQL da aba atual.
 
-Para testes locais, a versão portátil é copiada sempre para `C:\Users\Dev\Documents\Codex\2026-10-15\pl\outputs\FirebirdMaintenanceStudio\FirebirdMaintenanceStudio.exe`, junto com as DLLs necessárias. Abra esse executável diretamente; não é necessário extrair um ZIP.
+Para testes locais, a versão portátil é copiada sempre para `C:\Dev\FirebirdMaintenanceStudio\FirebirdMaintenanceStudio.exe`, junto com as DLLs necessárias. Abra esse executável diretamente; não é necessário extrair um ZIP.
 
 ### Gerar os executáveis da pasta de distribuição
 
