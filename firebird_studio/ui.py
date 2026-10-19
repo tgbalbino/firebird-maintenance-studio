@@ -28,7 +28,7 @@ def create_application():
 
 
 try:
-    from PySide6.QtCore import QObject, Signal, Slot, QEvent, Qt
+    from PySide6.QtCore import QObject, Signal, Slot, QEvent, Qt, QTimer
     from PySide6.QtGui import QColor, QFont, QSyntaxHighlighter, QTextCharFormat
     from PySide6.QtWidgets import QApplication
 
@@ -40,12 +40,22 @@ try:
                 handler = getattr(self, "_sql_execution_handler", None)
                 if handler is not None:
                     modifiers = event.modifiers()
+                    selection = None
                     if modifiers & Qt.ControlModifier and modifiers & Qt.ShiftModifier:
-                        handler(True)
-                        event.accept()
-                        return True
-                    if not modifiers & (Qt.ControlModifier | Qt.ShiftModifier | Qt.AltModifier):
-                        handler(False)
+                        selection = True
+                    elif not modifiers & (Qt.ControlModifier | Qt.ShiftModifier | Qt.AltModifier):
+                        selection = False
+                    if selection is not None:
+                        if not getattr(self, "_sql_execution_pending", False):
+                            self._sql_execution_pending = True
+
+                            def dispatch():
+                                self._sql_execution_pending = False
+                                current_handler = getattr(self, "_sql_execution_handler", None)
+                                if current_handler is not None:
+                                    current_handler(selection)
+
+                            QTimer.singleShot(0, dispatch)
                         event.accept()
                         return True
             return super().notify(receiver, event)
@@ -1202,6 +1212,14 @@ class MainWindow:
         shortcut = QShortcut(QKeySequence("Ctrl+Return"), editor)
         shortcut.activated.connect(self.execute_selected)
         editor.setProperty("execute_shortcut", shortcut)
+        f5_shortcut = QShortcut(QKeySequence("F5"), editor)
+        f5_shortcut.setContext(Qt.ApplicationShortcut)
+        f5_shortcut.activated.connect(lambda target=editor: self._execute_editor(target))
+        editor.setProperty("f5_execute_shortcut", f5_shortcut)
+        selection_f5_shortcut = QShortcut(QKeySequence("Ctrl+Shift+F5"), editor)
+        selection_f5_shortcut.setContext(Qt.ApplicationShortcut)
+        selection_f5_shortcut.activated.connect(lambda target=editor: self._execute_selection_editor(target))
+        editor.setProperty("selection_f5_shortcut", selection_f5_shortcut)
         save_shortcut = QShortcut(QKeySequence("Ctrl+S"), editor)
         save_shortcut.activated.connect(lambda target=editor: (self.sql_tabs.setCurrentWidget(target), self.save_sql_file()))
         editor.setProperty("save_shortcut", save_shortcut)

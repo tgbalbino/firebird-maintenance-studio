@@ -20,10 +20,12 @@ class SqlShortcutTests(unittest.TestCase):
         receiver = QObject()
 
         self.app.notify(receiver, QKeyEvent(QEvent.KeyPress, Qt.Key_F5, Qt.NoModifier))
+        self.app.processEvents()
         self.app.notify(
             receiver,
             QKeyEvent(QEvent.KeyPress, Qt.Key_F5, Qt.ControlModifier | Qt.ShiftModifier),
         )
+        self.app.processEvents()
 
         self.assertEqual(calls, [False, True])
         self.app._sql_execution_handler = None
