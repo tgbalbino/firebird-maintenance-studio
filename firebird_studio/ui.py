@@ -1153,13 +1153,18 @@ class MainWindow:
         return self._profile_from_form()
 
     def _configure_sql_editor(self, editor):
-        from PySide6.QtWidgets import QCompleter
+        from PySide6.QtWidgets import QCompleter, QFrame
         from PySide6.QtCore import QEvent, QObject, QStringListModel, Qt
         from PySide6.QtGui import QKeySequence, QShortcut
         editor.setObjectName("sqlEditor")
         editor.setFont(QFont("Consolas", 10))
         editor.setAcceptRichText(False)
         editor.setLineWrapMode(editor.LineWrapMode.NoWrap)
+        # Keep a physical frame on the editor as a fallback for native styles
+        # that ignore the stylesheet border of QAbstractScrollArea.
+        editor.setFrameStyle(QFrame.StyledPanel | QFrame.Plain)
+        editor.setLineWidth(1)
+        editor.setMidLineWidth(0)
         editor.setPlaceholderText("Execute uma instrução SQL...")
         highlighter = SqlHighlighter(editor.document())
         highlighter.set_theme(str(self._settings.value("theme", "light")) == "dark")
