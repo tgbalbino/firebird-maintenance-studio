@@ -3539,7 +3539,18 @@ class MainWindow:
                 credentials.delete(previous_name)
         except Exception as exc:
             message = f"Conexão salva, mas não foi possível proteger a senha: {exc}"
-        self.refresh_profiles(); self.status.setText(message)
+        self.refresh_profiles()
+        # Keep a newly created or renamed profile visible and selected in the
+        # tree.  Saving a cadastro does not connect to the database yet, so
+        # its object children are loaded only after "Abrir banco".
+        saved_index = next((i for i, item in enumerate(self.profiles) if item.name == profile.name), -1)
+        if saved_index >= 0:
+            self._selected_profile_index = saved_index
+            tree_item = self.profile_list.topLevelItem(saved_index)
+            if tree_item is not None and not tree_item.isHidden():
+                self.profile_list.setCurrentItem(tree_item)
+                self.select_profile(saved_index)
+        self.status.setText(f"{message} Abra o banco para carregar os objetos." if saved_index >= 0 else message)
 
     def _show_connection_result(self, profile, result, details: str = ""):
         from PySide6.QtWidgets import QDialog, QDialogButtonBox, QFormLayout, QLabel, QPlainTextEdit, QVBoxLayout
