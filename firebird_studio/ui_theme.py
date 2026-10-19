@@ -69,6 +69,15 @@ DARK_STYLE += " QLabel#planSummary { background: #202631; color: #dbeafe; border
 GRAY_STYLE += " QLabel#planSummary { background: #dfe3e8; color: #20242b; border: 1px solid #aeb7c4; border-radius: 4px; padding: 8px; } QTreeWidget#planTree { border: 1px solid #7b8491; }"
 BLUE_STYLE += " QLabel#planSummary { background: #142844; color: #edf4ff; border: 1px solid #41648e; border-radius: 4px; padding: 8px; } QTreeWidget#planTree { border: 1px solid #6f91bb; }"
 
+# Labels and check boxes must not paint the page color over cards, banners and
+# tinted panels; the generic QWidget rule above would otherwise give them an
+# opaque background (visible as dark/white boxes behind text).
+_TRANSPARENT = " QLabel, QCheckBox { background: transparent; }"
+LIGHT_STYLE += _TRANSPARENT + " QPushButton#primaryAction:disabled { background: #94a9d6; color: #ffffff; border-color: #94a9d6; }"
+GRAY_STYLE += _TRANSPARENT + " QPushButton#primaryAction:disabled { background: #94a9d6; color: #ffffff; border-color: #94a9d6; }"
+DARK_STYLE += _TRANSPARENT + " QPushButton#primaryAction:disabled { background: #2a3a5a; color: #9fb0cc; border-color: #3f5578; }"
+BLUE_STYLE += _TRANSPARENT + " QPushButton#primaryAction:disabled { background: #2a3a5a; color: #9fb0cc; border-color: #3f5578; }"
+
 
 def apply_theme(theme: str) -> None:
     from PySide6.QtGui import QColor, QPalette, QBrush

@@ -533,7 +533,14 @@ class MainWindow:
         welcome_log.clicked.connect(self.open_event_log)
         welcome_actions.addWidget(welcome_profile); welcome_actions.addWidget(welcome_sql); welcome_actions.addWidget(welcome_log); welcome_actions.addStretch()
         welcome_layout.addLayout(welcome_heading); welcome_layout.addWidget(welcome_text); welcome_layout.addLayout(welcome_actions)
-        right_layout.addWidget(self.welcome_banner)
+        self.welcome_banner.setMaximumWidth(720)
+        self.welcome_page = QWidget()
+        welcome_page_layout = QVBoxLayout(self.welcome_page)
+        welcome_page_layout.setContentsMargins(0, 0, 0, 0)
+        welcome_page_layout.addStretch(2)
+        welcome_page_layout.addWidget(self.welcome_banner, 0, Qt.AlignHCenter)
+        welcome_page_layout.addStretch(3)
+        right_layout.addWidget(self.welcome_page, 1)
         right_layout.addWidget(self.sql_window_bar)
         right_layout.addWidget(self.sql_tabs, 1)
         action_row = QHBoxLayout()
@@ -614,7 +621,11 @@ class MainWindow:
         action_row.addWidget(security_button)
         action_row.addWidget(analysis_button)
         action_row.addStretch()
-        right_layout.addLayout(action_row)
+        self.workspace_tools = QWidget()
+        tools_layout = QVBoxLayout(self.workspace_tools)
+        tools_layout.setContentsMargins(0, 0, 0, 0)
+        tools_layout.setSpacing(8)
+        tools_layout.addLayout(action_row)
         pagination_row = QHBoxLayout()
         self.previous_data_button = QPushButton("Anterior")
         self.previous_data_button.setObjectName("paginationButton")
@@ -643,7 +654,8 @@ class MainWindow:
         self.next_data_button.setEnabled(False)
         self.next_data_button.clicked.connect(lambda: self._load_table_page(self.table_page + 1))
         pagination_row.addWidget(self.previous_data_button); pagination_row.addWidget(self.data_page_label, 1); pagination_row.addWidget(self.result_summary); pagination_row.addWidget(QLabel("Linhas:")); pagination_row.addWidget(self.data_page_size); pagination_row.addWidget(self.data_filter); pagination_row.addWidget(self.next_data_button)
-        right_layout.addLayout(pagination_row)
+        tools_layout.addLayout(pagination_row)
+        right_layout.addWidget(self.workspace_tools)
         self.operation_progress = QProgressBar()
         self.operation_progress.setObjectName("operationProgress")
         self.operation_progress.setRange(0, 0)
@@ -701,11 +713,16 @@ class MainWindow:
         if not hasattr(self, "welcome_banner"):
             return
         empty = self.sql_tabs.count() == 0
-        self.welcome_banner.setVisible(empty)
+        self.welcome_page.setVisible(empty)
+        # Query controls only make sense once a SQL document exists; hiding
+        # them keeps the first screen focused on the next step.
+        self.sql_window_bar.setVisible(not empty)
+        self.sql_tabs.setVisible(not empty)
+        self.workspace_tools.setVisible(not empty)
         if not empty:
             return
         if self.profiles:
-            self.welcome_text.setText("Abra uma consulta SQL para começar a trabalhar neste banco.")
+            self.welcome_text.setText("Dê duplo clique em um banco na lista para conectar, ou abra uma consulta SQL.")
             self.welcome_profile.setText("Nova consulta SQL")
             self.welcome_profile.setObjectName("primaryAction")
             try:
@@ -1167,8 +1184,14 @@ class MainWindow:
             self._update_query_connection_status()
             if self.workspace_status is not None:
                 self.workspace_status.setText("Ctrl+Tab alterna as janelas")
-        elif self.workspace_status is not None:
-            self.workspace_status.setText("Resultados e diagnóstico · use o menu Janelas para voltar ao SQL")
+        else:
+            if self.workspace_status is not None:
+                try:
+                    self.workspace_status.setText("Resultados e diagnóstico · use o menu Janelas para voltar ao SQL")
+                except RuntimeError:
+                    # The label died with its SQL form (e.g. during window
+                    # teardown); there is nothing left to update.
+                    pass
             # These controls belong to the editor that was just destroyed.
             # Drop the aliases so later actions cannot call deleted Qt
             # objects while the workspace is empty.
@@ -1610,7 +1633,7 @@ class MainWindow:
         toolbar_layout.addWidget(separator)
 
         more_button = QToolButton()
-        more_button.setText("Mais ▾")
+        more_button.setText("Mais")
         more_button.setObjectName("workspaceAction")
         more_button.setToolTip("Ações adicionais desta consulta")
         more_button.setPopupMode(QToolButton.InstantPopup)
