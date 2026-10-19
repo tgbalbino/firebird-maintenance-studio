@@ -60,6 +60,10 @@ LIGHT_STYLE += " QToolButton#treeToolButton { min-width: 24px; max-width: 24px; 
 DARK_STYLE += " QToolButton#treeToolButton { min-width: 24px; max-width: 24px; min-height: 24px; max-height: 24px; padding: 0px; font-weight: 700; }"
 GRAY_STYLE += " QToolButton#treeToolButton { min-width: 24px; max-width: 24px; min-height: 24px; max-height: 24px; padding: 0px; font-weight: 700; }"
 BLUE_STYLE += " QToolButton#treeToolButton { min-width: 24px; max-width: 24px; min-height: 24px; max-height: 24px; padding: 0px; font-weight: 700; }"
+LIGHT_STYLE += " QLabel#planSummary { background: #eef3f9; color: #334155; border: 1px solid #c5d0df; border-radius: 4px; padding: 8px; } QTreeWidget#planTree { border: 1px solid #9eacbe; } QTextEdit#planTechnicalOutput { font-family: Consolas; font-size: 9pt; }"
+DARK_STYLE += " QLabel#planSummary { background: #202631; color: #dbeafe; border: 1px solid #4f5d72; border-radius: 4px; padding: 8px; } QTreeWidget#planTree { border: 1px solid #667085; } QTextEdit#planTechnicalOutput { font-family: Consolas; font-size: 9pt; }"
+GRAY_STYLE += " QLabel#planSummary { background: #dfe3e8; color: #20242b; border: 1px solid #aeb7c4; border-radius: 4px; padding: 8px; } QTreeWidget#planTree { border: 1px solid #7b8491; }"
+BLUE_STYLE += " QLabel#planSummary { background: #142844; color: #edf4ff; border: 1px solid #41648e; border-radius: 4px; padding: 8px; } QTreeWidget#planTree { border: 1px solid #6f91bb; }"
 
 
 def apply_theme(theme: str) -> None:
