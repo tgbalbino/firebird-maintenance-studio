@@ -55,6 +55,13 @@ try:
 
         def notify(self, receiver, event):
             if event.type() == QEvent.KeyPress and event.key() == Qt.Key_F5:
+                # Let the editor receive its own key event.  SqlEditor has a
+                # direct keyPressEvent path so completion popups and the
+                # focused MDI document keep the normal Qt event flow.  The
+                # application level route is only for focus outside an
+                # editor (menus, result panels and other SQL subviews).
+                if isinstance(receiver, SqlEditor):
+                    return super().notify(receiver, event)
                 handler = getattr(self, "_sql_execution_handler", None)
                 if handler is not None:
                     modifiers = event.modifiers()
