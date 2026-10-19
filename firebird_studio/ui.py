@@ -9,11 +9,12 @@ from . import __version__
 
 
 def create_application():
-    from PySide6.QtWidgets import QApplication
     from PySide6.QtGui import QFont, QIcon
     import sys
 
-    app = QApplication.instance() or QApplication([])
+    from PySide6.QtWidgets import QApplication
+    application_type = SqlExecutionApplication or QApplication
+    app = QApplication.instance() or application_type([])
     app.setApplicationName("Firebird Maintenance Studio")
     asset_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
     icon_path = asset_root / "assets" / "firebird-maintenance-studio.ico"
@@ -27,8 +28,27 @@ def create_application():
 
 
 try:
-    from PySide6.QtCore import QObject, Signal, Slot
+    from PySide6.QtCore import QObject, Signal, Slot, QEvent, Qt
     from PySide6.QtGui import QColor, QFont, QSyntaxHighlighter, QTextCharFormat
+    from PySide6.QtWidgets import QApplication
+
+    class SqlExecutionApplication(QApplication):
+        """Route SQL execution keys before any editor or MDI child handles them."""
+
+        def notify(self, receiver, event):
+            if event.type() == QEvent.KeyPress and event.key() == Qt.Key_F5:
+                handler = getattr(self, "_sql_execution_handler", None)
+                if handler is not None:
+                    modifiers = event.modifiers()
+                    if modifiers & Qt.ControlModifier and modifiers & Qt.ShiftModifier:
+                        handler(True)
+                        event.accept()
+                        return True
+                    if not modifiers & (Qt.ControlModifier | Qt.ShiftModifier | Qt.AltModifier):
+                        handler(False)
+                        event.accept()
+                        return True
+            return super().notify(receiver, event)
 
     class SqlHighlighter(QSyntaxHighlighter):
         """Lightweight SQL highlighting that works offline in the packaged app."""
@@ -96,6 +116,7 @@ try:
     from .workers import OperationWorker, OpenConnectionWorker
 except ImportError:  # pragma: no cover - allows headless model tests
     SqlHighlighter = None
+    SqlExecutionApplication = None
     OpenConnectionWorker = None
     OperationWorker = None
 
@@ -663,34 +684,13 @@ class MainWindow:
 
     def _setup_main_menu(self):
         """Create the compact application menu for global commands."""
-        from PySide6.QtCore import QObject, QEvent, Qt
+        from PySide6.QtCore import Qt
         from PySide6.QtGui import QKeySequence, QShortcut
-
-        class SqlExecutionKeyFilter(QObject):
-            """Handle execution keys before an MDI child can consume them."""
-
-            def __init__(self, owner, parent=None):
-                super().__init__(parent)
-                self.owner = owner
-
-            def eventFilter(self, watched, event):
-                if event.type() == QEvent.KeyPress and event.key() == Qt.Key_F5:
-                    modifiers = event.modifiers()
-                    if modifiers & Qt.ControlModifier and modifiers & Qt.ShiftModifier:
-                        self.owner.execute_selection()
-                    elif not (modifiers & (Qt.ControlModifier | Qt.ShiftModifier | Qt.AltModifier)):
-                        self.owner.execute_selected()
-                    else:
-                        return super().eventFilter(watched, event)
-                    event.accept()
-                    return True
-                return super().eventFilter(watched, event)
 
         from PySide6.QtWidgets import QApplication
         app = QApplication.instance()
-        self._sql_execution_key_filter = SqlExecutionKeyFilter(self, app)
         if app is not None:
-            app.installEventFilter(self._sql_execution_key_filter)
+            app._sql_execution_handler = self._handle_sql_execution_key
 
         menu_bar = self._window.menuBar()
         # Keep the top level labels readable when the window is restored to a
@@ -3479,6 +3479,13 @@ class MainWindow:
             return
         self._set_active_editor_widgets(editor)
         self._execute_sql_text(editor.toPlainText())
+
+    def _handle_sql_execution_key(self, selection: bool):
+        """Single dispatch point used by the application-level F5 handler."""
+        if selection:
+            self.execute_selection()
+        else:
+            self.execute_selected()
 
     def _execute_editor(self, editor):
         """Activate an editor and execute it through the single SQL path."""
