@@ -1576,8 +1576,10 @@ class MainWindow:
 
     def _create_sql_toolbar(self, editor):
         from PySide6.QtWidgets import QCheckBox, QFrame, QHBoxLayout, QPushButton, QToolButton, QWidget, QMenu
-        sql_toolbar = QWidget()
+        sql_toolbar = QFrame()
         sql_toolbar.setObjectName("sqlCommandBar")
+        sql_toolbar.setFrameShape(QFrame.StyledPanel)
+        sql_toolbar.setFrameShadow(QFrame.Plain)
         toolbar_layout = QHBoxLayout(sql_toolbar)
         toolbar_layout.setContentsMargins(6, 5, 6, 5)
         toolbar_layout.setSpacing(6)
