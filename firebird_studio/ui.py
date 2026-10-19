@@ -1195,6 +1195,16 @@ class MainWindow:
         completer.activated[str].connect(lambda text, target=editor: self._insert_completion(target, text))
         class CompletionKeyFilter(QObject):
             def eventFilter(filter_self, watched, event):
+                if event.type() == QEvent.KeyPress and event.key() == Qt.Key_F5:
+                    modifiers = event.modifiers()
+                    if modifiers == (Qt.ControlModifier | Qt.ShiftModifier):
+                        self._execute_selection_editor(editor)
+                    elif modifiers == Qt.NoModifier:
+                        self._execute_editor(editor)
+                    else:
+                        return super().eventFilter(watched, event)
+                    event.accept()
+                    return True
                 # Match the editor behavior users expect from SSMS: Tab or
                 # Enter accepts the highlighted completion.  Only consume
                 # the key while the popup is visible; otherwise Tab keeps its
