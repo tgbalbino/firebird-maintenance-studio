@@ -373,7 +373,10 @@ class MainWindow:
         sidebar_title.setObjectName("sectionTitle")
         self.sidebar_status = QLabel("Nenhum banco conectado")
         self.sidebar_status.setObjectName("sidebarStatus")
-        tree_filter_row = QHBoxLayout(); tree_filter_row.setSpacing(6); tree_filter_row.addWidget(self.tree_filter, 1); tree_filter_row.addWidget(self.tree_connected_only)
+        tree_filter_row = QHBoxLayout(); tree_filter_row.setSpacing(5); tree_filter_row.addWidget(self.tree_filter, 1); tree_filter_row.addWidget(self.tree_connected_only)
+        tree_refresh = QToolButton(); tree_refresh.setText("⟳"); tree_refresh.setToolTip("Atualizar bancos e objetos"); tree_refresh.setObjectName("treeToolButton"); tree_refresh.clicked.connect(self.refresh_profiles)
+        tree_collapse = QToolButton(); tree_collapse.setText("−"); tree_collapse.setToolTip("Recolher todos os objetos"); tree_collapse.setObjectName("treeToolButton"); tree_collapse.clicked.connect(self.profile_list.collapseAll)
+        tree_filter_row.addWidget(tree_refresh); tree_filter_row.addWidget(tree_collapse)
         left_layout.addWidget(sidebar_title); left_layout.addWidget(self.sidebar_status); left_layout.addLayout(tree_filter_row); left_layout.addWidget(self.profile_list, 1)
         self.open_data_button = QPushButton("Abrir dados da tabela")
         self.open_data_button.setEnabled(False)
@@ -414,10 +417,12 @@ class MainWindow:
         welcome_heading.addWidget(welcome_icon)
         welcome_heading.addWidget(welcome_title)
         welcome_heading.addStretch()
-        welcome_text = QLabel("Cadastre um banco Firebird para conectar, abrir objetos e iniciar consultas SQL.")
+        self.welcome_text = QLabel("Cadastre um banco Firebird para conectar, abrir objetos e iniciar consultas SQL.")
+        welcome_text = self.welcome_text
         welcome_text.setWordWrap(True)
         welcome_actions = QHBoxLayout()
         welcome_profile = QPushButton("Criar primeira conexão")
+        self.welcome_profile = welcome_profile
         welcome_profile.setObjectName("primaryAction")
         welcome_profile.clicked.connect(self.new_profile)
         welcome_sql = QPushButton("Nova janela SQL")
@@ -572,7 +577,7 @@ class MainWindow:
         # itemPressed/itemClicked makes a fast single click open object data.
         self.profile_list.itemDoubleClicked.connect(self._on_tree_double_clicked)
         self.refresh_profiles()
-        self.welcome_banner.setVisible(not bool(self.profiles))
+        self._update_workspace_empty_state()
         if self.profiles:
             self._hide_profile_details()
         else:
@@ -590,6 +595,32 @@ class MainWindow:
     def _save_splitter_state(self, splitter):
         self._settings.setValue("main_splitter_state", splitter.saveState())
         self._settings.sync()
+
+    def _update_workspace_empty_state(self):
+        """Show a useful landing panel only while no SQL document is open."""
+        if not hasattr(self, "welcome_banner"):
+            return
+        empty = self.sql_tabs.count() == 0
+        self.welcome_banner.setVisible(empty)
+        if not empty:
+            return
+        if self.profiles:
+            self.welcome_text.setText("Abra uma consulta SQL para começar a trabalhar neste banco.")
+            self.welcome_profile.setText("Nova consulta SQL")
+            self.welcome_profile.setObjectName("primaryAction")
+            try:
+                self.welcome_profile.clicked.disconnect()
+            except (RuntimeError, TypeError):
+                pass
+            self.welcome_profile.clicked.connect(self._new_sql_tab)
+        else:
+            self.welcome_text.setText("Cadastre um banco Firebird para conectar, abrir objetos e iniciar consultas SQL.")
+            self.welcome_profile.setText("Criar primeira conexão")
+            try:
+                self.welcome_profile.clicked.disconnect()
+            except (RuntimeError, TypeError):
+                pass
+            self.welcome_profile.clicked.connect(self.new_profile)
 
     def _save_window_geometry(self):
         if hasattr(self, "_window") and self._window.isVisible():
@@ -1125,7 +1156,10 @@ class MainWindow:
         from PySide6.QtWidgets import QCompleter
         from PySide6.QtCore import QEvent, QObject, QStringListModel, Qt
         from PySide6.QtGui import QKeySequence, QShortcut
+        editor.setObjectName("sqlEditor")
         editor.setFont(QFont("Consolas", 10))
+        editor.setAcceptRichText(False)
+        editor.setLineWrapMode(editor.LineWrapMode.NoWrap)
         editor.setPlaceholderText("Execute uma instrução SQL...")
         highlighter = SqlHighlighter(editor.document())
         highlighter.set_theme(str(self._settings.value("theme", "light")) == "dark")
@@ -1278,23 +1312,21 @@ class MainWindow:
         breadcrumb = QLabel("Banco > consulta SQL")
         breadcrumb.setObjectName("objectBreadcrumb")
         breadcrumb.setToolTip("Caminho do objeto selecionado")
-        workspace_status = QLabel("Ctrl+Tab alterna as janelas")
+        workspace_status = QLabel("Ctrl+Tab alterna as consultas")
         workspace_status.setObjectName("workspaceStatus")
         context_row = QHBoxLayout()
         context_row.setSpacing(8)
-        context_row.addWidget(QLabel("Área de trabalho"))
+        context_row.addWidget(QLabel("Navegação"))
         context_row.addWidget(breadcrumb)
         context_row.addWidget(workspace_status, 1)
         connection_row = QHBoxLayout()
         connection_row.setSpacing(8)
-        connection_row.addWidget(QLabel("Banco"))
+        connection_row.addWidget(QLabel("Conexão"))
         connection_row.addWidget(profile_combo)
         connection_row.addWidget(connection_status)
+        connection_row.addWidget(connection_badge)
         connection_row.addStretch()
-        # The tree and selected database already show the connection state.
-        # Keep the compatibility label but avoid repeating a large status
-        # pill in every SQL editor.
-        connection_badge.setVisible(False)
+        connection_badge.setVisible(True)
         shell = QWidget()
         shell_layout = QVBoxLayout(shell)
         shell_layout.setContentsMargins(0, 0, 0, 0)
@@ -1356,11 +1388,38 @@ class MainWindow:
     def _create_sql_toolbar(self, editor):
         from PySide6.QtWidgets import QCheckBox, QFrame, QHBoxLayout, QPushButton, QToolButton, QWidget, QMenu
         sql_toolbar = QWidget()
+        sql_toolbar.setObjectName("sqlCommandBar")
         toolbar_layout = QHBoxLayout(sql_toolbar)
-        toolbar_layout.setContentsMargins(4, 4, 4, 4)
+        toolbar_layout.setContentsMargins(6, 5, 6, 5)
         toolbar_layout.setSpacing(6)
+
+        execute_button = QPushButton("▶  Executar")
+        execute_button.setObjectName("primaryAction")
+        execute_button.setToolTip("Executar a consulta SQL completa (F5)")
+        execute_button.clicked.connect(lambda: self._execute_editor(editor))
+        selection_button = QPushButton("Executar seleção")
+        selection_button.setObjectName("secondaryAction")
+        selection_button.setToolTip("Executar somente o trecho selecionado (Ctrl+Shift+F5)")
+        selection_button.clicked.connect(lambda: self._execute_selection_editor(editor))
+        plan_button = QPushButton("Plano")
+        plan_button.setObjectName("secondaryAction")
+        plan_button.setToolTip("Exibir o plano da consulta")
+        plan_button.clicked.connect(lambda: (self.sql_tabs.setCurrentWidget(editor), self.inspect_plan()))
+        save_button = QPushButton("Salvar")
+        save_button.setObjectName("secondaryAction")
+        save_button.setToolTip("Salvar a consulta em um arquivo SQL (Ctrl+S)")
+        save_button.clicked.connect(lambda: (self.sql_tabs.setCurrentWidget(editor), self.save_sql_file()))
+
+        for button in (execute_button, selection_button, plan_button, save_button):
+            toolbar_layout.addWidget(button)
+        separator = QFrame()
+        separator.setObjectName("toolbarSeparator")
+        separator.setFrameShape(QFrame.VLine)
+        separator.setFrameShadow(QFrame.Plain)
+        toolbar_layout.addWidget(separator)
+
         more_button = QToolButton()
-        more_button.setText("Mais")
+        more_button.setText("Mais ▾")
         more_button.setObjectName("workspaceAction")
         more_button.setToolTip("Ações adicionais desta consulta")
         more_button.setPopupMode(QToolButton.InstantPopup)
@@ -1368,6 +1427,7 @@ class MainWindow:
         more_menu.setMinimumWidth(340)
         more_menu.setStyleSheet("QMenu::item { padding: 6px 48px 6px 12px; }")
         execute_action = more_menu.addAction("Executar SQL")
+        execute_action.setShortcut("F5")
         execute_action.triggered.connect(lambda: self._execute_editor(editor))
         selection_action = more_menu.addAction("Executar seleção")
         selection_action.setShortcut("Ctrl+Shift+F5")
@@ -1389,16 +1449,11 @@ class MainWindow:
         read_only_mode = QCheckBox("Somente leitura")
         read_only_mode.setObjectName("toolbarOption")
         read_only_mode.setToolTip("Bloqueia DML, DDL, EXECUTE, GRANT e REVOKE nesta sessão SQL.")
-        for button in (more_button,):
-            toolbar_layout.addWidget(button)
-        separator = QFrame()
-        separator.setObjectName("toolbarSeparator")
-        separator.setFrameShape(QFrame.VLine)
-        separator.setFrameShadow(QFrame.Plain)
-        toolbar_layout.addWidget(separator)
+        toolbar_layout.addWidget(more_button)
         toolbar_layout.addWidget(commit_changes)
         toolbar_layout.addWidget(read_only_mode)
         toolbar_layout.addStretch()
+        sql_toolbar.setProperty("execute_button", execute_button)
         return sql_toolbar, (commit_action, rollback_action), (commit_changes, read_only_mode)
 
     def _new_sql_tab(self):
@@ -1436,6 +1491,7 @@ class MainWindow:
         self._update_cursor_status(editor)
         self._refresh_sql_completer(editor)
         self._update_sql_tab_title(index)
+        self._update_workspace_empty_state()
 
     def _update_sql_tab_title(self, index=None):
         index = self.sql_tabs.currentIndex() if index is None else index
@@ -1455,6 +1511,7 @@ class MainWindow:
         if self.workspace_status is not None:
             self.workspace_status.setText("Nenhuma consulta SQL aberta")
         self.status.setText("Todas as janelas SQL foram fechadas.")
+        self._update_workspace_empty_state()
         return True
 
     def _choose_sql_window(self):
@@ -1646,6 +1703,7 @@ class MainWindow:
             self._sync_sql_window_bar(-1)
             if self.workspace_status is not None:
                 self.workspace_status.setText("Nenhuma consulta SQL aberta")
+            self._update_workspace_empty_state()
 
     def _add_query_history(self, sql: str):
         text = sql.strip()
@@ -2746,6 +2804,7 @@ class MainWindow:
             live_combos.append(combo)
         self._query_profile_combos = live_combos
         self._filter_tree(self.tree_filter.text())
+        self._update_workspace_empty_state()
 
     def _tree_connected_filter_changed(self, checked: bool):
         self._settings.setValue("tree_connected_only", bool(checked))
