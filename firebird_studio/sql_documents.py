@@ -22,10 +22,16 @@ class SqlDocumentManager:
         base = base_title if base_title is not None else (editor.property("document_title") if editor is not None else "")
         base = base or f"SQL {index + 1}"
         profile = profile_name if profile_name is not None else (editor.property("query_profile") if editor is not None else "")
+        modified = bool(
+            editor is not None
+            and hasattr(editor, "document")
+            and editor.document().isModified()
+        )
+        display = f"{base} •" if modified else base
         # The selected database is already visible in the per-window Banco
         # selector. Keep the tab compact and use the tooltip for full context.
-        self.tabs.setTabText(index, base)
-        self.tabs.setTabToolTip(index, f"Consulta {base}\nBanco: {profile or 'não definido'}")
+        self.tabs.setTabText(index, display)
+        self.tabs.setTabToolTip(index, f"Consulta {base}{' (não salva)' if modified else ''}\nBanco: {profile or 'não definido'}")
 
     def titles(self) -> list[str]:
         return [self.tabs.tabText(index) for index in range(self.tabs.count())]

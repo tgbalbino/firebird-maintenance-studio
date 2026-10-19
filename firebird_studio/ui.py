@@ -1478,6 +1478,8 @@ class MainWindow:
             self.query_profile_combo.setCurrentText(selected_name)
         editor.setProperty("document_title", f"SQL {self.sql_tabs.count() + 1}")
         index = self.sql_documents.add(document_tabs, f"SQL {self.sql_tabs.count() + 1}", editor.property("query_profile") or "")
+        editor.document().setModified(False)
+        editor.document().modificationChanged.connect(lambda _modified, target=editor: self._update_sql_tab_title(self.sql_tabs.indexOf(target)))
         sql_toolbar, transaction_controls, execution_controls = self._create_sql_toolbar(editor)
         self.sql_tabs.add_toolbar(index, sql_toolbar)
         editor.setProperty("sql_toolbar_controls", transaction_controls)
@@ -3560,6 +3562,8 @@ class MainWindow:
             return
         try:
             Path(filename).write_text(self.editor.toPlainText(), encoding="utf-8")
+            self.editor.document().setModified(False)
+            self._update_sql_tab_title()
             self.status.setText(f"Script SQL salvo: {filename}")
         except OSError as exc:
             self.status.setText(f"Falha ao salvar SQL: {exc}")
