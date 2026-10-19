@@ -15,6 +15,12 @@ def create_application():
     from PySide6.QtWidgets import QApplication
     application_type = SqlExecutionApplication or QApplication
     app = QApplication.instance() or application_type([])
+    if sys.platform == "win32" and isinstance(app, SqlExecutionApplication):
+        native_filter = getattr(app, "_windows_f5_filter", None)
+        if native_filter is None:
+            native_filter = WindowsF5Filter()
+            app.installNativeEventFilter(native_filter)
+            app._windows_f5_filter = native_filter
     app.setApplicationName("Firebird Maintenance Studio")
     asset_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
     icon_path = asset_root / "assets" / "firebird-maintenance-studio.ico"
@@ -28,7 +34,7 @@ def create_application():
 
 
 try:
-    from PySide6.QtCore import QObject, Signal, Slot, QEvent, Qt, QTimer
+    from PySide6.QtCore import QObject, Signal, Slot, QEvent, Qt, QTimer, QAbstractNativeEventFilter
     from PySide6.QtGui import QColor, QFont, QSyntaxHighlighter, QTextCharFormat
     from PySide6.QtWidgets import QApplication
 
@@ -84,6 +90,43 @@ try:
                         event.accept()
                         return True
             return super().notify(receiver, event)
+
+    class WindowsF5Filter(QAbstractNativeEventFilter):
+        """Catch the physical F5 message before Windows/Qt can consume it."""
+
+        def nativeEventFilter(self, event_type, message):
+            if event_type not in ("windows_generic_MSG", "windows_dispatcher_MSG"):
+                return False, 0
+            try:
+                import ctypes
+                from ctypes import wintypes
+
+                msg = wintypes.MSG.from_address(int(message))
+                if msg.message not in (0x0100, 0x0104) or msg.wParam != 0x74:
+                    return False, 0
+                app = QApplication.instance()
+                handler = getattr(app, "_sql_execution_handler", None) if app is not None else None
+                if handler is None:
+                    return False, 0
+                ctrl = bool(ctypes.windll.user32.GetKeyState(0x11) & 0x8000)
+                shift = bool(ctypes.windll.user32.GetKeyState(0x10) & 0x8000)
+                alt = bool(ctypes.windll.user32.GetKeyState(0x12) & 0x8000)
+                if alt or (ctrl and not shift):
+                    return False, 0
+                selection = bool(ctrl and shift)
+                if not getattr(app, "_sql_execution_pending", False):
+                    app._sql_execution_pending = True
+
+                    def dispatch():
+                        app._sql_execution_pending = False
+                        current_handler = getattr(app, "_sql_execution_handler", None)
+                        if current_handler is not None:
+                            current_handler(selection)
+
+                    QTimer.singleShot(0, dispatch)
+                return True, 0
+            except (AttributeError, TypeError, ValueError, OSError):
+                return False, 0
 
     class SqlHighlighter(QSyntaxHighlighter):
         """Lightweight SQL highlighting that works offline in the packaged app."""
