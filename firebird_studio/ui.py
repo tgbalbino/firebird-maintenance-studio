@@ -1224,9 +1224,9 @@ class MainWindow:
         editor.setProperty("completion_shortcut", completion_shortcut)
 
     def _create_sql_document_tabs(self, editor):
-        from PySide6.QtWidgets import QListWidget, QComboBox, QHBoxLayout, QLabel, QTableWidget, QTabWidget, QVBoxLayout, QWidget, QPushButton
+        from PySide6.QtWidgets import QListWidget, QComboBox, QHBoxLayout, QLabel, QTableWidget, QTabWidget, QVBoxLayout, QWidget, QPushButton, QFrame
         from PySide6.QtCore import Qt
-        from PySide6.QtGui import QAction, QKeySequence
+        from PySide6.QtGui import QAction, QKeySequence, QPainter, QPen, QColor
         from .result_views import configure_result_table
         result_table = configure_result_table(QTableWidget())
         result_table.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -1240,7 +1240,42 @@ class MainWindow:
         document_tabs.setObjectName("sqlDocumentTabs")
         document_tabs.setDocumentMode(True)
         document_tabs.setUsesScrollButtons(True)
-        document_tabs.addTab(editor, "Editor")
+        class SqlEditorFrame(QFrame):
+            """Paint the editor boundary independently from native Qt styles."""
+
+            def __init__(self, child):
+                super().__init__()
+                self.setObjectName("sqlEditorFrame")
+                self.setAttribute(Qt.WA_StyledBackground, True)
+                self.setFrameShape(QFrame.NoFrame)
+                self._child = child
+                self._focused = False
+                child.installEventFilter(self)
+                inner = QVBoxLayout(self)
+                inner.setContentsMargins(7, 7, 7, 7)
+                inner.setSpacing(0)
+                inner.addWidget(child)
+
+            def eventFilter(self, watched, event):
+                if watched is self._child and event.type() in (event.Type.FocusIn, event.Type.FocusOut):
+                    self._focused = event.type() == event.Type.FocusIn
+                    self.update()
+                return super().eventFilter(watched, event)
+
+            def paintEvent(self, event):
+                super().paintEvent(event)
+                painter = QPainter(self)
+                painter.setRenderHint(QPainter.Antialiasing, False)
+                dark = self.palette().color(self.palette().ColorRole.Base).value() < 128
+                background = QColor("#1d2430" if dark else "#ffffff")
+                border = QColor("#60a5fa" if self._focused and dark else ("#1d4ed8" if self._focused else ("#8091aa" if dark else "#718096")))
+                painter.fillRect(self.rect(), background)
+                painter.setPen(QPen(border, 2 if self._focused else 1))
+                painter.drawRect(self.rect().adjusted(1, 1, -2, -2))
+                painter.end()
+
+        editor_frame = SqlEditorFrame(editor)
+        document_tabs.addTab(editor_frame, "Editor")
         document_tabs.addTab(result_table, "Resultado")
         history_list = QListWidget()
         history_list.setObjectName("sqlHistoryList")
@@ -1285,7 +1320,7 @@ class MainWindow:
         document_tabs.addTab(history_panel, "Histórico SQL")
         history_list.setProperty("history_document_tabs", document_tabs)
         history_list.setProperty("history_panel", history_panel)
-        document_tabs.setCurrentWidget(editor)
+        document_tabs.setCurrentWidget(editor_frame)
         document_tabs.setProperty("sql_editor", editor)
         editor.setProperty("document_tabs", document_tabs)
         editor.setProperty("result_table", result_table)
@@ -1347,6 +1382,7 @@ class MainWindow:
         # round-trip a QLabel/QComboBox as the base QWidget in packaged
         # PySide builds, which loses methods such as setText().
         editor._document_tabs = document_tabs
+        editor._editor_frame = editor_frame
         editor._result_table = result_table
         editor._profile_combo = profile_combo
         editor._connection_status = connection_status
@@ -1854,7 +1890,7 @@ class MainWindow:
         editor.setPlainText(str(query))
         document_tabs = editor.property("document_tabs")
         if document_tabs is not None:
-            document_tabs.setCurrentWidget(editor)
+            document_tabs.setCurrentWidget(getattr(editor, "_editor_frame", editor))
         self.status.setText("Consulta restaurada do histórico.")
 
     def _restore_selected_history_item(self, history_list, editor=None):
