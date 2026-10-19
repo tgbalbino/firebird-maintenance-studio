@@ -1228,6 +1228,19 @@ class MainWindow:
         if document_tabs is not None and result_table is not None:
             document_tabs.setCurrentWidget(result_table)
 
+    def _show_sql_error(self, detail: str):
+        """Keep the failed SQL visible in the editor instead of opening an empty result tab."""
+        if self.editor is None:
+            return
+        document_tabs = getattr(self.editor, "_document_tabs", None) or self.editor.property("document_tabs")
+        editor_frame = getattr(self.editor, "_editor_frame", None)
+        if document_tabs is not None:
+            document_tabs.setCurrentWidget(editor_frame or self.editor)
+        status = getattr(self.editor, "_workspace_status", None) or self.editor.property("workspace_status")
+        if status is not None:
+            status.setText(f"Erro SQL: {detail}")
+            status.setToolTip(detail)
+
     def _set_current_query_profile(self, profile_name: str, editor=None):
         target = editor or self.editor
         if target is not None and profile_name:
@@ -3667,6 +3680,7 @@ class MainWindow:
             self._log_event("Falha inesperada na execução SQL", profile=profile.name, statement=statement.split(None, 1)[0] if statement else "", error=detail)
             self.status.setText(f"Falha ao executar SQL: {detail}")
             self.result_summary.setText("Resultado: falha na execução")
+            self._show_sql_error(detail)
             if auto_transaction:
                 self._close_transaction(rollback=True)
             self._show_message("Falha ao executar SQL", detail, warning=True)
@@ -3681,11 +3695,13 @@ class MainWindow:
             self._close_transaction(rollback=True)
         self._add_query_history(sql_text)
         if not result.ok:
+            self._show_sql_error(result.message)
             self._show_message("Falha ao executar SQL", result.message, warning=True)
         suffix = " Transação pendente; escolha Commit ou Rollback." if explicit_transaction and changes_data and result.ok else (" Alterações confirmadas." if changes_data and commit and result.ok else (" Alterações desfeitas (modo seguro)." if changes_data and result.ok else ""))
         self.status.setText(f"{result.message} ({result.elapsed_ms:.1f} ms)." + suffix)
         self.result_summary.setText(f"Resultado: {'OK' if result.ok else 'falha'} · {len(result.rows)} linha(s) · {result.elapsed_ms:.1f} ms")
-        self._show_sql_result()
+        if result.ok:
+            self._show_sql_result()
         self._table_original_rows = []
         if hasattr(self, "edit_data_action"):
             self.edit_data_action.setChecked(False)
