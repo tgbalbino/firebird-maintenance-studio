@@ -32,6 +32,24 @@ try:
     from PySide6.QtGui import QColor, QFont, QSyntaxHighlighter, QTextCharFormat
     from PySide6.QtWidgets import QApplication
 
+    class SqlEditor(__import__("PySide6.QtWidgets", fromlist=["QTextEdit"]).QTextEdit):
+        """SQL editor with a direct keyboard path for the execution commands."""
+
+        execute_requested = Signal(bool)
+
+        def keyPressEvent(self, event):
+            if event.key() == Qt.Key_F5:
+                modifiers = event.modifiers()
+                if modifiers & Qt.ControlModifier and modifiers & Qt.ShiftModifier:
+                    self.execute_requested.emit(True)
+                    event.accept()
+                    return
+                if not modifiers & (Qt.ControlModifier | Qt.ShiftModifier | Qt.AltModifier):
+                    self.execute_requested.emit(False)
+                    event.accept()
+                    return
+            super().keyPressEvent(event)
+
     class SqlExecutionApplication(QApplication):
         """Route SQL execution keys before any editor or MDI child handles them."""
 
@@ -127,6 +145,7 @@ try:
 except ImportError:  # pragma: no cover - allows headless model tests
     SqlHighlighter = None
     SqlExecutionApplication = None
+    SqlEditor = None
     OpenConnectionWorker = None
     OperationWorker = None
 
@@ -1569,8 +1588,16 @@ class MainWindow:
             selected_name = ""
         if not selected_name and self.profiles:
             selected_name = self.profiles[0].name
-        editor = QTextEdit()
+        editor = SqlEditor() if SqlEditor is not None else QTextEdit()
         self._configure_sql_editor(editor)
+        if isinstance(editor, SqlEditor):
+            editor.execute_requested.connect(
+                lambda selection, target=editor: (
+                    self._execute_selection_editor(target)
+                    if selection
+                    else self._execute_editor(target)
+                )
+            )
         document_tabs, result_table = self._create_sql_document_tabs(editor)
         editor.setProperty("query_profile", selected_name)
         if self.query_profile_combo is not None:
