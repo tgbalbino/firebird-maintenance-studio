@@ -10,7 +10,7 @@ from . import __version__
 
 def create_application():
     from PySide6.QtWidgets import QApplication
-    from PySide6.QtGui import QIcon
+    from PySide6.QtGui import QFont, QIcon
     import sys
 
     app = QApplication.instance() or QApplication([])
@@ -19,6 +19,9 @@ def create_application():
     icon_path = asset_root / "assets" / "firebird-maintenance-studio.ico"
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
+    # Keep text metrics consistent across Windows machines so labels and
+    # menus do not change size when the system default font differs.
+    app.setFont(QFont("Segoe UI", 9))
     app.setStyleSheet("QToolButton, QPushButton { padding: 5px 9px; } QTabBar::tab { padding: 6px 12px; } QHeaderView::section { padding: 5px; font-weight: 600; }")
     return app
 
