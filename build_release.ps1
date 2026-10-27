@@ -1,7 +1,11 @@
+param(
+    [string]$OutputFolder = 'C:\ControleVendas\Utils'
+)
+
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$distributionFolder = Join-Path (Split-Path -Parent $projectRoot) 'FirebirdMaintenanceStudio'
+$distributionFolder = $OutputFolder
 $icon = Join-Path $projectRoot 'assets\firebird-maintenance-studio.ico'
 
 Push-Location $projectRoot
@@ -19,14 +23,7 @@ try {
 
     New-Item -ItemType Directory -Force -Path $distributionFolder | Out-Null
     $builtExecutable = Join-Path $projectRoot 'dist\FirebirdMaintenanceStudioPortable.exe'
-    foreach ($name in @(
-        'FirebirdMaintenanceStudio.exe',
-        'FirebirdMaintenanceStudioFinal.exe',
-        'FirebirdMaintenanceStudioPortable.exe',
-        'FirebirdMaintenanceStudioStandalone.exe'
-    )) {
-        Copy-Item -LiteralPath $builtExecutable -Destination (Join-Path $distributionFolder $name) -Force
-    }
+    Copy-Item -LiteralPath $builtExecutable -Destination (Join-Path $distributionFolder 'FirebirdMaintenanceStudio.exe') -Force
 
     Write-Host "Executáveis atualizados em: $distributionFolder"
     Get-ChildItem $distributionFolder -Filter '*.exe' |
