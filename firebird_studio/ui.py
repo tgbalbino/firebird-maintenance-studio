@@ -334,7 +334,7 @@ class MainWindow:
         self.open_data_button.setToolTip("Abrir os dados da tabela selecionada na árvore")
         self.open_data_button.setEnabled(False)
         self.open_data_button.clicked.connect(self.open_table_data)
-        profile_button = QToolButton(); profile_button.setText("Conexão"); profile_button.setObjectName("profileMenuButton"); profile_button.setToolTip("Criar, salvar, abrir ou excluir o cadastro selecionado")
+        profile_button = QToolButton(); profile_button.setText("Conexão  ▾"); profile_button.setObjectName("profileMenuButton"); profile_button.setToolTip("Criar, salvar, abrir ou excluir o cadastro selecionado")
         profile_menu = QMenu(profile_button)
         profile_menu.setMinimumWidth(220)
         profile_menu.setStyleSheet("QMenu::item { padding: 6px 24px 6px 12px; }")
@@ -497,7 +497,13 @@ class MainWindow:
         self.operation_progress.setFixedHeight(8)
         self.operation_progress.setVisible(False)
         right_layout.addWidget(self.operation_progress)
-        right_layout.addWidget(self.status)
+        self.connection_info = QLabel("Sem conexão")
+        self.connection_info.setObjectName("connectionInfo")
+        status_row = QHBoxLayout()
+        status_row.setContentsMargins(0, 0, 0, 0)
+        status_row.addWidget(self.status, 1)
+        status_row.addWidget(self.connection_info)
+        right_layout.addLayout(status_row)
         splitter = QSplitter(Qt.Horizontal); splitter.addWidget(left); splitter.addWidget(right); splitter.setObjectName("mainSplitter")
         self.main_splitter = splitter
         splitter.setChildrenCollapsible(False)
@@ -584,6 +590,14 @@ class MainWindow:
             state = "conectado" if profile_name in self.connected_profiles else "desconectado"
             title = f"{profile_name} ({state}) — {title}"
         self._window.setWindowTitle(title)
+        info = getattr(self, "connection_info", None)
+        if info is not None:
+            profile = next((item for item in self.profiles if item.name == profile_name), None)
+            if profile is None:
+                info.setText("Sem conexão" if not self.connected_profiles else f"{len(self.connected_profiles)} banco(s) conectado(s)")
+            else:
+                state = "conectado" if profile_name in self.connected_profiles else "desconectado"
+                info.setText(f"{profile.name} · {profile.host}:{profile.port} · Firebird {profile.version} · {profile.user or 'confiável'} · {state}")
 
     def _query_context_label(self, profile_name: str = "") -> str:
         """Breadcrumb for a SQL form. The database name is already shown in the

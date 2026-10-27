@@ -86,7 +86,7 @@ _POLISH = (
     " QCheckBox#toolbarOption { background: transparent; border: none; padding: 4px 6px; }"
     " QLabel#treeEmptyHint { color: #7b8798; font-size: 12px; background: transparent; }"
     " QFrame#toolbarSeparator { border: none; }"
-    " QTextEdit#sqlEditor { border: none; border-radius: 0; }"
+    " QTextEdit#sqlEditor, QTextEdit#sqlEditor:focus { border: none; border-radius: 0; padding: 0px; }"
 )
 for _name in ("LIGHT_STYLE", "DARK_STYLE", "GRAY_STYLE", "BLUE_STYLE"):
     globals()[_name] += _POLISH

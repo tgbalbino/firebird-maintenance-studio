@@ -45,7 +45,11 @@ Revisão com capturas da janela real (1280×720, temas claro e escuro).
 | Navegador vazio | Mostra "Nenhum banco cadastrado. Use Conexão > Novo cadastro" ou "Nenhum item corresponde ao filtro" em vez de uma caixa em branco. |
 | Rodapé do navegador | Contador passou a "Conectados: n · Cadastros: n" (antes "Ativos", ambíguo). |
 
-Pendências observadas: rótulos "Conexão" e "Dados da tabela" no topo da barra lateral ainda parecem botões equivalentes; rodapé sem versão/host do servidor; falta numeração de linhas no editor.
+Também implementado: botão "Conexão ▾" (indica menu), rodapé com `perfil · host:porta · Firebird X · usuário · estado` e numeração de linhas no editor SQL (linha atual destacada).
+
+Validação visual: 1000×640, 1280×720, 1920×1080 e escala 150% (`QT_SCALE_FACTOR=1.5`), sem cortes de menus, abas ou botões.
+
+Pendências: o rodapé usa a versão cadastrada no perfil, não a lida do servidor; a linha divisória acima do rodapé não cobre o texto de conexão; a lista de "Conexões salvas" ordena por favorito/nome e a árvore pela ordem de cadastro; escala 125% e validação com banco Firebird real.
 
 ### Pendências sugeridas
 
