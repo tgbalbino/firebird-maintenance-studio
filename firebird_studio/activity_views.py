@@ -69,6 +69,83 @@ def create_activity_panel(on_refresh, on_export, on_open_sql, on_filter, on_auto
     return panel, metrics, table, trace_table, refresh, export, export_trace, clear_trace, open_sql, filter_edit, auto_refresh, interval
 
 
+ACTIVITY_HEADERS = ["ID", "Conexão", "Usuário", "Terminal", "Aplicação", "Início", "Duração", "SQL"]
+DURATION_COLUMN = 6
+
+
+def activity_metrics_lines(profile_name, metrics, statement_count, updated_at):
+    """Lines of the summary box above the active-statements table."""
+    size = metrics.get("estimated_size_mb")
+
+    def known(key):
+        # 0 is a real value (ODS minor 0, zero pages); only None is unknown.
+        value = metrics.get(key)
+        return "N/D" if value is None or value == "" else value
+
+    return [
+        f"Banco: {profile_name}",
+        f"Tamanho estimado: {size:.1f} MB" if isinstance(size, (int, float)) else "Tamanho estimado: indisponível",
+        f"Página: {known('page_size')} bytes · páginas: {known('pages')}",
+        f"ODS: {known('ods_major')}.{known('ods_minor')} · conexões: {metrics.get('attachments') or 0}",
+        f"Transações: oldest={known('oldest_transaction')} · active={known('oldest_active')} · next={known('next_transaction')}",
+        f"Consultas em execução: {statement_count}",
+        "Escopo: consultas ativas de todas as aplicações/conexões visíveis para a conta do banco.",
+        "Estado: nenhuma consulta em execução neste instante" if not statement_count else "Estado: consultas em execução encontradas",
+        "Este painel é atualizado automaticamente e mostra apenas consultas ainda em execução no instante da leitura.",
+        "Consultas muito rápidas podem terminar entre duas leituras; use o histórico Trace para capturar consultas concluídas.",
+        "Histórico completo: use o botão 'Iniciar histórico (Trace)' para capturar consultas concluídas.",
+        f"Última atualização: {updated_at:%d/%m/%Y %H:%M:%S}",
+        "Senha: não exposta pelo monitoramento",
+    ]
+
+
+def fill_activity_table(table, statements):
+    """Fill ``table`` with the running statements, longest duration first."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QTableWidgetItem
+
+    class DurationItem(QTableWidgetItem):
+        def __lt__(self, other):
+            # Unknown durations (no UserRole value) sort before any known
+            # one; falling back to super().__lt__ would call this method again.
+            left = self.data(Qt.UserRole)
+            right = other.data(Qt.UserRole) if other is not None else None
+            left = float(left) if isinstance(left, (int, float)) else -1.0
+            right = float(right) if isinstance(right, (int, float)) else -1.0
+            return left < right
+
+    table.setSortingEnabled(False)
+    table.clear()
+    table.setColumnCount(len(ACTIVITY_HEADERS)); table.setRowCount(len(statements)); table.setHorizontalHeaderLabels(ACTIVITY_HEADERS)
+    for row, statement in enumerate(statements):
+        started = statement.get("started")
+        started_text = started.strftime("%Y-%m-%d %H:%M:%S") if hasattr(started, "strftime") else "N/D"
+        elapsed = statement.get("elapsed_seconds")
+        duration_text = f"{elapsed:.1f} s" if isinstance(elapsed, (int, float)) else "N/D"
+        values = [statement.get("id"), statement.get("attachment_id"), statement.get("user"), statement.get("address"), statement.get("application"), started_text, duration_text, statement.get("sql", "")]
+        for column, value in enumerate(values):
+            cell = DurationItem("" if value is None else str(value)) if column == DURATION_COLUMN else QTableWidgetItem("" if value is None else str(value))
+            if column == DURATION_COLUMN and isinstance(elapsed, (int, float)):
+                cell.setData(Qt.UserRole, float(elapsed))
+            table.setItem(row, column, cell)
+    table.resizeColumnsToContents()
+    table.setSortingEnabled(True)
+    # Put the longest running statement first so the expensive query is
+    # visible immediately, while keeping the column sortable by the user.
+    table.sortItems(DURATION_COLUMN, Qt.DescendingOrder)
+
+
+def filter_table_rows(table, text: str):
+    """Hide the rows of ``table`` whose cells do not contain ``text``."""
+    needle = text.strip().casefold()
+    for row in range(table.rowCount()):
+        values = []
+        for column in range(table.columnCount()):
+            item = table.item(row, column)
+            values.append(item.text() if item else "")
+        table.setRowHidden(row, bool(needle) and needle not in " ".join(values).casefold())
+
+
 def create_sessions_panel(on_filter, on_disconnect):
     from PySide6.QtWidgets import QAbstractItemView, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTableWidget, QVBoxLayout, QWidget
 

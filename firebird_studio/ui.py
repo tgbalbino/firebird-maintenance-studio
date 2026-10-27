@@ -4352,16 +4352,8 @@ class MainWindow:
 
     def _finish_activity_operation(self, result, profile):
         from PySide6.QtCore import Qt
-        from PySide6.QtWidgets import QTableWidgetItem
         from datetime import datetime
-
-        class DurationItem(QTableWidgetItem):
-            def __lt__(self, other):
-                left = self.data(Qt.UserRole)
-                right = other.data(Qt.UserRole) if other is not None else None
-                if isinstance(left, (int, float)) and isinstance(right, (int, float)):
-                    return float(left) < float(right)
-                return super().__lt__(other)
+        from .activity_views import activity_metrics_lines, fill_activity_table
 
         if isinstance(result, Exception):
             self._log_event("Falha ao ler atividade", profile=profile.name, error=str(result))
@@ -4374,21 +4366,7 @@ class MainWindow:
         selected_statement_id = selected_item.text() if selected_item is not None else ""
         metrics = report.metrics
         size = metrics.get("estimated_size_mb")
-        lines = [
-            f"Banco: {profile.name}",
-            f"Tamanho estimado: {size:.1f} MB" if isinstance(size, (int, float)) else "Tamanho estimado: indisponível",
-            f"Página: {metrics.get('page_size') or 'N/D'} bytes · páginas: {metrics.get('pages') or 'N/D'}",
-            f"ODS: {metrics.get('ods_major') or 'N/D'}.{metrics.get('ods_minor') or 'N/D'} · conexões: {metrics.get('attachments') or 0}",
-            f"Transações: oldest={metrics.get('oldest_transaction') or 'N/D'} · active={metrics.get('oldest_active') or 'N/D'} · next={metrics.get('next_transaction') or 'N/D'}",
-            f"Consultas em execução: {len(statements)}",
-            "Escopo: consultas ativas de todas as aplicações/conexões visíveis para a conta do banco.",
-            "Estado: nenhuma consulta em execução neste instante" if not statements else "Estado: consultas em execução encontradas",
-            "Este painel é atualizado automaticamente e mostra apenas consultas ainda em execução no instante da leitura.",
-            "Consultas muito rápidas podem terminar entre duas leituras; use o histórico Trace para capturar consultas concluídas.",
-            "Histórico completo: use o botão 'Iniciar histórico (Trace)' para capturar consultas concluídas.",
-            f"Última atualização: {datetime.now():%d/%m/%Y %H:%M:%S}",
-            "Senha: não exposta pelo monitoramento",
-        ]
+        lines = activity_metrics_lines(profile.name, metrics, len(statements), datetime.now())
         if self.trace.lines or self.trace.process is not None:
             lines.extend([
                 "",
@@ -4398,26 +4376,7 @@ class MainWindow:
                 *self.trace.lines[-200:],
             ])
         self.activity_metrics.setPlainText("\n".join(lines))
-        headers = ["ID", "Conexão", "Usuário", "Terminal", "Aplicação", "Início", "Duração", "SQL"]
-        self.activity_table.setSortingEnabled(False)
-        self.activity_table.clear()
-        self.activity_table.setColumnCount(len(headers)); self.activity_table.setRowCount(len(statements)); self.activity_table.setHorizontalHeaderLabels(headers)
-        for row, statement in enumerate(statements):
-            started = statement.get("started")
-            started_text = started.strftime("%Y-%m-%d %H:%M:%S") if hasattr(started, "strftime") else "N/D"
-            elapsed = statement.get("elapsed_seconds")
-            duration_text = f"{elapsed:.1f} s" if isinstance(elapsed, (int, float)) else "N/D"
-            values = [statement.get("id"), statement.get("attachment_id"), statement.get("user"), statement.get("address"), statement.get("application"), started_text, duration_text, statement.get("sql", "")]
-            for column, value in enumerate(values):
-                cell = DurationItem("" if value is None else str(value)) if column == 6 else QTableWidgetItem("" if value is None else str(value))
-                if column == 6 and isinstance(elapsed, (int, float)):
-                    cell.setData(Qt.UserRole, float(elapsed))
-                self.activity_table.setItem(row, column, cell)
-        self.activity_table.resizeColumnsToContents()
-        self.activity_table.setSortingEnabled(True)
-        # Put the longest running statement first so the expensive query is
-        # visible immediately, while keeping the column sortable by the user.
-        self.activity_table.sortItems(6, Qt.DescendingOrder)
+        fill_activity_table(self.activity_table, statements)
         self._filter_activity_rows(self.activity_filter.text())
         if selected_statement_id:
             for row in range(self.activity_table.rowCount()):
@@ -4437,21 +4396,12 @@ class MainWindow:
         self.status.setText(f"Painel atualizado: {len(statements)} consulta(s) em execução.")
 
     def _filter_activity_rows(self, text: str):
-        needle = text.strip().casefold()
-        for row in range(self.activity_table.rowCount()):
-            values = []
-            for column in range(self.activity_table.columnCount()):
-                item = self.activity_table.item(row, column)
-                values.append(item.text() if item else "")
-            self.activity_table.setRowHidden(row, bool(needle) and needle not in " ".join(values).casefold())
+        from .activity_views import filter_table_rows
+
+        filter_table_rows(self.activity_table, text)
         trace_table = getattr(self, "activity_trace_table", None)
         if trace_table is not None:
-            for row in range(trace_table.rowCount()):
-                values = []
-                for column in range(trace_table.columnCount()):
-                    item = trace_table.item(row, column)
-                    values.append(item.text() if item else "")
-                trace_table.setRowHidden(row, bool(needle) and needle not in " ".join(values).casefold())
+            filter_table_rows(trace_table, text)
 
     def _open_activity_sql_at(self, row: int, _column: int):
         self.activity_table.selectRow(row)

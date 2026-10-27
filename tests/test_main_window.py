@@ -561,5 +561,71 @@ class TreeContextMenuTests(WindowTestCase):
 
 
 
+@unittest.skipIf(QSettings is None, "PySide6 não instalado")
+class ActivityPanelFlowTests(WindowTestCase):
+    """Characterizes how a finished activity read reaches the panel."""
+
+    def open_window(self):
+        from firebird_studio.models import ConnectionProfile, ProfileStore
+        from firebird_studio.ui import MainWindow
+
+        path = Path(self._tmp.name) / "activity_profiles.json"
+        ProfileStore(path).save([ConnectionProfile(name="Vendas", database="C:/db/v.fdb")])
+        window = MainWindow(ProfileStore(path))
+        window._window.show()
+        self.addCleanup(self._dispose, window)
+        self.shown = []
+        window._show_result_window = lambda *a, **k: self.shown.append(True)
+        self.messages = []
+        window._show_message = lambda title, text, warning=False: self.messages.append(title)
+        return window
+
+    def report(self):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(metrics={"estimated_size_mb": 5.0, "attachments": 2})
+
+    def rows(self):
+        return [
+            {"id": 7, "attachment_id": 1, "user": "ANA", "address": "pc", "application": "app", "started": None, "elapsed_seconds": 1.0, "sql": "select a"},
+            {"id": 8, "attachment_id": 2, "user": "BRUNO", "address": "pc", "application": "app", "started": None, "elapsed_seconds": 9.0, "sql": "select b"},
+        ]
+
+    def test_finished_read_fills_metrics_table_and_status(self):
+        window = self.open_window()
+        window._finish_activity_operation((self.report(), self.rows()), window.profiles[0])
+        self.assertEqual(window.activity_profile_name, "Vendas")
+        self.assertEqual(window.activity_table.rowCount(), 2)
+        self.assertEqual(window.activity_table.item(0, 0).text(), "8")
+        self.assertIn("Banco: Vendas", window.activity_metrics.toPlainText())
+        self.assertIn("2 consulta(s) em execução", window.status.text())
+        self.assertTrue(self.shown)
+
+    def test_selected_statement_survives_a_refresh(self):
+        window = self.open_window()
+        profile = window.profiles[0]
+        window._finish_activity_operation((self.report(), self.rows()), profile)
+        window.activity_table.selectRow(1)
+        selected = window.activity_table.item(1, 0).text()
+        window._finish_activity_operation((self.report(), self.rows()), profile)
+        row = window.activity_table.currentRow()
+        self.assertEqual(window.activity_table.item(row, 0).text(), selected)
+
+    def test_filter_applies_to_new_rows(self):
+        window = self.open_window()
+        window.activity_filter.setText("bruno")
+        window._finish_activity_operation((self.report(), self.rows()), window.profiles[0])
+        hidden = [window.activity_table.isRowHidden(r) for r in range(2)]
+        self.assertEqual(sorted(hidden), [False, True])
+
+    def test_failure_reports_error_and_keeps_previous_table(self):
+        window = self.open_window()
+        window._finish_activity_operation((self.report(), self.rows()), window.profiles[0])
+        window._finish_activity_operation(RuntimeError("sem permissão"), window.profiles[0])
+        self.assertIn("Falha ao ler atividade", self.messages)
+        self.assertIn("sem permissão", window.status.text())
+        self.assertEqual(window.activity_table.rowCount(), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
