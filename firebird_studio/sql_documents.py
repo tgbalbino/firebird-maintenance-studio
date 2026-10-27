@@ -31,7 +31,9 @@ class SqlDocumentManager:
         # The selected database is already visible in the per-window Banco
         # selector. Keep the tab compact and use the tooltip for full context.
         self.tabs.setTabText(index, display)
-        self.tabs.setTabToolTip(index, f"Consulta {base}{' (não salva)' if modified else ''}\nBanco: {profile or 'não definido'}")
+        # The database name is already in the connection box and the window
+        # bar; the tooltip only adds the unsaved state.
+        self.tabs.setTabToolTip(index, f"Consulta {base}{' (não salva)' if modified else ''}")
 
     def titles(self) -> list[str]:
         return [self.tabs.tabText(index) for index in range(self.tabs.count())]

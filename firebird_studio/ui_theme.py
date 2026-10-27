@@ -72,11 +72,47 @@ BLUE_STYLE += " QLabel#planSummary { background: #142844; color: #edf4ff; border
 # Labels and check boxes must not paint the page color over cards, banners and
 # tinted panels; the generic QWidget rule above would otherwise give them an
 # opaque background (visible as dark/white boxes behind text).
-_TRANSPARENT = " QLabel, QCheckBox { background: transparent; }"
+_TRANSPARENT = " QLabel, QCheckBox, QWidget#welcomeRow { background: transparent; }"
+# Every popup menu (context menus included) gets the same roomy rows; without
+# it, menus created without their own sheet render items cramped and cut off.
+_TRANSPARENT += " QPushButton:checked, QPushButton#paginationButton:checked { background: #1d4ed8; color: #ffffff; border-color: #60a5fa; font-weight: 700; }"
+_TRANSPARENT += " QMenu { padding: 4px 0; } QMenu::item { padding: 6px 28px 6px 14px; min-height: 18px; } QMenu::separator { height: 1px; margin: 4px 8px; background: #94a3b8; }"
 LIGHT_STYLE += _TRANSPARENT + " QPushButton#primaryAction:disabled { background: #94a9d6; color: #ffffff; border-color: #94a9d6; }"
 GRAY_STYLE += _TRANSPARENT + " QPushButton#primaryAction:disabled { background: #94a9d6; color: #ffffff; border-color: #94a9d6; }"
 DARK_STYLE += _TRANSPARENT + " QPushButton#primaryAction:disabled { background: #2a3a5a; color: #9fb0cc; border-color: #3f5578; }"
 BLUE_STYLE += _TRANSPARENT + " QPushButton#primaryAction:disabled { background: #2a3a5a; color: #9fb0cc; border-color: #3f5578; }"
+
+
+def _close_icon_css() -> str:
+    """Tab close buttons drawn per state: dark glyph on idle tabs, white on selected."""
+    import tempfile
+    from pathlib import Path
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
+
+    folder = Path(tempfile.gettempdir()) / "firebird-maintenance-studio-icons"
+    folder.mkdir(parents=True, exist_ok=True)
+    urls = {}
+    for name, color in (("idle", "#475569"), ("idle_dark", "#cbd5e1"), ("selected", "#ffffff")):
+        path = folder / f"close_{name}.png"
+        pixmap = QPixmap(24, 18)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(QPen(QColor(color), 1.8, Qt.SolidLine, Qt.RoundCap))
+        painter.drawLine(5, 5, 13, 13)
+        painter.drawLine(13, 5, 5, 13)
+        painter.end()
+        pixmap.save(str(path), "PNG")
+        urls[name] = path.as_posix()
+    return (
+        f" QTabBar::close-button {{ image: url({urls['idle']}); subcontrol-position: right; }}"
+        f" QTabBar::close-button:hover {{ background: rgba(148,163,184,0.35); border-radius: 3px; }}"
+        f" QTabBar::close-button:selected {{ image: url({urls['selected']}); }}"
+    ), (
+        f" QTabBar::close-button {{ image: url({urls['idle_dark']}); }}"
+        f" QTabBar::close-button:selected {{ image: url({urls['selected']}); }}"
+    )
 
 
 def apply_theme(theme: str) -> None:
@@ -86,7 +122,9 @@ def apply_theme(theme: str) -> None:
     app = QApplication.instance()
     if app is not None:
         styles = {"light": LIGHT_STYLE, "dark": DARK_STYLE, "gray": GRAY_STYLE, "blue": BLUE_STYLE}
-        app.setStyleSheet(styles.get(theme, LIGHT_STYLE))
+        light_close, dark_close = _close_icon_css()
+        extra = dark_close if theme in {"dark", "blue"} else light_close
+        app.setStyleSheet(styles.get(theme, LIGHT_STYLE) + extra)
         # Qt can paint an MDI viewport with the platform gray palette even
         # when the stylesheet targets QMdiArea. Set the viewport palette
         # explicitly so the workspace never falls back to gray or brown.
@@ -109,6 +147,8 @@ def apply_theme(theme: str) -> None:
             # after the palette is updated. An explicit local rule prevents
             # the gray/brown fallback from returning when the last MDI child
             # is closed or the main window is maximized.
+            # Scoped by name so the rule does not cascade into SQL forms.
+            area.viewport().setObjectName("mdiViewport")
             area.viewport().setStyleSheet(
-                f"background-color: {background.name()}; border: 0px;"
+                f"QWidget#mdiViewport {{ background-color: {background.name()}; border: 0px; }}"
             )

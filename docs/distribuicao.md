@@ -38,13 +38,12 @@ Para testes locais, a versão portátil é copiada sempre para `C:\Dev\FirebirdM
 
 ### Gerar os executáveis da pasta de distribuição
 
-Use o script abaixo após qualquer alteração. Ele recompila o aplicativo e atualiza os quatro nomes na mesma pasta de saída:
+Use o script abaixo após qualquer alteração. Ele recompila o aplicativo e grava `FirebirdMaintenanceStudio.exe` em `C:\ControleVendas\Utils\` (a pasta é criada se não existir):
 
 ```powershell
 .\build_release.ps1
+.\build_release.ps1 -OutputFolder 'D:\Outra\Pasta'   # destino alternativo
 ```
-
-Os arquivos gerados são `FirebirdMaintenanceStudio.exe`, `FirebirdMaintenanceStudioFinal.exe`, `FirebirdMaintenanceStudioPortable.exe` e `FirebirdMaintenanceStudioStandalone.exe`.
 
 O primeiro início deve ser feito em uma máquina de teste, com um banco descartável. O build foi validado iniciando a janela por mais de três segundos; não foi possível validar conexão ou backup porque nenhum banco de teste foi fornecido.
 

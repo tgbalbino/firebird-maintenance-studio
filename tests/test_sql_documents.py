@@ -52,14 +52,14 @@ class _Tabs:
 
 
 class SqlDocumentManagerTests(unittest.TestCase):
-    def test_update_title_keeps_tab_compact_and_tooltip_context(self):
+    def test_update_title_keeps_tab_and_tooltip_compact(self):
         editor = _Widget(document_title="SQL 1", query_profile="HOMOLOG")
         tabs = _Tabs(editor)
 
         SqlDocumentManager(tabs).update_title(0)
 
         self.assertEqual(tabs.tabText(0), "SQL 1")
-        self.assertIn("Banco: HOMOLOG", tabs.tooltips[0])
+        self.assertEqual(tabs.tooltips[0], "Consulta SQL 1")
 
     def test_close_releases_widget_without_recreating_editor(self):
         editor = _Widget()

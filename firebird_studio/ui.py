@@ -37,165 +37,13 @@ try:
     from PySide6.QtCore import QObject, Signal, Slot, QEvent, Qt, QTimer, QAbstractNativeEventFilter
     from PySide6.QtGui import QColor, QFont, QSyntaxHighlighter, QTextCharFormat
     from PySide6.QtWidgets import QApplication
-
-    class SqlEditor(__import__("PySide6.QtWidgets", fromlist=["QTextEdit"]).QTextEdit):
-        """SQL editor with a direct keyboard path for the execution commands."""
-
-        execute_requested = Signal(bool)
-
-        def keyPressEvent(self, event):
-            if event.key() == Qt.Key_F5:
-                modifiers = event.modifiers()
-                if modifiers & Qt.ControlModifier and modifiers & Qt.ShiftModifier:
-                    self.execute_requested.emit(True)
-                    event.accept()
-                    return
-                if not modifiers & (Qt.ControlModifier | Qt.ShiftModifier | Qt.AltModifier):
-                    self.execute_requested.emit(False)
-                    event.accept()
-                    return
-            super().keyPressEvent(event)
-
-    class SqlExecutionApplication(QApplication):
-        """Route SQL execution keys before any editor or MDI child handles them."""
-
-        def notify(self, receiver, event):
-            if event.type() == QEvent.KeyPress and event.key() == Qt.Key_F5:
-                # Let the editor receive its own key event.  SqlEditor has a
-                # direct keyPressEvent path so completion popups and the
-                # focused MDI document keep the normal Qt event flow.  The
-                # application level route is only for focus outside an
-                # editor (menus, result panels and other SQL subviews).
-                if isinstance(receiver, SqlEditor):
-                    return super().notify(receiver, event)
-                handler = getattr(self, "_sql_execution_handler", None)
-                if handler is not None:
-                    modifiers = event.modifiers()
-                    selection = None
-                    if modifiers & Qt.ControlModifier and modifiers & Qt.ShiftModifier:
-                        selection = True
-                    elif not modifiers & (Qt.ControlModifier | Qt.ShiftModifier | Qt.AltModifier):
-                        selection = False
-                    if selection is not None:
-                        if not getattr(self, "_sql_execution_pending", False):
-                            self._sql_execution_pending = True
-
-                            def dispatch():
-                                self._sql_execution_pending = False
-                                current_handler = getattr(self, "_sql_execution_handler", None)
-                                if current_handler is not None:
-                                    current_handler(selection)
-
-                            QTimer.singleShot(0, dispatch)
-                        event.accept()
-                        return True
-            return super().notify(receiver, event)
-
-    class WindowsF5Filter(QAbstractNativeEventFilter):
-        """Catch the physical F5 message before Windows/Qt can consume it."""
-
-        def nativeEventFilter(self, event_type, message):
-            if event_type not in ("windows_generic_MSG", "windows_dispatcher_MSG"):
-                return False, 0
-            try:
-                import ctypes
-                from ctypes import wintypes
-
-                msg = wintypes.MSG.from_address(int(message))
-                if msg.message not in (0x0100, 0x0104) or msg.wParam != 0x74:
-                    return False, 0
-                app = QApplication.instance()
-                handler = getattr(app, "_sql_execution_handler", None) if app is not None else None
-                if handler is None:
-                    return False, 0
-                ctrl = bool(ctypes.windll.user32.GetKeyState(0x11) & 0x8000)
-                shift = bool(ctypes.windll.user32.GetKeyState(0x10) & 0x8000)
-                alt = bool(ctypes.windll.user32.GetKeyState(0x12) & 0x8000)
-                if alt or (ctrl and not shift):
-                    return False, 0
-                selection = bool(ctrl and shift)
-                if not getattr(app, "_sql_execution_pending", False):
-                    app._sql_execution_pending = True
-
-                    def dispatch():
-                        app._sql_execution_pending = False
-                        current_handler = getattr(app, "_sql_execution_handler", None)
-                        if current_handler is not None:
-                            current_handler(selection)
-
-                    QTimer.singleShot(0, dispatch)
-                return True, 0
-            except (AttributeError, TypeError, ValueError, OSError):
-                return False, 0
-
-    class SqlHighlighter(QSyntaxHighlighter):
-        """Lightweight SQL highlighting that works offline in the packaged app."""
-
-        def __init__(self, document):
-            super().__init__(document)
-            self._keyword_format = QTextCharFormat()
-            self._keyword_format.setForeground(QColor("#005cc5"))
-            self._keyword_format.setFontWeight(QFont.Bold)
-            self._type_format = QTextCharFormat()
-            self._type_format.setForeground(QColor("#7b3f00"))
-            self._string_format = QTextCharFormat()
-            self._string_format.setForeground(QColor("#008000"))
-            self._comment_format = QTextCharFormat()
-            self._comment_format.setForeground(QColor("#6a737d"))
-            self._number_format = QTextCharFormat()
-            self._number_format.setForeground(QColor("#8b008b"))
-            from .sql_completion import FIREBIRD_RESERVED_WORDS, FIREBIRD_TYPES
-            self._keywords = FIREBIRD_RESERVED_WORDS
-            self._types = FIREBIRD_TYPES
-
-        def set_theme(self, dark: bool):
-            """Use readable syntax colors in both the light and dark themes."""
-            colors = {
-                "keyword": "#7db7ff" if dark else "#005cc5",
-                "type": "#f2b880" if dark else "#7b3f00",
-                "string": "#98d89c" if dark else "#008000",
-                "comment": "#9aa4b2" if dark else "#6a737d",
-                "number": "#d9a1ff" if dark else "#8b008b",
-            }
-            self._keyword_format.setForeground(QColor(colors["keyword"]))
-            self._type_format.setForeground(QColor(colors["type"]))
-            self._string_format.setForeground(QColor(colors["string"]))
-            self._comment_format.setForeground(QColor(colors["comment"]))
-            self._number_format.setForeground(QColor(colors["number"]))
-            self.rehighlight()
-
-        def highlightBlock(self, text):
-            import re
-
-            protected: list[tuple[int, int]] = []
-            for match in re.finditer(r"--[^\n]*|/\*.*?\*/", text):
-                self.setFormat(match.start(), match.end() - match.start(), self._comment_format)
-                protected.append((match.start(), match.end()))
-            for match in re.finditer(r"'(?:''|[^'])*'", text):
-                self.setFormat(match.start(), match.end() - match.start(), self._string_format)
-                protected.append((match.start(), match.end()))
-
-            def is_protected(start: int, end: int) -> bool:
-                return any(start < protected_end and end > protected_start for protected_start, protected_end in protected)
-
-            for match in re.finditer(r"\b\d+(?:\.\d+)?\b", text):
-                if is_protected(match.start(), match.end()):
-                    continue
-                self.setFormat(match.start(), match.end() - match.start(), self._number_format)
-            for match in re.finditer(r"\b[A-Za-z_][A-Za-z0-9_$]*\b", text):
-                if is_protected(match.start(), match.end()):
-                    continue
-                word = match.group(0).upper()
-                if word in self._keywords:
-                    self.setFormat(match.start(), match.end() - match.start(), self._keyword_format)
-                elif word in self._types:
-                    self.setFormat(match.start(), match.end() - match.start(), self._type_format)
-
+    from .sql_editor import SqlEditor, SqlExecutionApplication, SqlHighlighter, WindowsF5Filter
     from .workers import OperationWorker, OpenConnectionWorker
 except ImportError:  # pragma: no cover - allows headless model tests
     SqlHighlighter = None
     SqlExecutionApplication = None
     SqlEditor = None
+    WindowsF5Filter = None
     OpenConnectionWorker = None
     OperationWorker = None
 
@@ -237,6 +85,8 @@ class MainWindow:
         from PySide6.QtCore import QObject, QThread, Signal, Slot, QSettings, Qt, QTimer, QSize
         from PySide6.QtGui import QAction, QKeySequence, QShortcut
 
+        from .icons import ThemedIcons
+        self.icons = ThemedIcons()
         self._window = QMainWindow()
         self.show = self._window.show
         self.showMaximized = self._window.showMaximized
@@ -398,30 +248,30 @@ class MainWindow:
             self.activity_filter,
             self.activity_auto_refresh,
             self.activity_refresh_interval,
-        ) = create_activity_panel(self.inspect_activity, self.export_activity_csv, self.open_activity_sql, self._filter_activity_rows, self._toggle_activity_auto_refresh, self._open_activity_sql_at, self._set_activity_refresh_interval, self.export_trace_csv, self.clear_trace_history)
+        ) = create_activity_panel(self.inspect_activity, self.export_activity_csv, self.open_activity_sql, self._filter_activity_rows, self._toggle_activity_auto_refresh, self._open_activity_sql_at, self._set_activity_refresh_interval, lambda: self.trace.export_csv(), lambda: self.trace.clear())
         # Keep a local reference while wiring the shortcut.  This avoids any
         # callback or binding lookup seeing a partially initialized window.
         self.activity_panel = activity_panel
         from PySide6.QtWidgets import QPushButton
         self.activity_trace_button = QPushButton("Iniciar histórico (Trace)")
         self.activity_trace_button.setToolTip("Opcional: capturar também consultas já concluídas usando o Trace Service do Firebird")
-        self.activity_trace_button.clicked.connect(self._toggle_trace_monitor)
+        self.activity_trace_button.clicked.connect(lambda: self.trace.toggle())
         activity_controls = activity_panel.layout().itemAt(0).layout()
         if activity_controls is not None:
             activity_controls.insertWidget(3, self.activity_trace_button)
-        self.trace_process = None
-        self.trace_config_path = None
-        self.trace_lines = []
-        self._trace_last_render = 0.0
-        self.trace_status = ""
-        self._trace_rows = []
+        from .trace_controller import TraceController
+        self.trace = TraceController(
+            self._window, self.activity_trace_table, self.activity_trace_button, self.activity_metrics,
+            resolve_profile=self._trace_profile, password_for=self._password_for,
+            set_status=lambda text: self.status.setText(text), show_message=self._show_message, log_event=self._log_event,
+        )
         self.activity_refresh_shortcut = QShortcut(QKeySequence("Ctrl+R"), activity_panel)
         self.activity_refresh_shortcut.setContext(Qt.WidgetWithChildrenShortcut)
         self.activity_refresh_shortcut.activated.connect(self.inspect_activity)
         self.activity_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.activity_table.customContextMenuRequested.connect(self._activity_context_menu)
         self.activity_trace_table.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.activity_trace_table.customContextMenuRequested.connect(self._trace_context_menu)
+        self.activity_trace_table.customContextMenuRequested.connect(self.trace.context_menu)
         saved_activity_interval = int(self._settings.value("activity_refresh_interval", 1000))
         interval_index = self.activity_refresh_interval.findData(saved_activity_interval)
         self.activity_refresh_interval.setCurrentIndex(interval_index if interval_index >= 0 else 0)
@@ -474,14 +324,16 @@ class MainWindow:
         self.sidebar_status = QLabel("Nenhum banco conectado")
         self.sidebar_status.setObjectName("sidebarStatus")
         tree_filter_row = QHBoxLayout(); tree_filter_row.setSpacing(5); tree_filter_row.addWidget(self.tree_filter, 1); tree_filter_row.addWidget(self.tree_connected_only)
-        tree_refresh = QToolButton(); tree_refresh.setText("⟳"); tree_refresh.setToolTip("Atualizar bancos e objetos"); tree_refresh.setObjectName("treeToolButton"); tree_refresh.clicked.connect(self.refresh_profiles)
-        tree_collapse = QToolButton(); tree_collapse.setText("−"); tree_collapse.setToolTip("Recolher todos os objetos"); tree_collapse.setObjectName("treeToolButton"); tree_collapse.clicked.connect(self.profile_list.collapseAll)
+        tree_refresh = QToolButton(); tree_refresh.setIconSize(QSize(16, 16)); self.icons.attach(tree_refresh, "refresh"); tree_refresh.setToolTip("Atualizar bancos e objetos"); tree_refresh.setObjectName("treeToolButton"); tree_refresh.clicked.connect(self.refresh_profiles)
+        tree_collapse = QToolButton(); tree_collapse.setIconSize(QSize(16, 16)); self.icons.attach(tree_collapse, "collapse"); tree_collapse.setToolTip("Recolher todos os objetos"); tree_collapse.setObjectName("treeToolButton"); tree_collapse.clicked.connect(self.profile_list.collapseAll)
         tree_filter_row.addWidget(tree_refresh); tree_filter_row.addWidget(tree_collapse)
-        left_layout.addWidget(sidebar_title); left_layout.addWidget(self.sidebar_status); left_layout.addLayout(tree_filter_row); left_layout.addWidget(self.profile_list, 1)
-        self.open_data_button = QPushButton("Abrir dados da tabela")
+        left_layout.addWidget(sidebar_title); left_layout.addWidget(self.sidebar_status)
+        tree_actions_slot = QHBoxLayout(); tree_actions_slot.setSpacing(6)
+        left_layout.addLayout(tree_actions_slot); left_layout.addLayout(tree_filter_row); left_layout.addWidget(self.profile_list, 1)
+        self.open_data_button = QPushButton("Dados da tabela")
+        self.open_data_button.setToolTip("Abrir os dados da tabela selecionada na árvore")
         self.open_data_button.setEnabled(False)
         self.open_data_button.clicked.connect(self.open_table_data)
-        left_layout.addWidget(self.open_data_button)
         profile_button = QToolButton(); profile_button.setText("Conexão"); profile_button.setObjectName("profileMenuButton"); profile_button.setToolTip("Criar, salvar, abrir ou excluir o cadastro selecionado")
         profile_menu = QMenu(profile_button)
         profile_menu.setMinimumWidth(220)
@@ -493,8 +345,8 @@ class MainWindow:
         # clipped when the sidebar reaches the bottom edge of the window.
         # Position it ourselves so it opens above when there is not enough room.
         profile_button.clicked.connect(lambda: self._show_profile_menu(profile_button, profile_menu))
-        left_layout.addWidget(profile_button)
-        left_layout.addStretch()
+        tree_actions_slot.addWidget(profile_button)
+        tree_actions_slot.addWidget(self.open_data_button, 1)
 
         # Connection fields are kept as state for the existing operation
         # handlers. Their form lives only in the modal connection dialog.
@@ -505,47 +357,14 @@ class MainWindow:
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(12, 12, 12, 12)
         right_layout.setSpacing(8)
-        self.welcome_banner = QFrame()
-        self.welcome_banner.setObjectName("welcomeBanner")
-        welcome_layout = QVBoxLayout(self.welcome_banner)
-        welcome_heading = QHBoxLayout()
-        welcome_icon = QLabel()
-        welcome_icon.setPixmap(QApplication.instance().windowIcon().pixmap(40, 40))
-        welcome_icon.setFixedSize(40, 40)
-        welcome_title = QLabel("Comece por aqui")
-        welcome_title.setObjectName("welcomeTitle")
-        welcome_heading.addWidget(welcome_icon)
-        welcome_heading.addWidget(welcome_title)
-        welcome_heading.addStretch()
-        self.welcome_text = QLabel("Cadastre um banco Firebird para conectar, abrir objetos e iniciar consultas SQL.")
-        welcome_text = self.welcome_text
-        welcome_text.setWordWrap(True)
-        welcome_actions = QHBoxLayout()
-        welcome_profile = QPushButton("Criar primeira conexão")
-        self.welcome_profile = welcome_profile
-        welcome_profile.setObjectName("primaryAction")
-        welcome_profile.clicked.connect(self.new_profile)
-        welcome_sql = QPushButton("Nova janela SQL")
-        welcome_sql.setObjectName("secondaryAction")
-        welcome_sql.clicked.connect(self._new_sql_tab)
-        welcome_log = QPushButton("Abrir log")
-        welcome_log.setObjectName("secondaryAction")
-        welcome_log.clicked.connect(self.open_event_log)
-        welcome_actions.addWidget(welcome_profile); welcome_actions.addWidget(welcome_sql); welcome_actions.addWidget(welcome_log); welcome_actions.addStretch()
-        welcome_layout.addLayout(welcome_heading); welcome_layout.addWidget(welcome_text); welcome_layout.addLayout(welcome_actions)
-        self.welcome_banner.setMaximumWidth(720)
-        self.welcome_page = QWidget()
-        welcome_page_layout = QVBoxLayout(self.welcome_page)
-        welcome_page_layout.setContentsMargins(0, 0, 0, 0)
-        welcome_page_layout.addStretch(2)
-        welcome_page_layout.addWidget(self.welcome_banner, 0, Qt.AlignHCenter)
-        welcome_page_layout.addStretch(3)
+        from .welcome_view import WelcomePage
+        self.welcome_page = WelcomePage(self.new_profile, self._new_sql_tab, self.open_event_log, self.open_profile)
+        # Kept as aliases for code that reaches into the page's parts.
+        self.welcome_banner = self.welcome_page.banner
+        self.welcome_recent_layout = self.welcome_page.recent_layout
         right_layout.addWidget(self.welcome_page, 1)
         right_layout.addWidget(self.sql_window_bar)
         right_layout.addWidget(self.sql_tabs, 1)
-        action_row = QHBoxLayout()
-        action_row.setSpacing(6)
-        action_row.setContentsMargins(0, 2, 0, 0)
         def menu_button(label, entries, tooltip):
             button = QToolButton()
             button.setText(label)
@@ -611,22 +430,15 @@ class MainWindow:
         database_button = menu_button("Banco", [("Backup", self.execute_backup), ("Restore", self.execute_restore), ("Exportar banco para SQL", self.export_database_sql), ("Histórico de backup/restore", self.show_backup_history)], "Operações de backup, restore e exportação SQL")
         security_button = menu_button("Segurança", [("Gestão de usuários", self.manage_users)], "Criar usuários e alterar senhas do Firebird")
         analysis_button = menu_button("Análise", [("Ler estrutura", self.inspect_schema), ("Ver plano", self.inspect_plan), ("Saúde", self.inspect_health), ("Banco e atividade", self.inspect_activity), ("Salvar relatório de saúde", self.save_health_report), ("Salvar saúde em HTML", self.save_health_html), ("Criar pacote de suporte", self.create_support_package), ("Sessões", self.inspect_sessions), ("Validar integridade", self.validate_database), ("Comparar estruturas", self.compare_selected), ("Salvar comparação", self.save_compare_report), ("Salvar comparação em HTML", self.save_compare_html)], "Estrutura, plano, saúde, atividade e comparação")
-        action_row.addWidget(data_button)
-        action_row.addWidget(database_button)
-        action_separator = QFrame()
-        action_separator.setObjectName("actionGroupSeparator")
-        action_separator.setFrameShape(QFrame.VLine)
-        action_separator.setFrameShadow(QFrame.Plain)
-        action_row.addWidget(action_separator)
-        action_row.addWidget(security_button)
-        action_row.addWidget(analysis_button)
-        action_row.addStretch()
+        # These command groups live in the top menu bar; the buttons only
+        # serve as menu holders, so no second row of buttons crowds the page.
+        self._command_menus = {"Dados": data_button, "Banco": database_button, "Segurança": security_button, "Análise": analysis_button}
         self.workspace_tools = QWidget()
         tools_layout = QVBoxLayout(self.workspace_tools)
         tools_layout.setContentsMargins(0, 0, 0, 0)
         tools_layout.setSpacing(8)
-        tools_layout.addLayout(action_row)
         pagination_row = QHBoxLayout()
+        pagination_row.setContentsMargins(0, 0, 0, 0)
         self.previous_data_button = QPushButton("Anterior")
         self.previous_data_button.setObjectName("paginationButton")
         self.previous_data_button.setToolTip("Voltar para a página anterior da tabela")
@@ -654,7 +466,29 @@ class MainWindow:
         self.next_data_button.setEnabled(False)
         self.next_data_button.clicked.connect(lambda: self._load_table_page(self.table_page + 1))
         pagination_row.addWidget(self.previous_data_button); pagination_row.addWidget(self.data_page_label, 1); pagination_row.addWidget(self.result_summary); pagination_row.addWidget(QLabel("Linhas:")); pagination_row.addWidget(self.data_page_size); pagination_row.addWidget(self.data_filter); pagination_row.addWidget(self.next_data_button)
-        tools_layout.addLayout(pagination_row)
+        # Paging and row-filter controls only matter once a table page or a
+        # query result exists, so they stay hidden until then.
+        self.edit_grid_button = QPushButton("Editar grade")
+        self.edit_grid_button.setCheckable(True)
+        self.edit_grid_button.setMinimumWidth(104)  # bold when checked
+        self.edit_grid_button.setObjectName("paginationButton")
+        self.edit_grid_button.setToolTip("Permite alterar as células do resultado de uma consulta simples (uma tabela, sem JOIN)")
+        self.save_grid_button = QPushButton("Salvar alterações")
+        self.save_grid_button.setObjectName("primaryAction")
+        self.save_grid_button.setToolTip("Gera os UPDATEs das linhas editadas dentro de uma transação; grave com Commit")
+        pagination_row.insertWidget(0, self.edit_grid_button)
+        pagination_row.insertWidget(1, self.save_grid_button)
+        from .grid_controller import GridEditController
+        self.grid_edit = GridEditController(
+            self.edit_grid_button, self.save_grid_button,
+            execute=self._grid_execute, confirm=self._grid_confirm,
+            set_status=lambda text: self.status.setText(text),
+        )
+        self._primary_keys = {}
+        self.pagination_bar = QWidget()
+        self.pagination_bar.setLayout(pagination_row)
+        self.pagination_bar.setVisible(False)
+        tools_layout.addWidget(self.pagination_bar)
         right_layout.addWidget(self.workspace_tools)
         self.operation_progress = QProgressBar()
         self.operation_progress.setObjectName("operationProgress")
@@ -681,7 +515,7 @@ class MainWindow:
         app_instance = QApplication.instance()
         if app_instance is not None:
             app_instance.aboutToQuit.connect(self._stop_activity_refresh)
-            app_instance.aboutToQuit.connect(self._stop_trace_monitor)
+            app_instance.aboutToQuit.connect(self.trace.stop)
             app_instance.aboutToQuit.connect(self._close_transaction)
             app_instance.aboutToQuit.connect(self._save_window_geometry)
         self.profile_list.itemClicked.connect(self._on_profile_clicked)
@@ -721,23 +555,43 @@ class MainWindow:
         self.workspace_tools.setVisible(not empty)
         if not empty:
             return
-        if self.profiles:
-            self.welcome_text.setText("Dê duplo clique em um banco na lista para conectar, ou abra uma consulta SQL.")
-            self.welcome_profile.setText("Nova consulta SQL")
-            self.welcome_profile.setObjectName("primaryAction")
-            try:
-                self.welcome_profile.clicked.disconnect()
-            except (RuntimeError, TypeError):
-                pass
-            self.welcome_profile.clicked.connect(self._new_sql_tab)
-        else:
-            self.welcome_text.setText("Cadastre um banco Firebird para conectar, abrir objetos e iniciar consultas SQL.")
-            self.welcome_profile.setText("Criar primeira conexão")
-            try:
-                self.welcome_profile.clicked.disconnect()
-            except (RuntimeError, TypeError):
-                pass
-            self.welcome_profile.clicked.connect(self.new_profile)
+        self.welcome_page.set_profiles(self.profiles)
+
+    @staticmethod
+    def _profile_color_icon(profile_name: str):
+        """Small colored dot derived from the profile name (stable across runs)."""
+        import zlib
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
+        if not profile_name:
+            return QIcon()
+        palette = ("#e11d48", "#f59e0b", "#16a34a", "#0891b2", "#7c3aed", "#db2777", "#65a30d", "#ea580c")
+        color = QColor(palette[zlib.crc32(profile_name.encode("utf-8")) % len(palette)])
+        pixmap = QPixmap(12, 12)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setBrush(color)
+        painter.setPen(QColor("#ffffff"))
+        painter.drawEllipse(1, 1, 10, 10)
+        painter.end()
+        return QIcon(pixmap)
+
+    def _update_window_title(self, profile_name: str = ""):
+        """Show the active database and its state in the title bar."""
+        title = f"Firebird Maintenance Studio v{__version__}"
+        if profile_name:
+            state = "conectado" if profile_name in self.connected_profiles else "desconectado"
+            title = f"{profile_name} ({state}) — {title}"
+        self._window.setWindowTitle(title)
+
+    def _query_context_label(self, profile_name: str = "") -> str:
+        """Breadcrumb for a SQL form. The database name is already shown in the
+        connection box beside it, so only the server endpoint is added here."""
+        profile = next((item for item in self.profiles if item.name == profile_name), None)
+        if profile is None:
+            return "Nenhum banco selecionado"
+        return f"{profile.host}:{profile.port} > consulta SQL"
 
     def _save_window_geometry(self):
         if hasattr(self, "_window") and self._window.isVisible():
@@ -745,6 +599,9 @@ class MainWindow:
             self._settings.sync()
 
     def _apply_theme(self, theme: str):
+        icons = getattr(self, "icons", None)
+        if icons is not None:
+            icons.set_dark(theme in {"dark", "blue"})
         from .ui_theme import apply_theme
         apply_theme(theme)
         # Top-level windows are not QObject children of QApplication, so the
@@ -763,8 +620,11 @@ class MainWindow:
             self.sql_tabs.viewport().setAutoFillBackground(True)
             # Keep an explicit rule on the viewport as a final guard against
             # the native style restoring its gray workspace brush.
+            # Scope the rule by name: an unscoped sheet cascades to every
+            # SQL form inside the viewport and flattens its buttons.
+            self.sql_tabs.viewport().setObjectName("mdiViewport")
             self.sql_tabs.viewport().setStyleSheet(
-                f"background-color: {background.name()}; border: 0px;"
+                f"QWidget#mdiViewport {{ background-color: {background.name()}; border: 0px; }}"
             )
 
     def _set_theme(self, theme: str):
@@ -862,8 +722,18 @@ class MainWindow:
         database_menu.addAction("Abrir banco", self.open_profile)
         database_menu.addAction("Desconectar banco", self.disconnect_selected)
         database_menu.addSeparator()
+        existing = {action.text() for action in database_menu.actions()}
         database_menu.addAction("Backup", self.execute_backup)
         database_menu.addAction("Restore", self.execute_restore)
+        existing |= {"Backup", "Restore"}
+        for action in self._command_menus["Banco"].menu().actions():
+            if action.text() not in existing:
+                database_menu.addAction(action)
+
+        data_menu = menu_bar.addMenu("Dados")
+        data_menu.addActions(self._command_menus["Dados"].menu().actions())
+        security_menu = menu_bar.addMenu("Segurança")
+        security_menu.addActions(self._command_menus["Segurança"].menu().actions())
 
         analysis_menu = menu_bar.addMenu("Análise")
         activity_action = analysis_menu.addAction("Monitorar consultas", self.inspect_activity)
@@ -871,11 +741,13 @@ class MainWindow:
         self.activity_open_shortcut = QShortcut(QKeySequence("Ctrl+Shift+A"), self._window)
         self.activity_open_shortcut.setContext(Qt.ApplicationShortcut)
         self.activity_open_shortcut.activated.connect(self.inspect_activity)
+        analysis_menu.addSeparator()
+        analysis_menu.addActions(self._command_menus["Análise"].menu().actions())
 
         help_menu = menu_bar.addMenu("Ajuda")
         help_menu.addAction("Sobre", self.show_about)
         help_menu.addAction("Verificar atualizações...", self.check_for_updates)
-        for menu in (app_menu, sql_menu, window_menu, database_menu, analysis_menu, help_menu):
+        for menu in (app_menu, sql_menu, window_menu, database_menu, data_menu, security_menu, analysis_menu, help_menu):
             menu.setMinimumWidth(240)
 
     def _choose_history_query(self):
@@ -1175,7 +1047,7 @@ class MainWindow:
             self._set_transaction_controls_enabled()
             self._update_sql_tab_title(index)
             if hasattr(self, "object_breadcrumb") and self.selected_object is None:
-                self.object_breadcrumb.setText("Banco > consulta SQL")
+                self.object_breadcrumb.setText(self._query_context_label(self.editor.property("query_profile") or ""))
             self.query_profile_combo.blockSignals(True)
             profile_name = self.editor.property("query_profile") or ""
             combo_index = self.query_profile_combo.findText(profile_name)
@@ -1185,6 +1057,7 @@ class MainWindow:
             if self.workspace_status is not None:
                 self.workspace_status.setText("Ctrl+Tab alterna as janelas")
         else:
+            self._update_window_title()
             if self.workspace_status is not None:
                 try:
                     self.workspace_status.setText("Resultados e diagnóstico · use o menu Janelas para voltar ao SQL")
@@ -1220,10 +1093,14 @@ class MainWindow:
                 bar.addTab(self.sql_tabs.tabText(bar.count()))
             for index in range(count):
                 title = self.sql_tabs.tabText(index) or f"SQL {index + 1}"
-                bar.setTabText(index, title)
                 editor = self.sql_tabs.widget(index)
                 profile_name = editor.property("query_profile") if editor is not None else ""
-                bar.setTabToolTip(index, f"{title}\nConexão: {profile_name or 'não definida'}")
+                # Name the database in the tab and tint a dot per database so
+                # queries for different databases stay distinguishable.
+                bar.setTabText(index, f"{title} · {profile_name}" if profile_name else title)
+                bar.setTabIcon(index, self._profile_color_icon(profile_name))
+                profile = next((item for item in self.profiles if item.name == profile_name), None)
+                bar.setTabToolTip(index, f"{profile.host}:{profile.port}\n{profile.database}" if profile else "Conexão não definida")
             if active_index is None:
                 active_index = self.sql_tabs.currentIndex()
             bar.setCurrentIndex(active_index if 0 <= active_index < count else -1)
@@ -1276,15 +1153,19 @@ class MainWindow:
     def _update_query_connection_status(self):
         profile_name = self.editor.property("query_profile") if self.editor is not None else ""
         transaction_open = self._transaction_session is not None and self._transaction_session.active
+        self._update_window_title(profile_name or "")
         if self.query_connection_status is None:
             return
         self.query_connection_status.setText("Transação aberta" if transaction_open else "")
         self.query_connection_status.setVisible(transaction_open)
         connected = bool(profile_name and profile_name in self.connected_profiles)
+        if self.selected_object is None and self.object_breadcrumb is not None:
+            self.object_breadcrumb.setText(self._query_context_label(profile_name or ""))
         self.connection_badge.setText("● Conectado" if connected else "● Desconectado")
         self.connection_badge.setProperty("connectionState", "connected" if connected else "disconnected")
         self.connection_badge.style().unpolish(self.connection_badge)
         self.connection_badge.style().polish(self.connection_badge)
+        self._sync_sql_window_bar()
 
     def _query_profile(self):
         try:
@@ -1443,6 +1324,7 @@ class MainWindow:
         history_list = QListWidget()
         history_list.setObjectName("sqlHistoryList")
         history_list.setAlternatingRowColors(True)
+        history_list.setEditTriggers(QListWidget.NoEditTriggers)
         history_list.setToolTip("Duplo clique em uma consulta para restaurá-la no editor SQL")
         history_list.itemDoubleClicked.connect(lambda item, target=editor: self._restore_history_item(item, target))
         history_list.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -1598,77 +1480,22 @@ class MainWindow:
         self.read_only_mode = execution_controls[1] if len(execution_controls) > 1 else None
 
     def _create_sql_toolbar(self, editor):
-        from PySide6.QtWidgets import QCheckBox, QFrame, QHBoxLayout, QPushButton, QToolButton, QWidget, QMenu
-        sql_toolbar = QFrame()
-        sql_toolbar.setObjectName("sqlCommandBar")
-        sql_toolbar.setFrameShape(QFrame.StyledPanel)
-        sql_toolbar.setFrameShadow(QFrame.Plain)
-        toolbar_layout = QHBoxLayout(sql_toolbar)
-        toolbar_layout.setContentsMargins(6, 5, 6, 5)
-        toolbar_layout.setSpacing(6)
+        from .sql_toolbar import SqlToolbarActions, create_sql_toolbar
 
-        execute_button = QPushButton("▶  Executar")
-        execute_button.setObjectName("primaryAction")
-        execute_button.setToolTip("Executar a consulta SQL completa (F5)")
-        execute_button.clicked.connect(lambda: self._execute_editor(editor))
-        selection_button = QPushButton("Executar seleção")
-        selection_button.setObjectName("secondaryAction")
-        selection_button.setToolTip("Executar somente o trecho selecionado (Ctrl+Shift+F5)")
-        selection_button.clicked.connect(lambda: self._execute_selection_editor(editor))
-        plan_button = QPushButton("Plano")
-        plan_button.setObjectName("secondaryAction")
-        plan_button.setToolTip("Exibir o plano da consulta")
-        plan_button.clicked.connect(lambda: (self.sql_tabs.setCurrentWidget(editor), self.inspect_plan()))
-        save_button = QPushButton("Salvar")
-        save_button.setObjectName("secondaryAction")
-        save_button.setToolTip("Salvar a consulta em um arquivo SQL (Ctrl+S)")
-        save_button.clicked.connect(lambda: (self.sql_tabs.setCurrentWidget(editor), self.save_sql_file()))
+        def focused(action):
+            def run():
+                self.sql_tabs.setCurrentWidget(editor)
+                action()
+            return run
 
-        for button in (execute_button, selection_button, plan_button, save_button):
-            toolbar_layout.addWidget(button)
-        separator = QFrame()
-        separator.setObjectName("toolbarSeparator")
-        separator.setFrameShape(QFrame.VLine)
-        separator.setFrameShadow(QFrame.Plain)
-        toolbar_layout.addWidget(separator)
-
-        more_button = QToolButton()
-        more_button.setText("Mais")
-        more_button.setObjectName("workspaceAction")
-        more_button.setToolTip("Ações adicionais desta consulta")
-        more_button.setPopupMode(QToolButton.InstantPopup)
-        more_menu = QMenu(more_button)
-        more_menu.setMinimumWidth(340)
-        more_menu.setStyleSheet("QMenu::item { padding: 6px 48px 6px 12px; }")
-        execute_action = more_menu.addAction("Executar SQL")
-        execute_action.setShortcut("F5")
-        execute_action.triggered.connect(lambda: self._execute_editor(editor))
-        selection_action = more_menu.addAction("Executar seleção")
-        selection_action.setShortcut("Ctrl+Shift+F5")
-        selection_action.triggered.connect(lambda: self._execute_selection_editor(editor))
-        plan_action = more_menu.addAction("Ver plano")
-        plan_action.triggered.connect(lambda: (self.sql_tabs.setCurrentWidget(editor), self.inspect_plan()))
-        save_action = more_menu.addAction("Salvar SQL")
-        save_action.setShortcut("Ctrl+S")
-        save_action.triggered.connect(lambda: (self.sql_tabs.setCurrentWidget(editor), self.save_sql_file()))
-        more_menu.addSeparator()
-        commit_action = more_menu.addAction("Commit")
-        commit_action.triggered.connect(lambda: (self.sql_tabs.setCurrentWidget(editor), self._commit_transaction()))
-        rollback_action = more_menu.addAction("Rollback")
-        rollback_action.triggered.connect(lambda: (self.sql_tabs.setCurrentWidget(editor), self._rollback_transaction()))
-        more_button.setMenu(more_menu)
-        commit_changes = QCheckBox("Confirmar alterações")
-        commit_changes.setObjectName("toolbarOption")
-        commit_changes.setToolTip("Quando marcado, confirma DDL/DML. Desmarcado, alterações são desfeitas ao terminar a execução.")
-        read_only_mode = QCheckBox("Somente leitura")
-        read_only_mode.setObjectName("toolbarOption")
-        read_only_mode.setToolTip("Bloqueia DML, DDL, EXECUTE, GRANT e REVOKE nesta sessão SQL.")
-        toolbar_layout.addWidget(more_button)
-        toolbar_layout.addWidget(commit_changes)
-        toolbar_layout.addWidget(read_only_mode)
-        toolbar_layout.addStretch()
-        sql_toolbar.setProperty("execute_button", execute_button)
-        return sql_toolbar, (commit_action, rollback_action), (commit_changes, read_only_mode)
+        return create_sql_toolbar(SqlToolbarActions(
+            execute=lambda: self._execute_editor(editor),
+            execute_selection=lambda: self._execute_selection_editor(editor),
+            plan=focused(self.inspect_plan),
+            save=focused(self.save_sql_file),
+            commit=focused(self._commit_transaction),
+            rollback=focused(self._rollback_transaction),
+        ))
 
     def _new_sql_tab(self):
         from PySide6.QtWidgets import QTextEdit
@@ -2302,6 +2129,7 @@ class MainWindow:
             self._transaction_session.commit()
             self._log_event("Commit confirmado", profile=self._transaction_profile_name)
             self.status.setText("Commit confirmado. A transação foi encerrada.")
+            self.grid_edit.committed()
         except Exception as exc:
             self._log_event("Falha no commit", profile=self._transaction_profile_name, detail=str(exc))
             self._show_message("Falha no commit", str(exc), warning=True)
@@ -2317,11 +2145,16 @@ class MainWindow:
             self._transaction_session.rollback()
             self._log_event("Rollback confirmado", profile=profile_name)
             self.status.setText("Rollback concluído. Nenhuma alteração da transação foi mantida.")
+            grid_context = self.grid_edit.context
+            reload_grid = self.grid_edit.discard_pending() and grid_context is not None
         except Exception as exc:
             self._log_event("Falha no rollback", profile=self._transaction_profile_name, detail=str(exc))
             self._show_message("Falha no rollback", str(exc), warning=True)
             return
         self._close_transaction(rollback=False)
+        if reload_grid:
+            # The grid showed the rolled-back values; fetch the real ones again.
+            self._execute_sql_text(grid_context.sql)
 
     def _close_transaction(self, rollback: bool = True):
         session = self._transaction_session
@@ -2335,6 +2168,9 @@ class MainWindow:
             self._log_event("Falha ao encerrar transação", profile=profile_name, detail=str(exc))
         self._transaction_session = None
         self._transaction_profile_name = ""
+        if rollback and self.grid_edit.discard_pending():
+            # Pending grid edits were undone; do not leave a grid that looks saved.
+            self.grid_edit.reset()
         self._set_transaction_actions(False)
         self._update_query_connection_status()
 
@@ -2572,6 +2408,7 @@ class MainWindow:
             self.table_page = 0
             self.data_filter.clear()
             self.data_page_label.setText("Dados: tabela selecionada; clique em Dados da tabela")
+            self.pagination_bar.setVisible(True)
             self.structure_table.clear()
             self.structure_table.setSortingEnabled(False)
             self.structure_table.setColumnCount(5)
@@ -2975,6 +2812,7 @@ class MainWindow:
         self.next_data_button.setEnabled(len(result.rows) == page_size)
         self.data_page_label.setText(f"Página {page + 1} · linhas {start}-{start + max(0, len(result.rows) - 1)}")
         self.result_summary.setText(f"Dados: {len(result.rows)} linha(s) · página {page + 1}")
+        self.pagination_bar.setVisible(True)
         self.status.setText(f"Dados carregados: {len(result.rows)} linha(s).")
         return True
 
@@ -3724,6 +3562,7 @@ class MainWindow:
             self._log_event("Falha inesperada na execução SQL", profile=profile.name, statement=statement.split(None, 1)[0] if statement else "", error=detail)
             self.status.setText(f"Falha ao executar SQL: {detail}")
             self.result_summary.setText("Resultado: falha na execução")
+            self.pagination_bar.setVisible(True)
             self._show_sql_error(detail)
             if auto_transaction:
                 self._close_transaction(rollback=True)
@@ -3744,6 +3583,7 @@ class MainWindow:
         suffix = " Transação pendente; escolha Commit ou Rollback." if explicit_transaction and changes_data and result.ok else (" Alterações confirmadas." if changes_data and commit and result.ok else (" Alterações desfeitas (modo seguro)." if changes_data and result.ok else ""))
         self.status.setText(f"{result.message} ({result.elapsed_ms:.1f} ms)." + suffix)
         self.result_summary.setText(f"Resultado: {'OK' if result.ok else 'falha'} · {len(result.rows)} linha(s) · {result.elapsed_ms:.1f} ms")
+        self.pagination_bar.setVisible(True)
         if result.ok:
             self._show_sql_result()
         self._table_original_rows = []
@@ -3759,7 +3599,104 @@ class MainWindow:
         if hasattr(self, "apply_update_action"):
             self.apply_update_action.setEnabled(False)
         from .result_views import fill_table
+        self.grid_edit.reset()
         fill_table(self.result_table, result.columns, result.rows)
+        if result.ok and not changes_data:
+            self._setup_result_editing(sql_text, result, profile)
+
+    def _table_primary_key(self, profile, table: str) -> tuple[str, ...]:
+        """Primary-key columns of ``table`` (cached per connection)."""
+        key = (profile.name, table.casefold())
+        if key in self._primary_keys:
+            return self._primary_keys[key]
+        found = next((o for o in self.profile_objects.get(profile.name, []) if o.kind.upper() == "TABLE" and o.name.casefold() == table.casefold() and o.primary_key), None)
+        primary_key = found.primary_key if found is not None else ()
+        if not primary_key:
+            from .catalog import load_table_metadata
+            try:
+                primary_key = load_table_metadata(profile, self._password_for(profile), table).primary_key
+            except Exception as exc:
+                self._log_event("Falha ao ler chave primária", table=table, error=str(exc))
+                return ()
+        self._primary_keys[key] = tuple(primary_key)
+        return self._primary_keys[key]
+
+    def _setup_result_editing(self, sql_text, result, profile):
+        """Offer grid editing when the result is one table's rows with its full primary key."""
+        from .grid_edit import editable_key, parse_simple_select
+        from .grid_controller import GridContext
+
+        select = parse_simple_select(sql_text)
+        if select is None or not result.columns:
+            return
+        primary_key = self._table_primary_key(profile, select.table)
+        key = editable_key(select, list(result.columns), primary_key)
+        if key is None:
+            hint = f"inclua a chave primária ({', '.join(primary_key)}) para editar" if primary_key else "a tabela não tem chave primária"
+            self.status.setText(f"{self.status.text()} Resultado somente leitura: {hint}.")
+            return
+        self.grid_edit.attach(self.result_table, GridContext(profile.name, select.table, list(result.columns), key, sql_text), result.rows)
+
+    def _grid_confirm(self, count: int, statements: list[str]) -> bool:
+        from PySide6.QtWidgets import QMessageBox
+
+        preview = "\n".join(statements[:5]) + (f"\n... e mais {len(statements) - 5}" if len(statements) > 5 else "")
+        box = QMessageBox(self._window)
+        box.setWindowTitle("Salvar alterações da grade")
+        box.setText(f"Enviar {count} alteração(ões) para o banco?\nElas ficam em uma transação; use Commit para gravar ou Rollback para desfazer.")
+        box.setDetailedText(preview)
+        box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        box.setDefaultButton(QMessageBox.No)
+        return box.exec() == QMessageBox.Yes
+
+    def _grid_execute(self, context, statements):
+        """Run the grid's UPDATEs in the user's transaction; ``(ok, message)``."""
+        from .transaction import TransactionSession
+
+        profile = next((item for item in self.profiles if item.name == context.profile_name), None)
+        if profile is None:
+            return False, "A conexão deste resultado não existe mais."
+        controls = self.editor.property("execution_controls") if self.editor is not None else ()
+        commit_control = controls[0] if controls and len(controls) > 0 else None
+        read_only_control = controls[1] if controls and len(controls) > 1 else None
+        if read_only_control is not None and read_only_control.isChecked():
+            return False, "Modo somente leitura: as alterações não foram enviadas."
+        session = self._transaction_session
+        explicit = session is not None and session.active
+        if explicit and self._transaction_profile_name != profile.name:
+            return False, f"A transação aberta pertence à conexão '{self._transaction_profile_name}'. Faça Commit/Rollback antes."
+        if explicit and getattr(session, "dirty", False) and not self.grid_edit.pending_commit:
+            return False, "Existe uma transação com alterações pendentes. Faça Commit ou Rollback antes de salvar a grade."
+        if not explicit:
+            try:
+                self._transaction_session = TransactionSession(profile, self._password_for(profile))
+                self._transaction_profile_name = profile.name
+            except Exception as exc:
+                self._transaction_session = None
+                self._transaction_profile_name = ""
+                self._show_message("Falha ao iniciar transação", str(exc), warning=True)
+                return False, f"Falha ao iniciar transação: {exc}"
+        for sql in statements:
+            result = self._transaction_session.execute(sql)
+            if not result.ok:
+                self._log_event("Falha ao salvar grade", profile=profile.name, table=context.table, error=result.message)
+                self._close_transaction(rollback=True)
+                self.grid_edit.pending_commit = False
+                self._show_message("Falha ao salvar alterações", result.message + "\n\nA transação foi desfeita; nenhuma linha foi alterada.", warning=True)
+                return False, "Falha ao salvar alterações; a transação foi desfeita."
+        self._log_event("Alterações da grade enviadas", profile=profile.name, table=context.table, statements=len(statements))
+        self._set_transaction_actions(True)
+        self._update_query_connection_status()
+        if commit_control is not None and commit_control.isChecked():
+            try:
+                self._transaction_session.commit()
+            except Exception as exc:
+                self._show_message("Falha no commit", str(exc), warning=True)
+                return False, f"Falha no commit: {exc}"
+            self._close_transaction(rollback=False)
+            self.grid_edit.committed()
+            return True, f"{len(statements)} alteração(ões) gravadas (Commit)."
+        return True, f"{len(statements)} alteração(ões) na transação pendente. Use Commit para gravar ou Rollback para desfazer."
 
     def export_result_csv(self):
         from PySide6.QtWidgets import QFileDialog
@@ -3945,9 +3882,6 @@ class MainWindow:
         )
 
     def manage_users(self):
-        from PySide6.QtWidgets import QComboBox, QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QInputDialog, QLineEdit, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout
-        from .users import PRIVILEGES, change_user_password, create_role, create_user, delete_user, grant_privilege, grant_role, list_users, revoke_privilege, revoke_role
-
         selected_index = self._profile_index_for_item()
         profile_name = ""
         if 0 <= selected_index < len(self.profiles):
@@ -3960,180 +3894,8 @@ class MainWindow:
         if profile is None:
             self._show_message("Gestão de usuários", "Cadastre uma conexão de banco antes de abrir esta tela.", warning=True)
             return
-        admin_password = self._password_for(profile)
-        dialog = QDialog(self._window)
-        dialog.setWindowTitle(f"Usuários · {profile.name}")
-        dialog.resize(640, 420)
-        layout = QVBoxLayout(dialog)
-        connection_row = QHBoxLayout()
-        connection_row.addWidget(QLabel("Conexão"))
-        connection_combo = QComboBox()
-        connection_combo.addItems([item.name for item in self.profiles])
-        connection_combo.setCurrentText(profile.name)
-        connection_combo.setToolTip("Banco usado para as operações administrativas")
-        connection_row.addWidget(connection_combo, 1)
-        layout.addLayout(connection_row)
-        layout.addWidget(QLabel("As operações exigem uma conta administrativa. Senhas nunca são salvas nem registradas no log."))
-        table = QTableWidget(0, 4)
-        table.setHorizontalHeaderLabels(["Usuário", "Nome", "Sobrenome", "Ativo"])
-        table.setSelectionBehavior(QTableWidget.SelectRows)
-        table.setEditTriggers(QTableWidget.NoEditTriggers)
-        layout.addWidget(table)
-        actions = QHBoxLayout()
-        refresh = QPushButton("Atualizar")
-        create = QPushButton("Criar usuário")
-        change = QPushButton("Alterar senha")
-        sysdba = QPushButton("Alterar senha SYSDBA")
-        remove = QPushButton("Excluir usuário")
-        actions.addWidget(refresh); actions.addWidget(create); actions.addWidget(change); actions.addWidget(sysdba); actions.addWidget(remove)
-        layout.addLayout(actions)
-        role_row = QHBoxLayout()
-        role_name = QLineEdit(); role_name.setPlaceholderText("Nome da role")
-        create_role_button = QPushButton("Criar role")
-        grant_role_button = QPushButton("Conceder role ao usuário selecionado")
-        revoke_role_button = QPushButton("Remover role do usuário selecionado")
-        role_row.addWidget(role_name); role_row.addWidget(create_role_button); role_row.addWidget(grant_role_button); role_row.addWidget(revoke_role_button)
-        layout.addLayout(role_row)
-        privilege_row = QHBoxLayout()
-        privilege_combo = QComboBox(); privilege_combo.addItems(PRIVILEGES)
-        object_name = QLineEdit(); object_name.setPlaceholderText("Tabela, view ou procedure")
-        grant_privilege_button = QPushButton("Conceder privilégio")
-        revoke_privilege_button = QPushButton("Remover privilégio")
-        privilege_row.addWidget(privilege_combo); privilege_row.addWidget(object_name); privilege_row.addWidget(grant_privilege_button); privilege_row.addWidget(revoke_privilege_button)
-        layout.addLayout(privilege_row)
-        close = QDialogButtonBox(QDialogButtonBox.Close)
-        close.rejected.connect(dialog.reject)
-        layout.addWidget(close)
-
-        def selected_user() -> str:
-            row = table.currentRow()
-            return table.item(row, 0).text() if row >= 0 and table.item(row, 0) else ""
-
-        def select_connection(name: str):
-            nonlocal profile, admin_password
-            selected = next((item for item in self.profiles if item.name == name), None)
-            if selected is None:
-                return
-            profile = selected
-            admin_password = self._password_for(profile)
-            dialog.setWindowTitle(f"Usuários · {profile.name}")
-            reload_users()
-
-        def ask_secret(title: str) -> tuple[str, str] | None:
-            first, accepted = QInputDialog.getText(dialog, title, "Nova senha:", QLineEdit.Password)
-            if not accepted:
-                return None
-            second, accepted = QInputDialog.getText(dialog, title, "Confirme a nova senha:", QLineEdit.Password)
-            return (first, second) if accepted else None
-
-        def reload_users():
-            try:
-                users = list_users(profile, admin_password)
-            except Exception as exc:
-                self._show_message("Gestão de usuários", str(exc), warning=True)
-                return
-            table.setRowCount(0)
-            for user in users:
-                row = table.rowCount(); table.insertRow(row)
-                for column, value in enumerate((user.name, user.first_name, user.last_name, "Sim" if user.active in (None, 1, "1", True) else "Não")):
-                    table.setItem(row, column, QTableWidgetItem(str(value)))
-            table.resizeColumnsToContents()
-
-        def role_value() -> str:
-            return role_name.text().strip()
-
-        def create_role_action():
-            target = role_value()
-            if not target:
-                self._show_message("Criar role", "Informe o nome da role.", warning=True); return
-            try:
-                create_role(profile, admin_password, target)
-                self._log_event("Role criada", profile=profile.name, role=target)
-                self.status.setText(f"Role {target} criada.")
-            except Exception as exc:
-                self._show_message("Criar role", str(exc), warning=True)
-
-        def change_role_action(revoke: bool):
-            target_user = selected_user(); target_role = role_value()
-            if not target_user or not target_role:
-                self._show_message("Permissão de role", "Selecione um usuário e informe a role.", warning=True); return
-            try:
-                (revoke_role if revoke else grant_role)(profile, admin_password, target_role, target_user)
-                action = "removida" if revoke else "concedida"
-                self._log_event("Role alterada", profile=profile.name, role=target_role, user=target_user, action=action)
-                self.status.setText(f"Role {target_role} {action} para {target_user}.")
-            except Exception as exc:
-                self._show_message("Permissão de role", str(exc), warning=True)
-
-        def change_privilege_action(revoke: bool):
-            target_user = selected_user(); target_object = object_name.text().strip(); privilege = privilege_combo.currentText()
-            if not target_user or not target_object:
-                self._show_message("Privilégio", "Selecione um usuário e informe o objeto.", warning=True); return
-            if revoke:
-                answer = QMessageBox.question(dialog, "Remover privilégio", f"Remover {privilege} de {target_user} no objeto {target_object}?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-                if answer != QMessageBox.Yes:
-                    return
-            try:
-                (revoke_privilege if revoke else grant_privilege)(profile, admin_password, privilege, target_object, target_user)
-                action = "removido" if revoke else "concedido"
-                self._log_event("Privilégio alterado", profile=profile.name, privilege=privilege, object=target_object, user=target_user, action=action)
-                self.status.setText(f"Privilégio {privilege} {action} para {target_user}.")
-            except Exception as exc:
-                self._show_message("Privilégio", str(exc), warning=True)
-
-        def create_user_action():
-            username, accepted = QInputDialog.getText(dialog, "Criar usuário", "Nome do usuário:")
-            if not accepted or not username.strip():
-                return
-            secrets = ask_secret("Criar usuário")
-            if secrets is None:
-                return
-            try:
-                create_user(profile, admin_password, username, secrets[0], secrets[1])
-                self._log_event("Usuário criado", profile=profile.name, user=username.strip())
-                reload_users()
-            except Exception as exc:
-                self._show_message("Criar usuário", str(exc), warning=True)
-
-        def change_user_action(username: str | None = None):
-            target = username or selected_user()
-            if not target:
-                self._show_message("Alterar senha", "Selecione um usuário.", warning=True); return
-            secrets = ask_secret(f"Alterar senha · {target}")
-            if secrets is None:
-                return
-            try:
-                change_user_password(profile, admin_password, target, secrets[0], secrets[1])
-                self._log_event("Senha de usuário alterada", profile=profile.name, user=target)
-                reload_users()
-            except Exception as exc:
-                self._show_message("Alterar senha", str(exc), warning=True)
-
-        def change_sysdba_action():
-            answer = QMessageBox.question(dialog, "Alterar senha SYSDBA", "Essa operação altera a senha administrativa do banco. Continuar?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-            if answer == QMessageBox.Yes:
-                change_user_action("SYSDBA")
-
-        def delete_user_action():
-            target = selected_user()
-            if not target:
-                self._show_message("Excluir usuário", "Selecione um usuário.", warning=True); return
-            answer = QMessageBox.question(dialog, "Excluir usuário", f"Excluir o usuário {target}?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-            if answer != QMessageBox.Yes:
-                return
-            try:
-                delete_user(profile, admin_password, target)
-                self._log_event("Usuário excluído", profile=profile.name, user=target)
-                reload_users()
-            except Exception as exc:
-                self._show_message("Excluir usuário", str(exc), warning=True)
-
-        connection_combo.currentTextChanged.connect(select_connection)
-        refresh.clicked.connect(reload_users); create.clicked.connect(create_user_action); change.clicked.connect(lambda: change_user_action()); sysdba.clicked.connect(change_sysdba_action); remove.clicked.connect(delete_user_action)
-        create_role_button.clicked.connect(create_role_action); grant_role_button.clicked.connect(lambda: change_role_action(False)); revoke_role_button.clicked.connect(lambda: change_role_action(True))
-        grant_privilege_button.clicked.connect(lambda: change_privilege_action(False)); revoke_privilege_button.clicked.connect(lambda: change_privilege_action(True))
-        reload_users()
-        dialog.exec()
+        from .users_dialog import show_users_dialog
+        show_users_dialog(self._window, self.profiles, profile, self._password_for, self._show_message, self._log_event, self.status.setText)
 
     def _finish_backup_operation(self, result, profile, filename):
         output, error = self._operation_result_text(result)
@@ -4472,211 +4234,20 @@ class MainWindow:
         if timer is not None and timer.isActive():
             timer.stop()
 
-    def _toggle_trace_monitor(self):
-        from PySide6.QtCore import QProcess
-        from tempfile import NamedTemporaryFile
-        from .trace_monitor import build_trace_config, find_trace_manager
-
-        process = getattr(self, "trace_process", None)
-        if process is not None and process.state() != QProcess.NotRunning:
-            self._stop_trace_monitor()
-            return
+    def _trace_profile(self):
+        """Connection to trace: the active editor's, else the selected tree item."""
+        editor = getattr(self, "editor", None)
         try:
-            # The activity panel can outlive a SQL child window. Resolve the
-            # profile from the active editor or tree directly so this action
-            # never touches the deleted modal connection fields.
-            profile = None
-            editor = getattr(self, "editor", None)
-            try:
-                profile_name = editor.property("query_profile") if editor is not None else ""
-            except RuntimeError:
-                profile_name = ""
-            if profile_name:
-                profile = next((item for item in self.profiles if item.name == profile_name), None)
-            if profile is None:
-                selected = getattr(self, "_selected_profile_index", -1)
-                if 0 <= selected < len(self.profiles):
-                    profile = self.profiles[selected]
-            if profile is None:
-                self._show_message("Histórico de consultas", "Selecione um banco conectado para iniciar o Trace.", warning=True)
-                return
-            executable = find_trace_manager(profile)
-            if executable is None:
-                self._show_message("Histórico de consultas", "fbtracemgr.exe não foi encontrado na instalação do Firebird.", warning=True)
-                return
-            config = NamedTemporaryFile("w", encoding="utf-8", suffix=".conf", delete=False)
-            config.write(build_trace_config(profile))
-            config.close()
-            self.trace_config_path = Path(config.name)
-            password = self._password_for(profile)
-            service = "service_mgr" if profile.host.strip().lower() in {"", "localhost", "127.0.0.1"} else f"{profile.host}:service_mgr"
-            process = QProcess(self._window)
-            process.setProcessChannelMode(QProcess.MergedChannels)
-            process.readyReadStandardOutput.connect(self._read_trace_output)
-            process.errorOccurred.connect(self._trace_error)
-            process.finished.connect(self._trace_finished)
-            process.started.connect(self._trace_started)
-            self.trace_process = process
-            self.trace_lines = []
-            self._trace_rows = []
-            self._trace_last_render = 0.0
-            self.trace_status = "Trace ativo · aguardando eventos do banco..."
-            # Firebird 2.5 does not preserve spaces in the -NAME value and
-            # treats the remaining words as unknown switches. Keep the trace
-            # session name as one token for all supported Firebird versions.
-            process.start(str(executable), ["-SE", service, "-USER", profile.user, "-PASSWORD", password, "-START", "-NAME", "FirebirdMaintenanceStudio", "-CONFIG", str(self.trace_config_path)])
-            self.activity_trace_button.setText("Parar histórico")
-            self.status.setText("Trace ativo · aguardando eventos do banco...")
-            self._render_trace_output()
-        except Exception as exc:
-            self._show_message("Histórico de consultas", str(exc), warning=True)
-
-    def _trace_started(self):
-        """Confirm asynchronously that fbtracemgr really started."""
-        process = getattr(self, "trace_process", None)
-        pid = process.processId() if process is not None else 0
-        self.trace_status = f"Trace ativo · aguardando eventos do banco (PID {pid})"
-        self.status.setText(self.trace_status)
-        self._render_trace_output()
-
-    def _read_trace_output(self):
-        process = getattr(self, "trace_process", None)
-        if process is None:
-            return
-        text = bytes(process.readAllStandardOutput()).decode("utf-8", errors="replace")
-        if not text:
-            return
-        self.trace_lines.extend(line for line in text.splitlines() if line.strip())
-        self.trace_lines = self.trace_lines[-200:]
-        self._update_trace_table()
-        self.trace_status = f"Trace ativo · {len(self.trace_lines)} evento(s) recebido(s)"
-        self.status.setText(self.trace_status)
-        # Trace can emit a large burst of lines. Keep collecting immediately,
-        # but redraw the Qt text widget at most four times per second so the
-        # application remains responsive while another tool is querying.
-        now = time.monotonic()
-        if now - self._trace_last_render < 0.25:
-            return
-        self._trace_last_render = now
-        self._render_trace_output()
-
-    def _update_trace_table(self):
-        """Show raw Trace events in a sortable grid, separate from active SQL."""
-        table = getattr(self, "activity_trace_table", None)
-        if table is None:
-            return
-        from PySide6.QtWidgets import QTableWidgetItem
-        import re
-
-        selected_detail = ""
-        selected = table.currentItem()
-        if selected is not None:
-            selected_row = selected.row()
-            detail = table.item(selected_row, 2)
-            selected_detail = detail.text() if detail is not None else ""
-        table.setRowCount(0)
-        for line in self.trace_lines[-200:]:
-            timestamp = ""
-            match = re.match(r"(\d{4}-\d\d-\d\d\s+\d\d:\d\d:\d\d(?:\.\d+)?)", line)
-            if match:
-                timestamp = match.group(1)
-            event = ""
-            for candidate in ("EXECUTE_STATEMENT_START", "EXECUTE_STATEMENT_FINISH", "ATTACH_DATABASE", "DETACH_DATABASE", "TRACE_INIT", "TRACE_FINI"):
-                if candidate in line:
-                    event = candidate
-                    break
-            if not event:
-                event = "Trace"
-            row = table.rowCount()
-            table.insertRow(row)
-            table.setItem(row, 0, QTableWidgetItem(timestamp))
-            table.setItem(row, 1, QTableWidgetItem(event))
-            table.setItem(row, 2, QTableWidgetItem(line))
-            if selected_detail and line == selected_detail:
-                table.selectRow(row)
-        table.resizeColumnsToContents()
-        if table.columnCount() >= 3:
-            table.horizontalHeader().setStretchLastSection(True)
-
-    def _trace_context_menu(self, position):
-        from PySide6.QtWidgets import QApplication, QMenu
-
-        table = self.activity_trace_table
-        item = table.itemAt(position)
-        if item is not None:
-            table.selectRow(item.row())
-        row = table.currentRow()
-        menu = QMenu(self._window)
-        copy_action = menu.addAction("Copiar evento")
-        copy_sql_action = menu.addAction("Copiar SQL/detalhes")
-        copy_action.setEnabled(row >= 0)
-        copy_sql_action.setEnabled(row >= 0)
-        copy_action.triggered.connect(lambda: QApplication.clipboard().setText(" | ".join(
-            table.item(row, column).text() if table.item(row, column) is not None else ""
-            for column in range(table.columnCount())
-        )))
-        copy_sql_action.triggered.connect(lambda: QApplication.clipboard().setText(
-            table.item(row, 2).text() if table.item(row, 2) is not None else ""
-        ))
-        menu.exec(table.viewport().mapToGlobal(position))
-
-    def _render_trace_output(self):
-        """Render the buffered trace tail without hiding the active summary."""
-        current = self.activity_metrics.toPlainText()
-        marker = "\n\nHISTÓRICO DE CONSULTAS (TRACE)"
-        prefix = current.split(marker, 1)[0].rstrip()
-        trace_body = self.trace_status or "Trace aguardando eventos."
-        if self.trace_lines:
-            trace_body += "\n" + "\n".join(self.trace_lines)
-        self.activity_metrics.setPlainText(
-            prefix
-            + marker
-            + "\nO Trace registra consultas concluídas e em execução.\n"
-            + trace_body
-        )
-
-    def _trace_finished(self):
-        self._read_trace_output()
-        if self.trace_lines:
-            self._render_trace_output()
-        if getattr(self, "activity_trace_button", None) is not None:
-            self.activity_trace_button.setText("Iniciar histórico (Trace)")
-        self.trace_process = None
-        if self.trace_lines:
-            self.trace_status = f"Trace encerrado · {len(self.trace_lines)} evento(s) recebido(s)"
-        else:
-            self.trace_status = "Trace encerrado sem eventos recebidos"
-        config_path = getattr(self, "trace_config_path", None)
-        self.trace_config_path = None
-        if config_path is not None:
-            try:
-                config_path.unlink(missing_ok=True)
-            except OSError:
-                pass
-
-        if not self.trace_lines:
-            self.status.setText("O Trace Service foi encerrado sem registrar eventos. Verifique usuário, senha e permissões de monitoramento.")
-        else:
-            self.status.setText(self.trace_status)
-        self._update_trace_table()
-
-    def _trace_error(self, error):
-        self._read_trace_output()
-        self.trace_status = f"Falha no Trace Service: {error}"
-        self.status.setText(self.trace_status)
-        self._render_trace_output()
-
-    def _stop_trace_monitor(self):
-        from PySide6.QtCore import QProcess
-
-        process = getattr(self, "trace_process", None)
-        if process is None:
-            return
-        if process.state() != QProcess.NotRunning:
-            process.terminate()
-            if not process.waitForFinished(1500):
-                process.kill()
-        self._trace_finished()
+            profile_name = editor.property("query_profile") if editor is not None else ""
+        except RuntimeError:
+            # The activity panel can outlive a SQL child window.
+            profile_name = ""
+        if profile_name:
+            profile = next((item for item in self.profiles if item.name == profile_name), None)
+            if profile is not None:
+                return profile
+        selected = getattr(self, "_selected_profile_index", -1)
+        return self.profiles[selected] if 0 <= selected < len(self.profiles) else None
 
     def _set_activity_refresh_interval(self, interval_ms):
         try:
@@ -4733,13 +4304,13 @@ class MainWindow:
             f"Última atualização: {datetime.now():%d/%m/%Y %H:%M:%S}",
             "Senha: não exposta pelo monitoramento",
         ]
-        if self.trace_lines or getattr(self, "trace_process", None) is not None:
+        if self.trace.lines or self.trace.process is not None:
             lines.extend([
                 "",
                 "HISTÓRICO DE CONSULTAS (TRACE)",
                 "O Trace registra consultas concluídas e em execução.",
-                self.trace_status or "Trace aguardando eventos.",
-                *self.trace_lines[-200:],
+                self.trace.status or "Trace aguardando eventos.",
+                *self.trace.lines[-200:],
             ])
         self.activity_metrics.setPlainText("\n".join(lines))
         headers = ["ID", "Conexão", "Usuário", "Terminal", "Aplicação", "Início", "Duração", "SQL"]
@@ -5002,102 +4573,51 @@ class MainWindow:
             self._log_event("Falha ao exportar atividade", filename=filename, error=str(exc))
             self._show_message("Falha ao exportar atividade", str(exc))
 
-    def export_trace_csv(self):
-        """Export captured Trace events independently from active statements."""
+    def _save_report(self, report, *, dialog_title, default_name, file_filter, empty_title, empty_message, saved_event, failed_event, status_text, as_html=None):
+        """Ask for a file and write a report; ``as_html`` turns the text into a document."""
         from PySide6.QtWidgets import QFileDialog
-        import csv
 
-        if not self.trace_lines:
-            self._show_message("Exportar Trace", "Inicie o histórico e aguarde eventos antes de exportar.", warning=True)
+        report = report.strip() or self.editor.toPlainText().strip()
+        if not report:
+            self._show_message(empty_title, empty_message, warning=True)
             return
-        filename, _ = QFileDialog.getSaveFileName(
-            self._window, "Exportar histórico Trace", "historico_trace.csv", "CSV (*.csv);;Todos (*.*)"
-        )
+        filename, _ = QFileDialog.getSaveFileName(self._window, dialog_title, default_name, file_filter)
         if not filename:
             return
-        table = self.activity_trace_table
+        content = as_html(report) if as_html else report + "\n"
         try:
-            headers = [table.horizontalHeaderItem(column).text() for column in range(table.columnCount())]
-            with open(filename, "w", newline="", encoding="utf-8-sig") as handle:
-                writer = csv.writer(handle, delimiter=";")
-                writer.writerow(headers)
-                for row in range(table.rowCount()):
-                    writer.writerow([
-                        table.item(row, column).text() if table.item(row, column) else ""
-                        for column in range(table.columnCount())
-                    ])
-            self._log_event("Histórico Trace exportado", filename=filename, rows=table.rowCount())
-            self.status.setText(f"Histórico Trace exportado: {filename}")
+            Path(filename).write_text(content, encoding="utf-8")
         except Exception as exc:
-            self._log_event("Falha ao exportar Trace", filename=filename, error=str(exc))
-            self._show_message("Falha ao exportar Trace", str(exc))
-
-    def clear_trace_history(self):
-        """Clear displayed Trace events while keeping fbtracemgr running."""
-        self.trace_lines = []
-        self._trace_rows = []
-        table = getattr(self, "activity_trace_table", None)
-        if table is not None:
-            table.setRowCount(0)
-        if getattr(self, "trace_process", None) is not None:
-            self.trace_status = "Trace ativo · aguardando novos eventos..."
-        else:
-            self.trace_status = "Histórico Trace limpo"
-        self._render_trace_output()
-        self.status.setText("Histórico Trace limpo.")
+            self._log_event(failed_event, target=str(filename), error=str(exc))
+            self._show_message(failed_event, str(exc))
+            return
+        self._log_event(saved_event, target=str(filename), bytes=len(content.encode("utf-8")))
+        self.status.setText(f"{status_text}: {filename}")
 
     def save_health_report(self):
         """Save the most recent health report without exposing credentials."""
-        from PySide6.QtWidgets import QFileDialog
-
-        report = self.last_health_report.strip() or self.editor.toPlainText().strip()
-        if not report:
-            self._show_message("Salvar saúde", "Analise a saúde de um banco antes de salvar o relatório.", warning=True)
-            return
-        filename, _ = QFileDialog.getSaveFileName(
-            self._window,
-            "Salvar relatório de saúde",
-            "saude_firebird.txt",
-            "Relatório de texto (*.txt);;Todos (*.*)",
+        self._save_report(
+            self.last_health_report,
+            dialog_title="Salvar relatório de saúde", default_name="saude_firebird.txt",
+            file_filter="Relatório de texto (*.txt);;Todos (*.*)",
+            empty_title="Salvar saúde", empty_message="Analise a saúde de um banco antes de salvar o relatório.",
+            saved_event="Relatório de saúde salvo", failed_event="Falha ao salvar saúde",
+            status_text="Relatório de saúde salvo",
         )
-        if not filename:
-            return
-        try:
-            Path(filename).write_text(report + "\n", encoding="utf-8")
-        except Exception as exc:
-            self._log_event("Falha ao salvar saúde", target=str(filename), error=str(exc))
-            self._show_message("Falha ao salvar saúde", str(exc))
-            return
-        self._log_event("Relatório de saúde salvo", target=str(filename), bytes=len(report.encode("utf-8")))
-        self.status.setText(f"Relatório de saúde salvo: {filename}")
 
     def save_health_html(self):
         """Save a shareable HTML health report without credentials or database data."""
-        from PySide6.QtWidgets import QFileDialog
-        from html import escape
+        from .report_export import health_html
 
-        report = self.last_health_report.strip() or self.editor.toPlainText().strip()
-        if not report:
-            self._show_message("Salvar saúde em HTML", "Analise a saúde de um banco antes de salvar o relatório.", warning=True)
-            return
-        filename, _ = QFileDialog.getSaveFileName(
-            self._window,
-            "Salvar relatório de saúde em HTML",
-            "saude_firebird.html",
-            "HTML (*.html);;Todos (*.*)",
+        name = self.name.text()
+        self._save_report(
+            self.last_health_report,
+            dialog_title="Salvar relatório de saúde em HTML", default_name="saude_firebird.html",
+            file_filter="HTML (*.html);;Todos (*.*)",
+            empty_title="Salvar saúde em HTML", empty_message="Analise a saúde de um banco antes de salvar o relatório.",
+            saved_event="Relatório de saúde HTML salvo", failed_event="Falha ao salvar saúde HTML",
+            status_text="Relatório HTML salvo", as_html=lambda report: health_html(name, report),
         )
-        if not filename:
-            return
-        title = escape(self.name.text().strip() or "Banco Firebird")
-        document = f"<!doctype html><html lang='pt-BR'><head><meta charset='utf-8'><title>Saúde - {title}</title><style>body{{font-family:Segoe UI,Arial,sans-serif;margin:2rem;color:#202124}}pre{{white-space:pre-wrap;background:#f6f8fa;border:1px solid #d0d7de;border-radius:6px;padding:1rem}}h1{{font-size:1.4rem}}</style></head><body><h1>Relatório de saúde: {title}</h1><pre>{escape(report)}</pre></body></html>"
-        try:
-            Path(filename).write_text(document, encoding="utf-8")
-        except Exception as exc:
-            self._log_event("Falha ao salvar saúde HTML", target=str(filename), error=str(exc))
-            self._show_message("Falha ao salvar saúde HTML", str(exc))
-            return
-        self._log_event("Relatório de saúde HTML salvo", target=str(filename), bytes=len(document.encode("utf-8")))
-        self.status.setText(f"Relatório HTML salvo: {filename}")
 
     def create_support_package(self):
         from PySide6.QtWidgets import QFileDialog
@@ -5287,51 +4807,23 @@ class MainWindow:
 
     def save_compare_report(self):
         """Save the most recent comparison report without applying any change."""
-        from PySide6.QtWidgets import QFileDialog
-
-        report = self.last_compare_report.strip() or self.editor.toPlainText().strip()
-        if not report:
-            self._show_message("Salvar comparação", "Execute uma comparação antes de salvar o relatório.", warning=True)
-            return
-        filename, _ = QFileDialog.getSaveFileName(
-            self._window,
-            "Salvar relatório de comparação",
-            "comparacao_firebird.txt",
-            "Relatório de texto (*.txt);;Script SQL (*.sql);;Todos (*.*)",
+        self._save_report(
+            self.last_compare_report,
+            dialog_title="Salvar relatório de comparação", default_name="comparacao_firebird.txt",
+            file_filter="Relatório de texto (*.txt);;Script SQL (*.sql);;Todos (*.*)",
+            empty_title="Salvar comparação", empty_message="Execute uma comparação antes de salvar o relatório.",
+            saved_event="Comparação salva", failed_event="Falha ao salvar comparação",
+            status_text="Relatório de comparação salvo",
         )
-        if not filename:
-            return
-        try:
-            Path(filename).write_text(report + "\n", encoding="utf-8")
-        except Exception as exc:
-            self._log_event("Falha ao salvar comparação", target=str(filename), error=str(exc))
-            self._show_message("Falha ao salvar comparação", str(exc))
-            return
-        self._log_event("Comparação salva", target=str(filename), bytes=len(report.encode("utf-8")))
-        self.status.setText(f"Relatório de comparação salvo: {filename}")
 
     def save_compare_html(self):
-        from PySide6.QtWidgets import QFileDialog
-        from html import escape
+        from .report_export import compare_html
 
-        report = self.last_compare_report.strip() or self.editor.toPlainText().strip()
-        if not report:
-            self._show_message("Salvar comparação em HTML", "Execute uma comparação antes de salvar o relatório.", warning=True)
-            return
-        filename, _ = QFileDialog.getSaveFileName(
-            self._window,
-            "Salvar comparação em HTML",
-            "comparacao_firebird.html",
-            "HTML (*.html);;Todos (*.*)",
+        self._save_report(
+            self.last_compare_report,
+            dialog_title="Salvar comparação em HTML", default_name="comparacao_firebird.html",
+            file_filter="HTML (*.html);;Todos (*.*)",
+            empty_title="Salvar comparação em HTML", empty_message="Execute uma comparação antes de salvar o relatório.",
+            saved_event="Comparação HTML salva", failed_event="Falha ao salvar comparação HTML",
+            status_text="Comparação HTML salva", as_html=compare_html,
         )
-        if not filename:
-            return
-        document = "<!doctype html><html lang='pt-BR'><head><meta charset='utf-8'><title>Comparação Firebird</title><style>body{font-family:Segoe UI,Arial,sans-serif;margin:2rem;color:#202124}pre{white-space:pre-wrap;background:#f6f8fa;border:1px solid #d0d7de;border-radius:6px;padding:1rem} .add{color:#137333}.remove{color:#b3261e}</style></head><body><h1>Comparação de estruturas Firebird</h1><pre>" + escape(report) + "</pre></body></html>"
-        try:
-            Path(filename).write_text(document, encoding="utf-8")
-        except Exception as exc:
-            self._log_event("Falha ao salvar comparação HTML", target=str(filename), error=str(exc))
-            self._show_message("Falha ao salvar comparação HTML", str(exc))
-            return
-        self._log_event("Comparação HTML salva", target=str(filename), bytes=len(document.encode("utf-8")))
-        self.status.setText(f"Comparação HTML salva: {filename}")

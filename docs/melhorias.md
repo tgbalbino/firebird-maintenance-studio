@@ -2,6 +2,43 @@
 
 Data da revisão: 16/10/2026.
 
+## Implementado em 19/10/2026
+
+Validação feita com capturas da janela real nos temas claro e escuro (1280×720, 1920×1080 e escala 150%).
+
+| Item | Resultado |
+|---|---|
+| Barra de comandos SQL achatada | Causa: regra de estilo sem seletor no viewport do MDI, que vazava para os filhos. Agora é limitada por nome (`#mdiViewport`). |
+| Caixas atrás de textos | Rótulos e checkboxes com fundo transparente nos quatro temas. |
+| Tela inicial | Cartão centralizado com conexões salvas (favoritas primeiro) e botão "Conectar" em cada uma; controles de consulta ocultos até existir uma janela SQL. |
+| Breadcrumb e título | `Banco (host:porta) > consulta SQL`; título da janela com banco e estado da conexão. |
+| Abas SQL | Nome do banco na aba e ponto colorido estável por banco; "✕" com contraste e afastado da borda. |
+| Menus | Comandos de Dados, Banco, Segurança e Análise movidos para a barra superior; faixa de botões inferior removida. |
+| Rodapé de paginação | Só aparece quando há dados ou resultado. |
+| Barra lateral | "Conexão" e "Dados da tabela" no topo; árvore ocupa o restante. |
+| Menus de contexto | Espaçamento padrão em todos os menus (o do histórico SQL cortava o texto). |
+| Fechamento de abas | Corrigida exceção ao destruir o rótulo de status da janela. |
+| Build | `build_release.ps1` grava `FirebirdMaintenanceStudio.exe` em `C:\ControleVendas\Utils\` (parâmetro `-OutputFolder`). |
+| Organização do código | Extraídos `sql_editor`, `sql_toolbar`, `welcome_view`, `users_dialog` e `report_export`; `ui.py` passou de 5.276 para cerca de 4.900 linhas. |
+
+### Edição direta no grid (consulta simples)
+
+Disponível quando o resultado vem de um `SELECT` de uma única tabela (sem JOIN, UNION, GROUP BY, DISTINCT, subconsulta, apelidos ou funções) e a chave primária completa está nas colunas retornadas.
+
+1. **Editar grade** libera a edição das células; as alteradas ficam em destaque e o botão **Salvar alterações (n)** mostra a contagem.
+2. **Salvar alterações** pede confirmação (com os UPDATEs em "Mostrar detalhes") e envia tudo para uma transação pendente; o `WHERE` usa a chave primária com o valor original da linha.
+3. **Commit** grava; **Rollback** desfaz e recarrega o resultado do banco. Com "Confirmar alterações" marcado, o commit é feito logo após salvar. "Somente leitura" bloqueia o salvamento.
+4. Se um UPDATE falha, a transação inteira é desfeita. Transações pendentes de outra origem ou de outro banco impedem o salvamento.
+
+Código: `grid_edit.py` (análise do SELECT e geração dos UPDATEs, sem Qt), `grid_controller.py` (estado da grade) e a ligação com a transação em `ui.py`. Testes em `tests/test_grid_edit.py`, `tests/test_grid_controller.py` e `GridEditingFlowTests`. Ainda não validado contra um banco Firebird real.
+
+### Pendências sugeridas
+
+- Extrair monitor de atividade/Trace e as telas de saúde e comparação de `ui.py`.
+- Cabeçalho próprio com host e versão do servidor quando conectado.
+- Testes de captura em escala 125% e 150% em janela real (a plataforma offscreen não tem fontes).
+- Conferir em máquina com banco de teste: conectar, executar consulta, backup/restore e o rodapé de paginação após uma execução.
+
 ## Segunda validação visual e novas referências
 
 Data: 16/10/2026.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from .models import ConnectionProfile
@@ -57,3 +58,22 @@ def build_trace_config(profile: ConnectionProfile) -> str:
         "    time_threshold 0\n"
         "}\n"
     )
+
+
+TRACE_EVENTS = (
+    "EXECUTE_STATEMENT_START",
+    "EXECUTE_STATEMENT_FINISH",
+    "ATTACH_DATABASE",
+    "DETACH_DATABASE",
+    "TRACE_INIT",
+    "TRACE_FINI",
+)
+_TIMESTAMP = re.compile(r"(\d{4}-\d\d-\d\d\s+\d\d:\d\d:\d\d(?:\.\d+)?)")
+
+
+def parse_trace_line(line: str) -> tuple[str, str]:
+    """Return ``(timestamp, event)`` for a raw fbtracemgr line (``"Trace"`` if unknown)."""
+    match = _TIMESTAMP.match(line)
+    timestamp = match.group(1) if match else ""
+    event = next((name for name in TRACE_EVENTS if name in line), "Trace")
+    return timestamp, event
