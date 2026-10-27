@@ -314,5 +314,95 @@ class GridEditingFlowTests(WindowTestCase):
         self.assertIn("chave primária foi usada", sql)
 
 
+@unittest.skipIf(QSettings is None, "PySide6 não instalado")
+class SqlExecutionFlowTests(WindowTestCase):
+    """Characterizes execute -> pending transaction -> commit/rollback with no database."""
+
+    def open_window(self, select_result=None):
+        from unittest import mock
+
+        from firebird_studio.models import ConnectionProfile, ProfileStore
+        from firebird_studio.sql import QueryResult
+        from firebird_studio.ui import MainWindow
+
+        path = Path(self._tmp.name) / "flow_profiles.json"
+        ProfileStore(path).save([ConnectionProfile(name="Vendas", database="C:/db/v.fdb")])
+        window = MainWindow(ProfileStore(path))
+        window._window.show()
+        self.addCleanup(self._dispose, window)
+        window._new_sql_tab()
+        window.editor.setProperty("query_profile", "Vendas")
+        self.messages = []
+        window._show_message = lambda title, text, warning=False: self.messages.append(title)
+        result = select_result or QueryResult(True, ["ID", "NOME"], [(1, "Ana"), (2, "Bruno")], "2 linha(s) retornada(s).", 1.5)
+        from PySide6.QtWidgets import QMessageBox
+
+        for patcher in (
+            mock.patch("firebird_studio.sql.execute_sql", lambda *a, **k: result),
+            mock.patch("firebird_studio.transaction.TransactionSession", _FakeSession),
+            mock.patch("PySide6.QtWidgets.QMessageBox.question", return_value=QMessageBox.Yes),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        return window
+
+    def test_select_fills_result_grid_and_summary(self):
+        window = self.open_window()
+        window._execute_sql_text("select id, nome from cliente")
+        self.assertEqual(window.result_table.rowCount(), 2)
+        self.assertEqual(window.result_table.columnCount(), 2)
+        self.assertIn("2 linha(s)", window.result_summary.text())
+        self.assertIsNone(window._transaction_session)
+
+    def test_empty_sql_is_rejected_without_executing(self):
+        window = self.open_window()
+        window._execute_sql_text("   ")
+        self.assertIn("Digite uma instrução SQL", window.status.text())
+        self.assertEqual(window.result_table.rowCount(), 0)
+
+    def test_failed_select_reports_error_and_keeps_window_alive(self):
+        from firebird_studio.sql import QueryResult
+
+        window = self.open_window(QueryResult(False, [], [], "Table unknown: X", 0.0))
+        window._execute_sql_text("select * from x")
+        self.assertIn("Falha ao executar SQL", self.messages)
+        self.assertIn("falha", window.result_summary.text())
+
+    def test_update_opens_pending_transaction_and_blocks_next_command(self):
+        window = self.open_window()
+        window._execute_sql_text("update cliente set nome = 'X' where id = 1")
+        self.assertTrue(window._transaction_session.dirty)
+        self.assertIn("Transação pendente", window.status.text())
+        window._execute_sql_text("select 1 from rdb$database")
+        self.assertIn("Transação não finalizada", self.messages)
+
+    def test_rollback_discards_and_allows_new_commands(self):
+        window = self.open_window()
+        window._execute_sql_text("delete from cliente where id = 1")
+        session = _FakeSession.last
+        window._rollback_transaction()
+        self.assertTrue(session.rolled_back)
+        self.assertIn("Rollback concluído", window.status.text())
+        self.assertIsNone(window._transaction_session)
+
+    def test_commit_confirms_and_closes_transaction(self):
+        window = self.open_window()
+        window._execute_sql_text("insert into cliente (id) values (9)")
+        session = _FakeSession.last
+        window._commit_transaction()
+        self.assertTrue(session.committed)
+        self.assertIn("Commit confirmado", window.status.text())
+        self.assertIsNone(window._transaction_session)
+
+    def test_read_only_mode_blocks_mutating_statements(self):
+        window = self.open_window()
+        _controls = window.editor.property("execution_controls")
+        _controls[1].setChecked(True)
+        window._execute_sql_text("drop table cliente")
+        self.assertIn("somente leitura", window.status.text())
+        self.assertIsNone(window._transaction_session)
+
+
+
 if __name__ == "__main__":
     unittest.main()
