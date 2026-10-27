@@ -451,6 +451,32 @@ class SqlAutocompleteTests(WindowTestCase):
         self.assertEqual(editor.toPlainText(), "select * from RDB$RELATIONS")
         self.assertFalse(popup.isVisible())
 
+    def test_dot_after_alias_lists_that_tables_columns(self):
+        from PySide6.QtGui import QTextCursor
+        from PySide6.QtTest import QTest
+
+        from firebird_studio.schema import SchemaObject
+
+        window, editor = self.open_editor()
+        window.profile_objects["A"] = [SchemaObject("TABLE", "CLIENTES", "", columns=(("NOME", "V", "", "", ""), ("LIMITE", "N", "", "", "")))]
+        window._refresh_sql_completer(editor)
+        editor.setPlainText("select  from clientes c")
+        cursor = editor.textCursor()
+        cursor.setPosition(len("select "))
+        editor.setTextCursor(cursor)
+        QTest.keyClicks(editor, "c.")
+        self.app.processEvents()
+        completer = editor.property("completion")
+        self.assertTrue(completer.popup().isVisible())
+        self.assertEqual(sorted(editor.property("completion_model").stringList()), ["LIMITE", "NOME"])
+        QTest.keyClicks(editor, "no")
+        self.assertEqual(completer.completionCount(), 1)
+        window._insert_completion(editor, "NOME")
+        self.assertEqual(editor.toPlainText(), "select c.NOME from clientes c")
+        # Back to a plain word: the full vocabulary returns.
+        QTest.keyClicks(editor, " sel")
+        self.assertIn("SELECT", editor.property("completion_model").stringList())
+
     def test_popup_does_not_open_when_text_is_loaded_programmatically(self):
         window, editor = self.open_editor()
         popup = editor.property("completion").popup()

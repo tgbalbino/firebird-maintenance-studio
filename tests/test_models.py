@@ -52,6 +52,24 @@ class ProfileTests(unittest.TestCase):
         for invented in ("RDB$MON$ATTACHMENTS", "RDB$USERS", "RDB$SQL_REQUESTS"):
             self.assertNotIn(invented, words)
 
+    def test_aliases_resolve_to_tables_and_columns(self):
+        from firebird_studio.sql_completion import columns_for_qualifier, current_statement, qualifier_before, table_aliases
+
+        statement = "select c.id from clientes c join pedidos as p on p.cid = c.id where "
+        aliases = table_aliases(statement)
+        self.assertEqual(aliases["C"], "CLIENTES")
+        self.assertEqual(aliases["P"], "PEDIDOS")
+        self.assertNotIn("WHERE", aliases)
+        self.assertEqual(table_aliases("update clientes set x = 1"), {"CLIENTES": "CLIENTES"})
+        objects = [SchemaObject("TABLE", "CLIENTES", "", columns=(("NOME", "V", "", "", ""), ("ID", "I", "", "", "")))]
+        self.assertEqual(columns_for_qualifier("c", statement, objects), ["ID", "NOME"])
+        self.assertEqual(columns_for_qualifier("clientes", statement, objects), ["ID", "NOME"])
+        self.assertIsNone(columns_for_qualifier("p", statement, objects))
+        self.assertIsNone(columns_for_qualifier("", statement, objects))
+        self.assertEqual(qualifier_before("select c.na", 9), "c")
+        self.assertEqual(qualifier_before("select na", 7), "")
+        self.assertEqual(current_statement("a;b c;d", 4), "b c")
+
     def test_word_bounds_treats_dollar_as_identifier_character(self):
         from firebird_studio.sql_completion import word_bounds
 

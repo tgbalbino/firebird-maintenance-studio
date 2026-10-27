@@ -1634,6 +1634,11 @@ class MainWindow:
         if target is None:
             return
         model = target.property("completion_model")
+        completer = target.property("completion")
+        if target.property("completion_contextual") and completer is not None and completer.popup().isVisible():
+            # A "table." column list is on screen; the next keystroke
+            # restores the full vocabulary when the context ends.
+            return
         if model is not None:
             model.setStringList(self._completion_words(target.property("query_profile") or None))
 
@@ -1646,10 +1651,33 @@ class MainWindow:
         start, _end = word_bounds(line, column)
         return line[start:column]
 
+    def _contextual_columns(self, editor):
+        """Columns for ``table.`` / ``alias.`` before the cursor, else ``None``."""
+        from .sql_completion import columns_for_qualifier, current_statement, qualifier_before, word_bounds
+        cursor = editor.textCursor()
+        line = cursor.block().text()
+        column = cursor.positionInBlock()
+        start, _end = word_bounds(line, column)
+        qualifier = qualifier_before(line, start)
+        if not qualifier:
+            return None
+        profile_name = editor.property("query_profile") or ""
+        objects = self.profile_objects.get(profile_name, [])
+        statement = current_statement(editor.toPlainText(), cursor.position())
+        return columns_for_qualifier(qualifier, statement, objects)
+
     def _popup_completions(self, editor, prefix: str) -> bool:
         completer = editor.property("completion")
-        if completer is None:
+        model = editor.property("completion_model")
+        if completer is None or model is None:
             return False
+        columns = self._contextual_columns(editor)
+        if columns is not None:
+            model.setStringList(columns)
+            editor.setProperty("completion_contextual", True)
+        elif editor.property("completion_contextual"):
+            editor.setProperty("completion_contextual", False)
+            self._refresh_sql_completer(editor)
         completer.setCompletionPrefix(prefix)
         if not completer.completionCount():
             completer.popup().hide()
@@ -1675,7 +1703,10 @@ class MainWindow:
     def _auto_complete_sql(self, editor):
         """Offer completion while typing, without interrupting short words."""
         prefix = self._completion_prefix(editor)
-        if len(prefix) < 2 or prefix[0].isdigit():
+        contextual = self._contextual_columns(editor) is not None
+        # An empty prefix only qualifies right after "table." / "alias.";
+        # otherwise wait for two characters so short words are not interrupted.
+        if (not prefix and not contextual) or (len(prefix) < 2 and not contextual) or (prefix and prefix[0].isdigit()):
             completer = editor.property("completion")
             if completer is not None:
                 completer.popup().hide()
