@@ -82,6 +82,15 @@ GRAY_STYLE += _TRANSPARENT + " QPushButton#primaryAction:disabled { background: 
 DARK_STYLE += _TRANSPARENT + " QPushButton#primaryAction:disabled { background: #2a3a5a; color: #9fb0cc; border-color: #3f5578; }"
 BLUE_STYLE += _TRANSPARENT + " QPushButton#primaryAction:disabled { background: #2a3a5a; color: #9fb0cc; border-color: #3f5578; }"
 
+_POLISH = (
+    " QCheckBox#toolbarOption { background: transparent; border: none; padding: 4px 6px; }"
+    " QLabel#treeEmptyHint { color: #7b8798; font-size: 12px; background: transparent; }"
+    " QFrame#toolbarSeparator { border: none; }"
+    " QTextEdit#sqlEditor { border: none; border-radius: 0; }"
+)
+for _name in ("LIGHT_STYLE", "DARK_STYLE", "GRAY_STYLE", "BLUE_STYLE"):
+    globals()[_name] += _POLISH
+
 
 def _close_icon_css() -> str:
     """Tab close buttons drawn per state: dark glyph on idle tabs, white on selected."""

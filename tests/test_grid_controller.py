@@ -112,6 +112,20 @@ class GridEditControllerTests(unittest.TestCase):
         controller.reset()
         self.assertTrue(edit.isHidden() and save.isHidden())
 
+    def test_reset_discards_unsaved_edits_and_says_so(self):
+        controller, table, edit, save = self.build()
+        table.item(0, 1).setText("x")
+        controller.reset()
+        self.assertEqual(table.item(0, 1).text(), "Ana")
+        self.assertIn("1 linha(s) editada(s)", self.status[-1])
+
+    def test_controls_follow_the_visible_table(self):
+        controller, table, edit, save = self.build()
+        controller.sync_visibility(QTableWidget())
+        self.assertTrue(edit.isHidden() and save.isHidden())
+        controller.sync_visibility(table)
+        self.assertFalse(edit.isHidden() or save.isHidden())
+
 
 if __name__ == "__main__":
     unittest.main()

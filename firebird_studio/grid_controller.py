@@ -51,7 +51,8 @@ class GridEditController:
 
     # -- setup -----------------------------------------------------------
     def reset(self):
-        """Leave edit mode and hide the controls (new result, new connection...)."""
+        """Leave edit mode, drop unsaved local edits and hide the controls."""
+        discarded = self._revert_local_edits()
         self._set_editing(False)
         self.context = None
         self.pending_commit = False
@@ -60,6 +61,38 @@ class GridEditController:
         self.edit_button.blockSignals(False)
         self.edit_button.setVisible(False)
         self.save_button.setVisible(False)
+        if discarded:
+            self._set_status(f"{discarded} linha(s) editada(s) e não salvas foram descartadas.")
+
+    def _revert_local_edits(self) -> int:
+        """Restore every edited cell to its original text; returns the edited row count."""
+        table = self.table
+        if table is None or self.context is None:
+            return 0
+        reverted = 0
+        self._loading = True
+        try:
+            for row in range(table.rowCount()):
+                change = self._row_change(row)
+                if change is None or not change.changed_columns():
+                    continue
+                reverted += 1
+                for column in change.changed_columns():
+                    cell = table.item(row, column)
+                    cell.setText("" if change.original[column] is None else str(change.original[column]))
+                    cell.setBackground(QBrush(Qt.transparent))
+                    cell.setData(Qt.ForegroundRole, None)
+        except RuntimeError:
+            return reverted  # the table was destroyed with its SQL window
+        finally:
+            self._loading = False
+        return reverted
+
+    def sync_visibility(self, current_table):
+        """Show the controls only while the table they belong to is the one on screen."""
+        visible = self.context is not None and current_table is self.table
+        self.edit_button.setVisible(visible)
+        self.save_button.setVisible(visible)
 
     def attach(self, table: QTableWidget, context: GridContext, rows):
         """Make a freshly filled ``table`` editable; remembers each row's original values."""

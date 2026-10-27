@@ -29,8 +29,23 @@ Disponível quando o resultado vem de um `SELECT` de uma única tabela (sem JOIN
 2. **Salvar alterações** pede confirmação (com os UPDATEs em "Mostrar detalhes") e envia tudo para uma transação pendente; o `WHERE` usa a chave primária com o valor original da linha.
 3. **Commit** grava; **Rollback** desfaz e recarrega o resultado do banco. Com "Confirmar alterações" marcado, o commit é feito logo após salvar. "Somente leitura" bloqueia o salvamento.
 4. Se um UPDATE falha, a transação inteira é desfeita. Transações pendentes de outra origem ou de outro banco impedem o salvamento.
+5. Os botões pertencem à janela SQL que gerou o resultado: ao trocar de consulta eles somem e voltam ao retornar. Executar outra consulta descarta as edições ainda não salvas (com aviso no status).
+6. Valores digitados em colunas que eram NULL seguem como texto entre aspas (`'7'`); o Firebird converte na gravação.
 
 Código: `grid_edit.py` (análise do SELECT e geração dos UPDATEs, sem Qt), `grid_controller.py` (estado da grade) e a ligação com a transação em `ui.py`. Testes em `tests/test_grid_edit.py`, `tests/test_grid_controller.py` e `GridEditingFlowTests`. Ainda não validado contra um banco Firebird real.
+
+### Polimento visual em 27/10/2026
+
+Revisão com capturas da janela real (1280×720, temas claro e escuro).
+
+| Item | Resultado |
+|---|---|
+| Editor SQL | Removida a borda dupla (moldura nativa + borda do estilo); foco continua destacado. |
+| Barra de comandos | Separador agora tem 1 px (antes aparecia como barra grossa); "Confirmar alterações" e "Somente leitura" viraram opções planas, sem caixas aninhadas. |
+| Navegador vazio | Mostra "Nenhum banco cadastrado. Use Conexão > Novo cadastro" ou "Nenhum item corresponde ao filtro" em vez de uma caixa em branco. |
+| Rodapé do navegador | Contador passou a "Conectados: n · Cadastros: n" (antes "Ativos", ambíguo). |
+
+Pendências observadas: rótulos "Conexão" e "Dados da tabela" no topo da barra lateral ainda parecem botões equivalentes; rodapé sem versão/host do servidor; falta numeração de linhas no editor.
 
 ### Pendências sugeridas
 

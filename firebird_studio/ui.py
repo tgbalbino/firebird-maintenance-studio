@@ -598,6 +598,33 @@ class MainWindow:
             self._settings.setValue("window_geometry", self._window.saveGeometry())
             self._settings.sync()
 
+    def _update_tree_empty_hint(self):
+        """Explain an empty navigator instead of showing a blank box."""
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QLabel
+
+        hint = getattr(self, "tree_empty_hint", None)
+        if hint is None:
+            hint = QLabel(self.profile_list.viewport())
+            hint.setObjectName("treeEmptyHint")
+            hint.setAlignment(Qt.AlignCenter)
+            hint.setWordWrap(True)
+            hint.setAttribute(Qt.WA_TransparentForMouseEvents)
+            from PySide6.QtWidgets import QVBoxLayout
+
+            layout = QVBoxLayout(self.profile_list.viewport())
+            layout.setContentsMargins(12, 12, 12, 12)
+            layout.addWidget(hint, 0, Qt.AlignCenter)
+            self.tree_empty_hint = hint
+        if not self.profiles:
+            hint.setText("Nenhum banco cadastrado.\nUse Conexão > Novo cadastro para começar.")
+        else:
+            hint.setText("Nenhum item corresponde ao filtro.")
+        empty = self.profile_list.topLevelItemCount() == 0 or all(
+            self.profile_list.topLevelItem(i).isHidden() for i in range(self.profile_list.topLevelItemCount())
+        )
+        hint.setVisible(empty)
+
     def _apply_theme(self, theme: str):
         icons = getattr(self, "icons", None)
         if icons is not None:
@@ -1041,6 +1068,7 @@ class MainWindow:
         if self.editor is not None:
             self._set_active_editor_widgets(self.editor)
             self.result_table = getattr(self.editor, "_result_table", None) or self.editor.property("result_table") or self.result_table
+            self.grid_edit.sync_visibility(self.result_table)
             self._table_original_rows = []
             self._refresh_sql_completer(self.editor)
             self._update_cursor_status(self.editor)
@@ -1188,8 +1216,8 @@ class MainWindow:
         editor.setLineWrapMode(editor.LineWrapMode.NoWrap)
         # Keep a physical frame on the editor as a fallback for native styles
         # that ignore the stylesheet border of QAbstractScrollArea.
-        editor.setFrameStyle(QFrame.StyledPanel | QFrame.Plain)
-        editor.setLineWidth(1)
+        editor.setFrameStyle(QFrame.NoFrame)
+        editor.setLineWidth(0)
         editor.setMidLineWidth(0)
         editor.setPlaceholderText("Execute uma instrução SQL...")
         highlighter = SqlHighlighter(editor.document())
@@ -2634,40 +2662,23 @@ class MainWindow:
         from PySide6.QtCore import Qt
 
         obj = self.selected_object
-        selected = self.result_table.selectedItems()
         if obj is None or str(getattr(obj, "kind", "")).upper() != "TABLE":
             self._show_message("Gerar UPDATE", "Selecione uma tabela.", warning=True)
             return
-        if not selected:
+        values = self._collect_grid_row()
+        if values is None:
             self._show_message("Gerar UPDATE", "Selecione uma linha da grade.", warning=True)
             return
-        row_index = selected[0].row()
-        columns = [self.result_table.horizontalHeaderItem(column).text() if self.result_table.horizontalHeaderItem(column) else f"COL_{column + 1}" for column in range(self.result_table.columnCount())]
-        current = []
-        original = []
-        for column in range(self.result_table.columnCount()):
-            item = self.result_table.item(row_index, column)
-            current.append(item.text() if item is not None else "")
-            raw = item.data(Qt.UserRole) if item is not None else None
-            if raw is None and row_index < len(self._table_original_rows) and column < len(self._table_original_rows[row_index]):
-                raw = self._table_original_rows[row_index][column]
-            original.append(raw)
+        obj, row_index, columns, current, original = values
         changes = [(column, current[column], original[column]) for column in range(len(columns)) if current[column] != ("" if original[column] is None else str(original[column]))]
         if not changes:
             self.status.setText("Nenhuma alteração local foi encontrada na linha selecionada.")
             return
         assignments = ",\n    ".join(f"{self._sql_identifier(columns[column])} = {self._sql_literal(value, original[column])}" for column, value, _old in changes)
-        primary_key = tuple(getattr(obj, "primary_key", ()) or ())
-        key_indexes = [column for column, name in enumerate(columns) if any(name.casefold() == key.casefold() for key in primary_key)]
-        predicate_indexes = key_indexes or list(range(len(columns)))
-        predicates = []
-        for column in predicate_indexes:
-            value = original[column]
-            identifier = self._sql_identifier(columns[column])
-            predicates.append(f"{identifier} IS NULL" if value is None else f"{identifier} = {self._sql_literal(value, value)}")
+        predicates, used_primary_key = self._row_predicates(obj, columns, original)
         where_note = (
             "-- A chave primária foi usada na cláusula WHERE.\n"
-            if key_indexes else
+            if used_primary_key else
             "-- Esta tabela não informou chave primária; todos os valores originais foram usados na cláusula WHERE.\n"
         )
         sql = (
@@ -2844,7 +2855,8 @@ class MainWindow:
             populate_profile_children(item, objects)
             item.setExpanded(self._tree_expansion(profile.name, bool(objects)))
         connected_count = sum(profile.name in self.connected_profiles for profile in self.profiles)
-        self.sidebar_status.setText(f"Ativos: {connected_count} · Cadastros: {len(self.profiles)}")
+        self.sidebar_status.setText(f"Conectados: {connected_count} · Cadastros: {len(self.profiles)}")
+        self._update_tree_empty_hint()
         self.sidebar_status.setToolTip(f"Bancos conectados: {connected_count}. Cadastros disponíveis: {len(self.profiles)}.")
         self.target_profile.clear()
         self.target_profile.addItems([p.name for p in self.profiles])
@@ -2910,6 +2922,7 @@ class MainWindow:
                     object_item.setHidden(bool(query) and not (child_visible or query in object_item.text(0).casefold()))
                 child.setHidden(bool(query) and not (child_visible or any(not child.child(i).isHidden() for i in range(child.childCount()))))
             root.setHidden((bool(query) and not (visible or any(not root.child(i).isHidden() for i in range(root.childCount())))) or not connected_visible)
+        self._update_tree_empty_hint()
 
     def _tree_context_menu(self, position):
         """Offer expansion controls without triggering selection or connection."""

@@ -56,6 +56,7 @@ def create_sql_toolbar(actions: SqlToolbarActions):
     separator.setObjectName("toolbarSeparator")
     separator.setFrameShape(QFrame.VLine)
     separator.setFrameShadow(QFrame.Plain)
+    separator.setFixedSize(1, 22)
     layout.addWidget(separator)
 
     more_button = QToolButton()
