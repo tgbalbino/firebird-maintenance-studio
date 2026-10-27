@@ -486,5 +486,80 @@ class SqlAutocompleteTests(WindowTestCase):
 
 
 
+@unittest.skipIf(QSettings is None, "PySide6 não instalado")
+class TreeContextMenuTests(WindowTestCase):
+    """Characterizes which commands the navigator offers per item."""
+
+    def open_window(self):
+        from firebird_studio.models import ConnectionProfile, ProfileStore
+        from firebird_studio.schema import SchemaObject
+        from firebird_studio.ui import MainWindow
+
+        path = Path(self._tmp.name) / "tree_profiles.json"
+        ProfileStore(path).save([ConnectionProfile(name="Vendas", database="C:/db/v.fdb")])
+        window = MainWindow(ProfileStore(path))
+        window._window.show()
+        self.addCleanup(self._dispose, window)
+        window.profile_objects = {"Vendas": [SchemaObject("TABLE", "CLIENTES", "")]}
+        window.refresh_profiles()
+        self.app.processEvents()
+        self.menus = []
+        window._popup_menu_fitting = lambda menu, origin, reference=None: self.menus.append(menu)
+        return window
+
+    def labels(self, menu):
+        return [a.text() for a in menu.actions() if not a.isSeparator()]
+
+    def open_menu_for(self, window, item):
+        window.profile_list.scrollToItem(item)
+        window._tree_context_menu(window.profile_list.visualItemRect(item).center())
+        return self.menus[-1]
+
+    def test_database_item_offers_profile_commands(self):
+        window = self.open_window()
+        root = window.profile_list.topLevelItem(0)
+        labels = self.labels(self.open_menu_for(window, root))
+        for expected in ("Alterar cadastro...", "Copiar nome do banco", "Copiar caminho ou alias",
+                         "Monitorar consultas", "Manutenção do banco", "Recolher todos os bancos"):
+            self.assertIn(expected, labels)
+        self.assertNotIn("Desconectar banco", labels)
+
+    def test_disconnect_is_offered_only_for_connected_databases(self):
+        window = self.open_window()
+        window.connected_profiles.add("Vendas")
+        root = window.profile_list.topLevelItem(0)
+        self.assertIn("Desconectar banco", self.labels(self.open_menu_for(window, root)))
+
+    def test_expand_and_collapse_follow_item_state(self):
+        window = self.open_window()
+        root = window.profile_list.topLevelItem(0)
+        root.setExpanded(True)
+        labels = self.labels(self.open_menu_for(window, root))
+        self.assertIn("Recolher objetos", labels)
+        self.assertNotIn("Expandir objetos", labels)
+        root.setExpanded(False)
+        self.assertIn("Expandir objetos", self.labels(self.open_menu_for(window, root)))
+
+    def test_table_object_offers_new_table_script(self):
+        # Current behavior: the command is offered on objects inside the
+        # "Tabelas" folder, not on the folder item itself.
+        window = self.open_window()
+        root = window.profile_list.topLevelItem(0)
+        root.setExpanded(True)
+        category = next(root.child(i) for i in range(root.childCount()) if root.child(i).text(0).startswith("Tabelas"))
+        category.setExpanded(True)
+        self.assertGreater(category.childCount(), 0)
+        self.assertIn("Nova tabela...", self.labels(self.open_menu_for(window, category.child(0))))
+        self.assertNotIn("Nova tabela...", self.labels(self.open_menu_for(window, category)))
+
+    def test_empty_area_opens_no_menu(self):
+        from PySide6.QtCore import QPoint
+
+        window = self.open_window()
+        window._tree_context_menu(QPoint(5, window.profile_list.viewport().height() - 3))
+        self.assertEqual(self.menus, [])
+
+
+
 if __name__ == "__main__":
     unittest.main()
