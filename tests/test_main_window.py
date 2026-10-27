@@ -58,6 +58,20 @@ class MainWindowLayoutTests(WindowTestCase):
         self.assertFalse(window.workspace_tools.isVisible())
         self.assertFalse(window.sql_window_bar.isVisible())
 
+    def test_empty_navigator_explains_next_step(self):
+        window = self.make_window()
+        self.assertEqual(window.profile_list.topLevelItemCount(), 0)
+        self.assertTrue(window.tree_empty_hint.isVisible())
+        self.assertIn("Nenhum banco cadastrado", window.tree_empty_hint.text())
+
+    def test_sql_editor_has_single_frame(self):
+        window = self.make_window()
+        window._new_sql_tab()
+        from PySide6.QtWidgets import QTextEdit
+        editor = window.sql_tabs.activeSubWindow().widget().findChild(QTextEdit, "sqlEditor")
+        self.assertIsNotNone(editor)
+        self.assertEqual(editor.frameShape(), editor.Shape.NoFrame)
+
     def test_sql_document_replaces_welcome_page(self):
         window = self.make_window()
         window._new_sql_tab()
@@ -243,6 +257,22 @@ class GridEditingFlowTests(WindowTestCase):
         window.save_grid_button.click()
         self.assertIs(_FakeSession.last, before)
         self.assertEqual(len(window.grid_edit.changes()), 1)
+
+
+    def test_update_preview_for_selected_table_row_uses_primary_key(self):
+        from firebird_studio.schema import SchemaObject
+
+        window = self.open_window()
+        window.selected_object = SchemaObject("TABLE", "CLIENTE", "", primary_key=("ID",))
+        window._table_original_rows = list(self.rows)
+        window.result_table.item(0, 1).setText("Ana Maria")
+        window.result_table.selectRow(0)
+        window._generate_row_update_preview()
+        sql = window.editor.toPlainText()
+        self.assertIn('UPDATE "CLIENTE"', sql)
+        self.assertIn("\"NOME\" = 'Ana Maria'", sql)
+        self.assertIn("WHERE \"ID\" = 1", sql)
+        self.assertIn("chave primária foi usada", sql)
 
 
 if __name__ == "__main__":
