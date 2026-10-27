@@ -72,6 +72,45 @@ class MainWindowLayoutTests(WindowTestCase):
         self.assertIsNotNone(editor)
         self.assertEqual(editor.frameShape(), editor.Shape.NoFrame)
 
+    def _leaf_actions(self, menu):
+        for action in menu.actions():
+            if action.menu() is not None:
+                yield from self._leaf_actions(action.menu())
+            elif not action.isSeparator():
+                yield action
+
+    def test_every_menu_action_has_a_handler(self):
+        """Refactor guard: an extraction must not leave a menu entry unconnected."""
+        from PySide6.QtCore import SIGNAL
+
+        window = self.make_window()
+        orphans = []
+        for top in window._window.menuBar().actions():
+            for action in self._leaf_actions(top.menu()):
+                if action.receivers(SIGNAL("triggered(bool)")) == 0 and action.receivers(SIGNAL("triggered()")) == 0:
+                    orphans.append(f"{top.text()} > {action.text()}")
+        self.assertEqual(orphans, [])
+
+    def test_sql_tabs_open_and_close_cleanly(self):
+        window = self.make_window()
+        for _ in range(3):
+            window._new_sql_tab()
+        self.assertEqual(window.sql_tabs.count(), 3)
+        self.assertFalse(window.welcome_page.isVisible())
+        while window.sql_tabs.count():
+            window.close_sql_tab(0)
+            self.app.processEvents()
+        self.assertTrue(window.welcome_page.isVisible())
+
+    def test_theme_switch_keeps_window_usable(self):
+        window = self.make_window()
+        window._new_sql_tab()
+        for theme in ("dark", "blue", "gray", "light"):
+            window._set_theme(theme)
+            self.app.processEvents()
+            self.assertEqual(window._settings.value("theme"), theme)
+            self.assertTrue(window.sql_tabs.isVisible())
+
     def test_sql_document_replaces_welcome_page(self):
         window = self.make_window()
         window._new_sql_tab()
