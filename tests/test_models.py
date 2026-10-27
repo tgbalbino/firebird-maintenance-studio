@@ -33,6 +33,34 @@ class ProfileTests(unittest.TestCase):
         self.assertIn("CLIENTES", words)
         self.assertIn("NOME", words)
 
+    def test_completion_scopes_objects_to_the_selected_profile(self):
+        objects = {
+            "A": [SchemaObject("TABLE", "CLIENTES", "")],
+            "B": [SchemaObject("TABLE", "SO_NO_B", "")],
+        }
+        scoped = completion_words(objects, profile_name="A")
+        self.assertIn("CLIENTES", scoped)
+        self.assertNotIn("SO_NO_B", scoped)
+        everything = completion_words(objects)
+        self.assertIn("SO_NO_B", everything)
+        self.assertIn("SO_NO_B", completion_words(objects, profile_name="inexistente"))
+
+    def test_completion_offers_common_functions_and_real_monitoring_tables(self):
+        words = completion_words({})
+        for word in ("MAX", "UPPER", "COALESCE", "GEN_ID", "MON$ATTACHMENTS", "RDB$USER_PRIVILEGES"):
+            self.assertIn(word, words)
+        for invented in ("RDB$MON$ATTACHMENTS", "RDB$USERS", "RDB$SQL_REQUESTS"):
+            self.assertNotIn(invented, words)
+
+    def test_word_bounds_treats_dollar_as_identifier_character(self):
+        from firebird_studio.sql_completion import word_bounds
+
+        line = "select * from rdb$rel where x"
+        self.assertEqual(word_bounds(line, 20), (14, 21))
+        self.assertEqual(word_bounds("a.b", 2), (2, 3))
+        self.assertEqual(word_bounds("", 0), (0, 0))
+        self.assertEqual(word_bounds("abc", 99), (0, 3))
+
     def test_tree_group_labels_are_stable(self):
         self.assertEqual(object_group_label("TABLE"), "Tabelas")
         self.assertEqual(object_group_label("CONSTRAINT"), "Restrições")

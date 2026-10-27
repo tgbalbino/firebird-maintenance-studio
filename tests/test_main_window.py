@@ -404,5 +404,61 @@ class SqlExecutionFlowTests(WindowTestCase):
 
 
 
+@unittest.skipIf(QSettings is None, "PySide6 não instalado")
+class SqlAutocompleteTests(WindowTestCase):
+    def open_editor(self):
+        from PySide6.QtWidgets import QTextEdit
+
+        from firebird_studio.models import ConnectionProfile, ProfileStore
+        from firebird_studio.schema import SchemaObject
+        from firebird_studio.ui import MainWindow
+
+        path = Path(self._tmp.name) / "ac_profiles.json"
+        ProfileStore(path).save([ConnectionProfile(name="A", database="a"), ConnectionProfile(name="B", database="b")])
+        window = MainWindow(ProfileStore(path))
+        window._window.show()
+        self.addCleanup(self._dispose, window)
+        window._new_sql_tab()
+        window.profile_objects = {
+            "A": [SchemaObject("TABLE", "CLIENTES", "")],
+            "B": [SchemaObject("TABLE", "SO_NO_B", "")],
+        }
+        editor = window.sql_tabs.activeSubWindow().widget().findChild(QTextEdit, "sqlEditor")
+        window._set_current_query_profile("A", editor)
+        self.app.processEvents()
+        return window, editor
+
+    def test_suggestions_come_only_from_the_query_database(self):
+        window, editor = self.open_editor()
+        words = editor.property("completion_model").stringList()
+        self.assertIn("CLIENTES", words)
+        self.assertNotIn("SO_NO_B", words)
+        window._set_current_query_profile("B", editor)
+        words = editor.property("completion_model").stringList()
+        self.assertIn("SO_NO_B", words)
+        self.assertNotIn("CLIENTES", words)
+
+    def test_typing_opens_popup_and_accepting_replaces_dollar_names_whole(self):
+        from PySide6.QtCore import Qt
+        from PySide6.QtTest import QTest
+
+        window, editor = self.open_editor()
+        popup = editor.property("completion").popup()
+        QTest.keyClicks(editor, "select * from rdb$rel")
+        self.app.processEvents()
+        self.assertTrue(popup.isVisible())
+        window._insert_completion(editor, "RDB$RELATIONS")
+        self.assertEqual(editor.toPlainText(), "select * from RDB$RELATIONS")
+        self.assertFalse(popup.isVisible())
+
+    def test_popup_does_not_open_when_text_is_loaded_programmatically(self):
+        window, editor = self.open_editor()
+        popup = editor.property("completion").popup()
+        editor.setPlainText("select nome from clientes")
+        self.app.processEvents()
+        self.assertFalse(popup.isVisible())
+
+
+
 if __name__ == "__main__":
     unittest.main()

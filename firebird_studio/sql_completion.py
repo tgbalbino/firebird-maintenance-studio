@@ -34,15 +34,51 @@ FIREBIRD_TYPES = frozenset(
 FIREBIRD_SYSTEM_OBJECTS = frozenset(
     """RDB$DATABASE RDB$RELATIONS RDB$RELATION_FIELDS RDB$FIELDS RDB$INDICES
     RDB$INDEX_SEGMENTS RDB$RELATION_CONSTRAINTS RDB$REF_CONSTRAINTS RDB$TRIGGERS
-    RDB$PROCEDURES RDB$FUNCTIONS RDB$PACKAGES RDB$GENERATORS RDB$EXCEPTIONS
-    RDB$ROLES RDB$USERS RDB$ATTACHMENTS RDB$TRANSACTIONS RDB$SQL_REQUESTS
-    RDB$MON$ATTACHMENTS RDB$MON$TRANSACTIONS RDB$MON$STATEMENTS""".split()
+    RDB$PROCEDURES RDB$PROCEDURE_PARAMETERS RDB$FUNCTIONS RDB$FUNCTION_ARGUMENTS
+    RDB$PACKAGES RDB$GENERATORS RDB$EXCEPTIONS RDB$ROLES RDB$USER_PRIVILEGES
+    RDB$DEPENDENCIES RDB$VIEW_RELATIONS RDB$CHARACTER_SETS RDB$COLLATIONS RDB$TYPES
+    MON$DATABASE MON$ATTACHMENTS MON$TRANSACTIONS MON$STATEMENTS MON$CALL_STACK
+    MON$IO_STATS MON$RECORD_STATS MON$CONTEXT_VARIABLES""".split()
 )
 
+# Built-in functions, aggregates and context variables that are not reserved
+# words but are typed constantly.
+FIREBIRD_FUNCTIONS = frozenset(
+    """ABS CEIL CEILING COALESCE CHAR_LENGTH CURRENT_CONNECTION CURRENT_ROLE
+    CURRENT_TRANSACTION DATEADD DATEDIFF DECODE FLOOR GEN_ID GEN_UUID HASH IIF
+    LEFT LPAD LTRIM MAX MOD NEXT NULLIF OVERLAY PARTITION RAND REPLACE REVERSE
+    ROUND ROW_COUNT ROW_NUMBER RPAD RTRIM SEQUENCE SUBSTRING TRUNC UPPER
+    UUID_TO_CHAR""".split()
+)
 
-def completion_words(objects_by_profile, include_system=True):
-    """Return a stable, case-insensitive completion list for loaded metadata."""
-    words = set(FIREBIRD_RESERVED_WORDS) | set(FIREBIRD_TYPES)
+WORD_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_$")
+
+
+def word_bounds(line: str, column: int) -> tuple[int, int]:
+    """Return ``(start, end)`` of the identifier touching ``column`` in ``line``.
+
+    Firebird identifiers may contain ``$`` (RDB$RELATIONS), which Qt's own
+    word detection treats as a separator.
+    """
+    column = max(0, min(column, len(line)))
+    start = column
+    while start > 0 and line[start - 1] in WORD_CHARS:
+        start -= 1
+    end = column
+    while end < len(line) and line[end] in WORD_CHARS:
+        end += 1
+    return start, end
+
+
+def completion_words(objects_by_profile, include_system=True, profile_name=None):
+    """Return a stable, case-insensitive completion list for loaded metadata.
+
+    When ``profile_name`` names a loaded profile, only that database's objects
+    are offered; otherwise every loaded profile contributes.
+    """
+    words = set(FIREBIRD_RESERVED_WORDS) | set(FIREBIRD_TYPES) | set(FIREBIRD_FUNCTIONS)
+    if profile_name in objects_by_profile:
+        objects_by_profile = {profile_name: objects_by_profile[profile_name]}
     if include_system:
         words.update(FIREBIRD_SYSTEM_OBJECTS)
     for objects in objects_by_profile.values():

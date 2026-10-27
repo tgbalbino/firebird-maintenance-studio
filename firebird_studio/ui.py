@@ -1187,6 +1187,7 @@ class MainWindow:
         target = editor or self.editor
         if target is not None and profile_name:
             target.setProperty("query_profile", profile_name)
+            self._refresh_sql_completer(target)
             index = self.sql_tabs.indexOf(target)
             if index >= 0:
                 self._update_sql_tab_title(index)
@@ -1302,7 +1303,7 @@ class MainWindow:
         editor.installEventFilter(completion_filter)
         completer.popup().installEventFilter(completion_filter)
         editor.setProperty("completion_key_filter", completion_filter)
-        editor.textChanged.connect(lambda target=editor: self._auto_complete_sql(target))
+        editor.document().contentsChange.connect(lambda _pos, removed, added, target=editor: self._on_sql_contents_change(target, removed, added))
         completion_shortcut = QShortcut(QKeySequence("Ctrl+Space"), editor)
         completion_shortcut.activated.connect(lambda target=editor: self._show_sql_completions(target))
         editor.setProperty("completion_model", completion_model)
@@ -1624,9 +1625,9 @@ class MainWindow:
         cursor = target.textCursor()
         self.query_cursor_status.setText(f"Linha {cursor.blockNumber() + 1}, coluna {cursor.positionInBlock() + 1}")
 
-    def _completion_words(self):
+    def _completion_words(self, profile_name=None):
         from .sql_completion import completion_words
-        return completion_words(self.profile_objects)
+        return completion_words(self.profile_objects, profile_name=profile_name)
 
     def _refresh_sql_completer(self, editor=None):
         target = editor or self.editor
@@ -1634,44 +1635,70 @@ class MainWindow:
             return
         model = target.property("completion_model")
         if model is not None:
-            model.setStringList(self._completion_words())
+            model.setStringList(self._completion_words(target.property("query_profile") or None))
 
-    def _show_sql_completions(self, editor):
-        from PySide6.QtGui import QTextCursor
+    def _completion_prefix(self, editor) -> str:
+        """Identifier fragment before the cursor (``$`` counts as a letter)."""
+        from .sql_completion import word_bounds
+        cursor = editor.textCursor()
+        line = cursor.block().text()
+        column = cursor.positionInBlock()
+        start, _end = word_bounds(line, column)
+        return line[start:column]
+
+    def _popup_completions(self, editor, prefix: str) -> bool:
         completer = editor.property("completion")
         if completer is None:
-            return
-        cursor = editor.textCursor()
-        cursor.select(QTextCursor.WordUnderCursor)
-        completer.setCompletionPrefix(cursor.selectedText())
+            return False
+        completer.setCompletionPrefix(prefix)
+        if not completer.completionCount():
+            completer.popup().hide()
+            return False
         rectangle = editor.cursorRect()
         rectangle.setWidth(completer.popup().sizeHintForColumn(0) + completer.popup().verticalScrollBar().sizeHint().width())
         completer.complete(rectangle)
+        return True
+
+    def _show_sql_completions(self, editor):
+        self._popup_completions(editor, self._completion_prefix(editor))
+
+    def _on_sql_contents_change(self, editor, removed: int, added: int):
+        """Auto-complete only after a single typed character.
+
+        Loading a file, undo, paste or accepting a suggestion changes many
+        characters at once and must not reopen the popup.
+        """
+        if editor.property("completion_inserting") or removed > 1 or added != 1:
+            return
+        self._auto_complete_sql(editor)
 
     def _auto_complete_sql(self, editor):
         """Offer completion while typing, without interrupting short words."""
-        from PySide6.QtGui import QTextCursor
-        cursor = editor.textCursor()
-        cursor.select(QTextCursor.WordUnderCursor)
-        prefix = cursor.selectedText()
-        if len(prefix) < 2 or not prefix.replace("_", "A").replace("$", "A").isalnum():
+        prefix = self._completion_prefix(editor)
+        if len(prefix) < 2 or prefix[0].isdigit():
+            completer = editor.property("completion")
+            if completer is not None:
+                completer.popup().hide()
             return
-        completer = editor.property("completion")
-        if completer is None:
-            return
-        completer.setCompletionPrefix(prefix)
-        if not completer.completionCount():
-            return
-        rectangle = editor.cursorRect()
-        rectangle.setWidth(completer.popup().sizeHintForColumn(0) + completer.popup().verticalScrollBar().sizeHint().width())
-        completer.complete(rectangle)
+        self._popup_completions(editor, prefix)
 
     def _insert_completion(self, editor, text):
-        from PySide6.QtGui import QTextCursor
+        from .sql_completion import word_bounds
         cursor = editor.textCursor()
-        cursor.select(QTextCursor.WordUnderCursor)
-        cursor.insertText(text)
+        line = cursor.block().text()
+        start, end = word_bounds(line, cursor.positionInBlock())
+        block_start = cursor.block().position()
+        cursor.setPosition(block_start + start)
+        cursor.setPosition(block_start + end, cursor.MoveMode.KeepAnchor)
+        editor.setProperty("completion_inserting", True)
+        try:
+            cursor.insertText(text)
+        finally:
+            editor.setProperty("completion_inserting", False)
         editor.setTextCursor(cursor)
+        completer = editor.property("completion")
+        if completer is not None:
+            completer.popup().hide()
 
     def _on_profile_clicked(self, item):
         """Select a database/object; loading happens only on double click."""
