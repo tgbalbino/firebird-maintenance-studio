@@ -7,13 +7,57 @@ from __future__ import annotations
 
 try:
     from PySide6.QtCore import QObject, Signal, Slot, QEvent, Qt, QTimer, QAbstractNativeEventFilter
-    from PySide6.QtGui import QColor, QFont, QSyntaxHighlighter, QTextCharFormat
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtCore import QRect
+    from PySide6.QtGui import QColor, QFont, QPainter, QSyntaxHighlighter, QTextCharFormat
+    from PySide6.QtWidgets import QApplication, QWidget
 
     class SqlEditor(__import__("PySide6.QtWidgets", fromlist=["QTextEdit"]).QTextEdit):
         """SQL editor with a direct keyboard path for the execution commands."""
 
         execute_requested = Signal(bool)
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._gutter = _LineNumberGutter(self)
+            self.document().blockCountChanged.connect(self._update_gutter_width)
+            self.verticalScrollBar().valueChanged.connect(lambda _value: self._gutter.update())
+            self.textChanged.connect(self._gutter.update)
+            self.cursorPositionChanged.connect(self._gutter.update)
+            self._update_gutter_width()
+
+        def gutter_width(self) -> int:
+            digits = max(2, len(str(self.document().blockCount())))
+            return 12 + self.fontMetrics().horizontalAdvance("9") * digits
+
+        def _update_gutter_width(self, *_args):
+            self.setViewportMargins(self.gutter_width(), 0, 0, 0)
+            self._gutter.update()
+
+        def resizeEvent(self, event):
+            super().resizeEvent(event)
+            rect = self.contentsRect()
+            self._gutter.setGeometry(QRect(rect.left(), rect.top(), self.gutter_width(), rect.height()))
+
+        def paint_gutter(self, painter):
+            dark = self.palette().base().color().lightness() < 128
+            painter.fillRect(painter.viewport(), QColor("#232a36" if dark else "#eef2f7"))
+            muted, active = QColor("#7f8ea3"), QColor("#e5e7eb" if dark else "#1f2937")
+            current = self.textCursor().blockNumber()
+            painter.setFont(self.font())
+            block = self.document().begin()
+            layout = self.document().documentLayout()
+            offset = self.verticalScrollBar().value()
+            height = self.viewport().height()
+            while block.isValid():
+                rect = layout.blockBoundingRect(block)
+                top = rect.top() - offset
+                if top > height:
+                    break
+                if top + rect.height() >= 0 and block.isVisible():
+                    painter.setPen(active if block.blockNumber() == current else muted)
+                    painter.drawText(0, int(top), self._gutter.width() - 6, int(rect.height()),
+                                     Qt.AlignRight | Qt.AlignTop, str(block.blockNumber() + 1))
+                block = block.next()
 
         def keyPressEvent(self, event):
             if event.key() == Qt.Key_F5:
@@ -27,6 +71,17 @@ try:
                     event.accept()
                     return
             super().keyPressEvent(event)
+
+    class _LineNumberGutter(QWidget):
+        def __init__(self, editor):
+            super().__init__(editor)
+            self._editor = editor
+            self.setAttribute(Qt.WA_TransparentForMouseEvents)
+
+        def paintEvent(self, event):
+            painter = QPainter(self)
+            self._editor.paint_gutter(painter)
+            painter.end()
 
     class SqlExecutionApplication(QApplication):
         """Route SQL execution keys before any editor or MDI child handles them."""
