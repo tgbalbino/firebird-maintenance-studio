@@ -20,3 +20,7 @@ dist/
 firebird_studio/pysidedeploy.spec
 profiles*.json
 settings.local.*
+
+# Local test builds of the packaged app
+dist_novo*/
+build_novo*/

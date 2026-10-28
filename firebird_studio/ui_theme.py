@@ -75,8 +75,9 @@ BLUE_STYLE += " QLabel#planSummary { background: #142844; color: #edf4ff; border
 _TRANSPARENT = " QLabel, QCheckBox, QWidget#welcomeRow { background: transparent; }"
 # Every popup menu (context menus included) gets the same roomy rows; without
 # it, menus created without their own sheet render items cramped and cut off.
+# Item icons need their own left margin or they touch the menu border.
 _TRANSPARENT += " QPushButton:checked, QPushButton#paginationButton:checked { background: #1d4ed8; color: #ffffff; border-color: #60a5fa; font-weight: 700; }"
-_TRANSPARENT += " QMenu { padding: 4px 0; } QMenu::item { padding: 6px 28px 6px 14px; min-height: 18px; } QMenu::separator { height: 1px; margin: 4px 8px; background: #94a3b8; }"
+_TRANSPARENT += " QMenu { padding: 4px 0; } QMenu::item { padding: 6px 28px 6px 18px; min-height: 18px; } QMenu::icon { margin-left: 10px; } QMenu::separator { height: 1px; margin: 4px 8px; background: #94a3b8; }"
 LIGHT_STYLE += _TRANSPARENT + " QPushButton#primaryAction:disabled { background: #94a9d6; color: #ffffff; border-color: #94a9d6; }"
 GRAY_STYLE += _TRANSPARENT + " QPushButton#primaryAction:disabled { background: #94a9d6; color: #ffffff; border-color: #94a9d6; }"
 DARK_STYLE += _TRANSPARENT + " QPushButton#primaryAction:disabled { background: #2a3a5a; color: #9fb0cc; border-color: #3f5578; }"
@@ -90,6 +91,39 @@ _POLISH = (
 )
 for _name in ("LIGHT_STYLE", "DARK_STYLE", "GRAY_STYLE", "BLUE_STYLE"):
     globals()[_name] += _POLISH
+
+
+def _tab_css(idle: str, accent: str, hover: str) -> str:
+    """Flat tabs: the active one is marked by an accent underline, not a filled block."""
+    return (
+        f" QTabBar::tab {{ background: transparent; color: {idle}; border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 6px 12px; }}"
+        f" QTabBar::tab:hover {{ background: {hover}; }}"
+        f" QTabBar::tab:selected {{ background: transparent; color: {accent}; border: none; border-bottom: 2px solid {accent}; font-weight: 600; }}"
+    )
+
+
+def _selection_css(inactive_bg: str, inactive_text: str, hover_bg: str) -> str:
+    """Readable selected cells whatever the focus or hover state.
+
+    Qt paints a selected item under the mouse with the pale hover colour and an
+    unfocused selection with the palette's pale highlight, while the base rule
+    still forces white text: set background and text together for each state.
+    """
+    return (
+        f" QTableWidget::item:selected:hover, QTreeWidget::item:selected:hover {{ background: {hover_bg}; color: #ffffff; }}"
+        f" QTableWidget::item:selected:!active, QTreeWidget::item:selected:!active,"
+        f" QTableWidget::item:selected:!active:hover, QTreeWidget::item:selected:!active:hover {{ background: {inactive_bg}; color: {inactive_text}; }}"
+    )
+
+
+LIGHT_STYLE += _selection_css("#bfdbfe", "#111827", "#1e40af")
+GRAY_STYLE += _selection_css("#bfdbfe", "#111827", "#566170")
+DARK_STYLE += _selection_css("#334e7a", "#ffffff", "#1d4ed8")
+BLUE_STYLE += _selection_css("#2c4f7c", "#ffffff", "#265c9f")
+LIGHT_STYLE += _tab_css("#475569", "#1d4ed8", "rgba(29, 78, 216, 0.08)")
+GRAY_STYLE += _tab_css("#475569", "#1d4ed8", "rgba(29, 78, 216, 0.08)")
+DARK_STYLE += _tab_css("#b6c2d2", "#60a5fa", "rgba(96, 165, 250, 0.12)")
+BLUE_STYLE += _tab_css("#bcd0ea", "#9bc5ff", "rgba(155, 197, 255, 0.12)")
 
 
 def _close_icon_css() -> str:
@@ -117,10 +151,8 @@ def _close_icon_css() -> str:
     return (
         f" QTabBar::close-button {{ image: url({urls['idle']}); subcontrol-position: right; }}"
         f" QTabBar::close-button:hover {{ background: rgba(148,163,184,0.35); border-radius: 3px; }}"
-        f" QTabBar::close-button:selected {{ image: url({urls['selected']}); }}"
     ), (
         f" QTabBar::close-button {{ image: url({urls['idle_dark']}); }}"
-        f" QTabBar::close-button:selected {{ image: url({urls['selected']}); }}"
     )
 
 
