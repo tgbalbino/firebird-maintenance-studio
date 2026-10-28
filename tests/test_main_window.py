@@ -699,5 +699,189 @@ class HealthAndCompareFlowTests(WindowTestCase):
         self.assertEqual(window.compare_table.rowCount(), 2)
 
 
+class BackupRestoreFlowTests(WindowTestCase):
+    """Characterizes the backup and restore commands up to the worker hand-off."""
+
+    def open_window(self):
+        from firebird_studio.models import ConnectionProfile, ProfileStore
+        from firebird_studio.ui import MainWindow
+
+        path = Path(self._tmp.name) / "backup_profiles.json"
+        ProfileStore(path).save([ConnectionProfile(name="Vendas", database="C:/db/vendas.fdb")])
+        window = MainWindow(ProfileStore(path))
+        window._window.show()
+        self.addCleanup(self._dispose, window)
+        window._new_sql_tab()
+        window._show_result_window = lambda *a, **k: None
+        self.messages = []
+        window._show_message = lambda title, text, warning=False: self.messages.append((title, text))
+        self.toasts = []
+        window._show_toast = lambda message, duration=3500: self.toasts.append(message)
+        window.backup_history = []
+        self.operations = []
+        window._start_background_operation = lambda name, work, done: self.operations.append((name, work, done))
+        # The connection form is gone in the running app: operations must use the
+        # profile selected in the tree.
+        window._selected_profile_index = 0
+        return window
+
+    def result(self, ok=True, output="gbak ok", error=""):
+        from firebird_studio.backup import BackupResult
+
+        return BackupResult(ok, 0 if ok else 1, output, error, "backup")
+
+    def test_backup_hands_selected_file_to_worker(self):
+        from unittest import mock
+
+        window = self.open_window()
+        with mock.patch("PySide6.QtWidgets.QFileDialog.getSaveFileName", return_value=("C:/tmp/v.fbk", "")),                 mock.patch("firebird_studio.backup.run_gbak", return_value="gbak") as run:
+            window.execute_backup()
+            self.assertEqual([op[0] for op in self.operations], ["Backup"])
+            self.assertEqual(self.operations[0][1](), "gbak")
+        args = run.call_args[0]
+        self.assertEqual((args[1], args[2], args[3]), ("backup", Path("C:/db/vendas.fdb"), Path("C:/tmp/v.fbk")))
+
+    def test_backup_cancelled_dialog_starts_nothing(self):
+        from unittest import mock
+
+        window = self.open_window()
+        with mock.patch("PySide6.QtWidgets.QFileDialog.getSaveFileName", return_value=("", "")):
+            window.execute_backup()
+        self.assertEqual(self.operations, [])
+
+    def test_backup_success_records_history_and_toasts(self):
+        window = self.open_window()
+        window._finish_backup_operation(self.result(), window.profiles[0], "C:/tmp/v.fbk")
+        self.assertEqual(window.backup_history[0]["operation"], "Backup")
+        self.assertEqual(window.backup_history[0]["result"], "OK")
+        self.assertEqual(window.status.text(), "Backup concluído.")
+        self.assertTrue(self.toasts)
+        self.assertEqual(self.messages, [])
+
+    def test_backup_failure_reports_error(self):
+        window = self.open_window()
+        window._finish_backup_operation(self.result(False, "", "disco cheio"), window.profiles[0], "C:/tmp/v.fbk")
+        self.assertEqual(window.backup_history[0]["result"], "FALHA")
+        self.assertIn("disco cheio", window.status.text())
+        self.assertEqual(self.messages[0][0], "Falha no backup")
+        self.assertEqual(self.toasts, [])
+
+    def test_restore_asks_for_backup_then_target(self):
+        from unittest import mock
+
+        window = self.open_window()
+        with mock.patch("PySide6.QtWidgets.QFileDialog.getOpenFileName", return_value=("C:/tmp/v.fbk", "")), \
+                mock.patch("PySide6.QtWidgets.QFileDialog.getSaveFileName", return_value=("", "")):
+            window.execute_restore()
+        self.assertEqual(self.operations, [])
+        with mock.patch("PySide6.QtWidgets.QFileDialog.getOpenFileName", return_value=("C:/tmp/v.fbk", "")), \
+                mock.patch("PySide6.QtWidgets.QFileDialog.getSaveFileName", return_value=("C:/tmp/r.fdb", "")):
+            window.execute_restore()
+        self.assertEqual([op[0] for op in self.operations], ["Restore"])
+
+    def test_restore_failure_reports_error_without_validating(self):
+        from unittest import mock
+
+        window = self.open_window()
+        with mock.patch("firebird_studio.connection.test_connection") as probe:
+            window._finish_restore_operation(self.result(False, "", "backup corrompido"), window.profiles[0], "a.fbk", "b.fdb", "pw")
+        probe.assert_not_called()
+        self.assertEqual(window.backup_history[0]["operation"], "Restore")
+        self.assertEqual(self.messages[0][0], "Falha no restore")
+
+    def test_restore_success_validates_restored_database(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        window = self.open_window()
+        with mock.patch("firebird_studio.connection.test_connection", return_value=SimpleNamespace(ok=True, message="")) as probe:
+            window._finish_restore_operation(self.result(), window.profiles[0], "a.fbk", "b.fdb", "pw")
+        self.assertEqual(probe.call_args[0][0].database, "b.fdb")
+        self.assertIn("validado", window.status.text())
+        self.assertTrue(self.toasts)
+
+    def test_restore_success_with_failed_validation_warns(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        window = self.open_window()
+        with mock.patch("firebird_studio.connection.test_connection", return_value=SimpleNamespace(ok=False, message="recusado")):
+            window._finish_restore_operation(self.result(), window.profiles[0], "a.fbk", "b.fdb", "pw")
+        self.assertEqual(self.messages[0][0], "Restore com aviso")
+        self.assertIn("recusado", self.messages[0][1])
+
+    def test_restore_success_registers_profile_on_request(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        window = self.open_window()
+        saved = []
+        window._save_profile_record = lambda *args: saved.append(args)
+        with mock.patch("firebird_studio.connection.test_connection", return_value=SimpleNamespace(ok=True, message="")):
+            window._finish_restore_operation(self.result(), window.profiles[0], "a.fbk", "b.fdb", "pw", True, True)
+        self.assertEqual(len(saved), 1)
+        self.assertEqual(saved[0][1:3], ("pw", True))
+
+    def test_restore_file_missing_warns(self):
+        window = self.open_window()
+        window.restore_backup_file(Path(self._tmp.name) / "nao_existe.fbk")
+        self.assertEqual(self.messages[0][0], "Restaurar backup")
+        self.assertEqual(self.operations, [])
+
+    def accept_dialog(self, edit=None):
+        from unittest import mock
+        from PySide6.QtWidgets import QDialog
+
+        def fake_exec(dialog):
+            if edit:
+                edit(dialog)
+            return QDialog.Accepted
+
+        return mock.patch("PySide6.QtWidgets.QDialog.exec", fake_exec)
+
+    def test_restore_file_dialog_builds_candidate_profile(self):
+        from unittest import mock
+        from PySide6.QtWidgets import QLineEdit
+
+        window = self.open_window()
+        source = Path(self._tmp.name) / "loja.fbk"
+        source.write_text("x")
+
+        def edit(dialog):
+            dialog.findChildren(QLineEdit)[0].setText("Loja restaurada")
+
+        with self.accept_dialog(edit), mock.patch("firebird_studio.backup.run_gbak", return_value="gbak") as run:
+            window.restore_backup_file(source)
+            self.assertEqual([op[0] for op in self.operations], ["Restore"])
+            self.operations[0][1]()
+        candidate, operation, src, target = run.call_args[0][:4]
+        self.assertEqual((candidate.name, candidate.host, candidate.port, candidate.user), ("Loja restaurada", "localhost", 3050, "SYSDBA"))
+        self.assertEqual((operation, src, target), ("restore", source, source.with_suffix(".fdb")))
+        self.assertEqual(candidate.database, str(source.with_suffix(".fdb")))
+
+    def test_restore_file_dialog_rejects_invalid_profile(self):
+        from PySide6.QtWidgets import QLineEdit
+
+        window = self.open_window()
+        source = Path(self._tmp.name) / "loja2.fbk"
+        source.write_text("x")
+        with self.accept_dialog(lambda dialog: dialog.findChildren(QLineEdit)[0].setText("   ")):
+            window.restore_backup_file(source)
+        self.assertEqual(self.operations, [])
+        self.assertEqual(self.messages[0][0], "Restaurar backup")
+        self.assertIn("nome", self.messages[0][1])
+
+    def test_restore_file_dialog_cancel_starts_nothing(self):
+        from unittest import mock
+        from PySide6.QtWidgets import QDialog
+
+        window = self.open_window()
+        source = Path(self._tmp.name) / "loja3.fbk"
+        source.write_text("x")
+        with mock.patch("PySide6.QtWidgets.QDialog.exec", lambda dialog: QDialog.Rejected):
+            window.restore_backup_file(source)
+        self.assertEqual(self.operations, [])
+
+
 if __name__ == "__main__":
     unittest.main()
