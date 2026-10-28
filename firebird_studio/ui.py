@@ -965,86 +965,13 @@ class MainWindow:
         """Create or edit a profile in a modal configuration window."""
         if index is not None and (index < 0 or index >= len(self.profiles)):
             return
-        from PySide6.QtWidgets import QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLineEdit, QPlainTextEdit, QPushButton, QSpinBox, QVBoxLayout, QFileDialog, QWidget
+        from .profile_dialog import ask_profile
 
         profile = self.profiles[index] if index is not None else ConnectionProfile(name="", version="5")
-        dialog = QDialog(self._window)
-        dialog.setWindowTitle(f"{'Nova conexão' if index is None else 'Dados do cadastro — ' + profile.name}")
-        dialog.setModal(True)
-        dialog.resize(560, 520)
-        form = QFormLayout()
-
-        name = QLineEdit(profile.name)
-        host = QLineEdit(profile.host)
-        port = QSpinBox(); port.setRange(1, 65535); port.setValue(profile.port)
-        database = QLineEdit(profile.database)
-        database_browse = QPushButton("...")
-        database_browse.setFixedWidth(34)
-        database_browse.setToolTip("Selecionar arquivo de banco Firebird")
-        database_row = QWidget()
-        database_layout = QHBoxLayout(database_row)
-        database_layout.setContentsMargins(0, 0, 0, 0)
-        database_layout.setSpacing(6)
-        database_layout.addWidget(database, 1)
-        database_layout.addWidget(database_browse)
-        version = QComboBox(); version.addItems(SUPPORTED_VERSIONS); version.setCurrentText(profile.version)
-        user = QLineEdit(profile.user)
-        role = QLineEdit(profile.role)
-        password = QLineEdit(self._stored_password(profile.name) or ""); password.setEchoMode(QLineEdit.Password)
-        save_password = QCheckBox("Salvar senha criptografada no Windows")
-        save_password.setChecked(bool(password.text()))
-        charset = QLineEdit(profile.charset)
-        isql_path = QLineEdit(profile.isql_path)
-        gbak_path = QLineEdit(profile.gbak_path)
-        favorite = QCheckBox("Favorito"); favorite.setChecked(profile.favorite)
-        for label, widget in (("Nome", name), ("Host", host), ("Porta", port), ("Caminho ou alias", database_row), ("Firebird", version), ("Usuário", user), ("Role", role), ("Senha", password), ("Charset", charset), ("Caminho isql", isql_path), ("Caminho gbak", gbak_path)):
-            form.addRow(label, widget)
-        form.addRow("", save_password)
-        form.addRow("", favorite)
-        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
-        test_button = QPushButton("Testar conexão")
-        buttons.addButton(test_button, QDialogButtonBox.ActionRole)
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        output = QPlainTextEdit(); output.setReadOnly(True); output.setPlaceholderText("O resultado do teste aparecerá aqui.")
-
-        def browse_dialog_database():
-            start_dir = database.text().strip()
-            if start_dir and not Path(start_dir).is_dir():
-                start_dir = str(Path(start_dir).parent)
-            filename, _ = QFileDialog.getOpenFileName(
-                dialog,
-                "Selecionar arquivo do banco Firebird",
-                start_dir or str(Path.home()),
-                "Bancos Firebird (*.fdb *.FDB *.gdb *.GDB);;Todos os arquivos (*.*)",
-            )
-            if filename:
-                database.setText(filename)
-
-        database_browse.clicked.connect(browse_dialog_database)
-
-        def test_dialog_connection():
-            from .connection import test_connection
-            candidate = ConnectionProfile(
-                name=name.text(), host=host.text(), port=port.value(), database=database.text(),
-                version=version.currentText(), user=user.text(), role=role.text(), charset=charset.text(),
-                favorite=favorite.isChecked(), isql_path=isql_path.text(), gbak_path=gbak_path.text(),
-            )
-            result = test_connection(candidate, password.text())
-            output.setPlainText(result.message + (f"\nVersão detectada: {result.server_version}" if result.server_version else ""))
-
-        test_button.clicked.connect(test_dialog_connection)
-        layout = QVBoxLayout(dialog); layout.addLayout(form); layout.addWidget(output, 1); layout.addWidget(buttons)
-        if dialog.exec() != QDialog.Accepted:
-            return
-
-        candidate = ConnectionProfile(
-            name=name.text(), host=host.text(), port=port.value(), database=database.text(),
-            version=version.currentText(), user=user.text(), role=role.text(),
-            charset=charset.text(), favorite=favorite.isChecked(),
-            isql_path=isql_path.text(), gbak_path=gbak_path.text(),
-        )
-        self._save_profile_record(candidate, password.text(), save_password.isChecked(), index)
+        title = "Nova conexão" if index is None else f"Dados do cadastro — {profile.name}"
+        edit = ask_profile(self._window, profile, title, self._stored_password(profile.name))
+        if edit is not None:
+            self._save_profile_record(edit.profile, edit.password, edit.save_password, index)
 
     def _set_table_data_enabled(self, enabled: bool):
         self.open_data_button.setEnabled(enabled)
@@ -3951,15 +3878,17 @@ class MainWindow:
         from datetime import datetime
 
         self.status.setText("Selecionando arquivo para salvar o backup...")
-        source = Path(self.database.text())
-        stem = Path(self.database.text().strip().strip('"')).stem or self.name.text().strip() or "firebird_backup"
+        # The connection form may already be deleted; the profile helper falls
+        # back to the selected tree profile.
+        profile = self._profile_from_form()
+        source = Path(profile.database)
+        stem = Path(profile.database.strip().strip('"')).stem or profile.name.strip() or "firebird_backup"
         suggested = f"{stem}_{datetime.now():%Y%m%d_%H%M%S}.fbk"
         filename, _ = QFileDialog.getSaveFileName(self._window, "Salvar backup Firebird", suggested, "Backup Firebird (*.fbk);;Todos (*.*)")
         if not filename:
             return
-        profile = self._profile_from_form()
         password = self._password_for(profile)
-        gbak_path = Path(self.gbak_path.text())
+        gbak_path = Path(profile.gbak_path)
         self._start_background_operation(
             "Backup",
             lambda: run_gbak(profile, "backup", source, Path(filename), password, gbak_path),
@@ -3985,9 +3914,10 @@ class MainWindow:
     def _finish_backup_operation(self, result, profile, filename):
         output, error = self._operation_result_text(result)
         ok = bool(getattr(result, "ok", False)) if not isinstance(result, Exception) else False
-        self._record_backup_history("Backup", profile, str(self.database.text()), str(filename), ok, error or output[-300:])
+        self._record_backup_history("Backup", profile, str(profile.database), str(filename), ok, error or output[-300:])
         self._log_event("Backup concluído" if ok else "Backup falhou", profile=profile.name, target=str(filename), ok=ok, error=error)
-        self.editor.setPlainText(output + ("\n" + error if error else ""))
+        if self.editor is not None:
+            self.editor.setPlainText(output + ("\n" + error if error else ""))
         if ok:
             self.status.setText("Backup concluído.")
             self._show_toast("Backup concluído com sucesso.")
@@ -4009,7 +3939,7 @@ class MainWindow:
             return
         profile = self._profile_from_form()
         password = self._password_for(profile)
-        gbak_path = Path(self.gbak_path.text())
+        gbak_path = Path(profile.gbak_path)
         self._start_background_operation(
             "Restore",
             lambda: run_gbak(profile, "restore", Path(source), Path(target), password, gbak_path),
@@ -4019,74 +3949,25 @@ class MainWindow:
     def restore_backup_file(self, source):
         """Open a .fbk/.gbk received from Windows and prepare its restore."""
         from .backup import run_gbak
-        from PySide6.QtWidgets import QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QHBoxLayout, QLineEdit, QSpinBox, QVBoxLayout, QLabel, QWidget, QPushButton
+        from .backup_dialog import ask_restore_request
 
         source = Path(source).expanduser()
         if not source.exists():
             self._show_message("Restaurar backup", f"Arquivo não encontrado:\n{source}", warning=True)
             return
-        dialog = QDialog(self._window)
-        dialog.setWindowTitle(f"Restaurar backup — {source.name}")
-        dialog.setModal(True)
-        dialog.resize(620, 430)
-        form = QFormLayout()
-        profile_choice = QComboBox()
-        profile_choice.addItem("Nova conexão")
-        profile_choice.addItems([item.name for item in self.profiles])
-        name = QLineEdit(source.stem)
-        host = QLineEdit("localhost")
-        port = QSpinBox(); port.setRange(1, 65535); port.setValue(3050)
-        version = QComboBox(); version.addItems(SUPPORTED_VERSIONS); version.setCurrentText("5")
-        user = QLineEdit("SYSDBA")
-        password = QLineEdit(); password.setEchoMode(QLineEdit.Password)
-        gbak_path = QLineEdit()
-        target = QLineEdit(str(source.with_suffix(".fdb")))
-        target_button = QPushButton("...")
-        target_button.setFixedWidth(34)
-        target_row = QWidget(); target_layout = QHBoxLayout(target_row); target_layout.setContentsMargins(0, 0, 0, 0); target_layout.addWidget(target, 1); target_layout.addWidget(target_button)
-        save_profile = QCheckBox("Adicionar o banco restaurado aos cadastros")
-        save_password = QCheckBox("Salvar senha criptografada")
-        form.addRow("Usar cadastro", profile_choice)
-        for label, widget in (("Nome do cadastro", name), ("Host", host), ("Porta", port), ("Firebird", version), ("Usuário", user), ("Senha", password), ("Caminho gbak", gbak_path), ("Arquivo FDB", target_row)):
-            form.addRow(label, widget)
-        form.addRow("", save_profile); form.addRow("", save_password)
-        hint = QLabel(f"Backup selecionado:\n{source}"); hint.setWordWrap(True)
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(dialog.accept); buttons.rejected.connect(dialog.reject)
-        target_button.clicked.connect(lambda: self._choose_restore_target(dialog, target))
-        def load_restore_profile(profile_name):
-            selected = next((item for item in self.profiles if item.name == profile_name), None)
-            if selected is None:
-                return
-            name.setText(f"{selected.name} restaurado")
-            host.setText(selected.host); port.setValue(selected.port); version.setCurrentText(selected.version)
-            user.setText(selected.user); gbak_path.setText(selected.gbak_path)
-            password.setText(self._stored_password(selected.name) or "")
-        profile_choice.currentTextChanged.connect(load_restore_profile)
-        layout = QVBoxLayout(dialog); layout.addWidget(hint); layout.addLayout(form); layout.addWidget(buttons)
-        if dialog.exec() != QDialog.Accepted:
+        request = ask_restore_request(self._window, source, self.profiles, self._stored_password)
+        if request is None:
             return
-        candidate = ConnectionProfile(name=name.text(), host=host.text(), port=port.value(), database=target.text(), version=version.currentText(), user=user.text(), isql_path="", gbak_path=gbak_path.text())
-        errors = candidate.validate()
+        errors = request.profile.validate()
         if errors:
             self._show_message("Restaurar backup", " ".join(errors), warning=True)
             return
-        target_path = Path(target.text()).expanduser()
-        entered_password = password.text()
-        register_profile = save_profile.isChecked()
-        store_password = save_password.isChecked()
+        candidate = request.profile
         self._start_background_operation(
             "Restore",
-            lambda: run_gbak(candidate, "restore", source, target_path, entered_password, Path(gbak_path.text())),
-            lambda result: self._finish_restore_operation(result, candidate, str(source), str(target_path), entered_password, register_profile, store_password),
+            lambda: run_gbak(candidate, "restore", source, request.target, request.password, request.gbak_path),
+            lambda result: self._finish_restore_operation(result, candidate, str(source), str(request.target), request.password, request.register_profile, request.save_password),
         )
-
-    @staticmethod
-    def _choose_restore_target(parent, target):
-        from PySide6.QtWidgets import QFileDialog
-        filename, _ = QFileDialog.getSaveFileName(parent, "Salvar banco restaurado", target.text(), "Banco Firebird (*.fdb *.gdb);;Todos (*.*)")
-        if filename:
-            target.setText(filename)
 
     def export_database_sql(self):
         from PySide6.QtWidgets import QFileDialog, QInputDialog
@@ -4098,11 +3979,11 @@ class MainWindow:
         if not accepted:
             return
         modes = {labels[0]: "data", labels[1]: "metadata", labels[2]: "both"}
-        stem = Path(self.database.text().strip().strip('"')).stem or self.name.text().strip() or "firebird_export"
+        profile = self._profile_from_form()
+        stem = Path(profile.database.strip().strip('"')).stem or profile.name.strip() or "firebird_export"
         filename, _ = QFileDialog.getSaveFileName(self._window, "Salvar exportação SQL", f"{stem}_{datetime.now():%Y%m%d_%H%M%S}.sql", "SQL (*.sql);;Todos (*.*)")
         if not filename:
             return
-        profile = self._profile_from_form()
         password = self._password_for(profile)
         self._start_background_operation(
             "Exportação SQL",
@@ -4115,7 +3996,8 @@ class MainWindow:
             self._show_message("Falha na exportação SQL", str(result))
             return
         if result.ok:
-            self.editor.setPlainText(f"-- Exportação SQL concluída\n-- Arquivo: {result.filename}\n-- Tabelas: {result.tables}\n-- Linhas: {result.rows}\n")
+            if self.editor is not None:
+                self.editor.setPlainText(f"-- Exportação SQL concluída\n-- Arquivo: {result.filename}\n-- Tabelas: {result.tables}\n-- Linhas: {result.rows}\n")
             self._log_event("Exportação SQL concluída", profile=profile.name, filename=result.filename, tables=result.tables, rows=result.rows)
             self.status.setText(f"Exportação SQL concluída: {result.filename}")
             self._show_toast("Exportação SQL concluída com sucesso.")
