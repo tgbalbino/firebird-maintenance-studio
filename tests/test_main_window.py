@@ -627,5 +627,77 @@ class ActivityPanelFlowTests(WindowTestCase):
         self.assertEqual(window.activity_table.rowCount(), 2)
 
 
+class HealthAndCompareFlowTests(WindowTestCase):
+    """Characterizes how finished health and comparison reads reach the window."""
+
+    def open_window(self):
+        from firebird_studio.models import ConnectionProfile, ProfileStore
+        from firebird_studio.ui import MainWindow
+
+        path = Path(self._tmp.name) / "compare_profiles.json"
+        ProfileStore(path).save([ConnectionProfile(name="Origem", database="C:/db/o.fdb"), ConnectionProfile(name="Destino", database="C:/db/d.fdb")])
+        window = MainWindow(ProfileStore(path))
+        window._window.show()
+        self.addCleanup(self._dispose, window)
+        self.messages = []
+        window._show_message = lambda title, text, warning=False: self.messages.append(title)
+        window._new_sql_tab()
+        return window
+
+    def changes(self):
+        from firebird_studio.schema import SchemaChange, SchemaObject
+
+        return [
+            SchemaChange("ADD", SchemaObject("TABLE", "CLIENTES", "create table CLIENTES (id integer)")),
+            SchemaChange("REMOVE", SchemaObject("VIEW", "V_ANTIGA", "create view V_ANTIGA as select 1 from rdb$database"), destructive=True),
+        ]
+
+    def test_health_report_goes_to_editor_and_status(self):
+        from firebird_studio.health import HealthFinding, HealthReport
+
+        window = self.open_window()
+        report = HealthReport(metrics={"conexoes": 3}, findings=[HealthFinding("alta", "Backup antigo", "30 dias", "Fazer backup")])
+        window._finish_health_operation(report, window.profiles[0])
+        self.assertIn("conexoes: 3", window.last_health_report)
+        self.assertIn("[ALTA] Backup antigo", window.editor.toPlainText())
+        self.assertIn("1 recomendação", window.status.text())
+
+    def test_health_failure_reports_error(self):
+        window = self.open_window()
+        window._finish_health_operation(RuntimeError("sem acesso"), window.profiles[0])
+        self.assertIn("Falha ao analisar saúde", self.messages)
+        self.assertIn("sem acesso", window.status.text())
+
+    def test_compare_fills_table_report_and_status(self):
+        window = self.open_window()
+        source, target = window.profiles
+        window._finish_compare_operation(self.changes(), source, target)
+        self.assertEqual(window.compare_table.rowCount(), 2)
+        rows = {window.compare_table.item(r, 2).text(): r for r in range(2)}
+        self.assertEqual(window.compare_table.item(rows["V_ANTIGA"], 3).text(), "SIM")
+        self.assertEqual(window.compare_table.item(rows["CLIENTES"], 3).text(), "NÃO")
+        self.assertIn("ORIGEM: Origem", window.last_compare_report)
+        self.assertIn("[REVISAR] VIEW V_ANTIGA", window.last_compare_report)
+        self.assertIn("2 diferença(s)", window.status.text())
+
+    def test_compare_action_filter_includes_all_actions_option(self):
+        window = self.open_window()
+        window._finish_compare_operation(self.changes(), *window.profiles)
+        hidden = lambda: sorted(window.compare_table.isRowHidden(r) for r in range(2))
+        window.compare_action_filter.setCurrentText("ADD")
+        self.assertEqual(hidden(), [False, True])
+        window.compare_action_filter.setCurrentText("Todas as ações")
+        self.assertEqual(hidden(), [False, False])
+
+    def test_compare_text_filter_and_failure(self):
+        window = self.open_window()
+        window._finish_compare_operation(self.changes(), *window.profiles)
+        window.compare_filter.setText("clientes")
+        self.assertEqual(sorted(window.compare_table.isRowHidden(r) for r in range(2)), [False, True])
+        window._finish_compare_operation(RuntimeError("falhou"), *window.profiles)
+        self.assertIn("Falha ao comparar estruturas", self.messages)
+        self.assertEqual(window.compare_table.rowCount(), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

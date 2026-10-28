@@ -4237,11 +4237,9 @@ class MainWindow:
             self.status.setText(f"Falha ao ler saúde: {report}")
             self._show_message("Falha ao analisar saúde", str(report))
             return
-        lines = ["INDICADORES", ""] + [f"{key}: {value}" for key, value in report.metrics.items()]
-        lines.extend(["", "RECOMENDAÇÕES", ""])
-        for finding in report.findings:
-            lines.extend([f"[{finding.severity.upper()}] {finding.title}", f"Evidência: {finding.evidence}", f"Ação sugerida: {finding.recommendation}", ""])
-        self.last_health_report = "\n".join(lines)
+        from .diagnostic_views import health_report_text
+
+        self.last_health_report = health_report_text(report)
         self.editor.setPlainText(self.last_health_report)
         self._log_event("Saúde analisada", profile=profile.name, findings=len(report.findings))
         self.status.setText(f"Saúde analisada: {len(report.findings)} recomendação(ões).")
@@ -4804,41 +4802,30 @@ class MainWindow:
         return compare_schema(source_objects, target_objects)
 
     def _finish_compare_operation(self, changes, source, target):
-        from .schema import generate_migration
-        from PySide6.QtWidgets import QTableWidgetItem
+        from .diagnostic_views import compare_report_text, fill_compare_table
 
         if isinstance(changes, Exception):
             self._log_event("Falha ao comparar estruturas", source=source.name, target=target.name, error=str(changes))
             self.status.setText(f"Falha ao comparar estruturas: {changes}")
             self._show_message("Falha ao comparar estruturas", str(changes))
             return
-        lines = [f"ORIGEM: {source.name}", f"DESTINO: {target.name}", "", f"Diferenças: {len(changes)}", ""]
-        for change in changes:
-            marker = "REVISAR" if change.destructive else change.action
-            lines.append(f"[{marker}] {change.object.kind} {change.object.name}")
-        lines.extend(["", "PRÉVIA DE MIGRAÇÃO", "", generate_migration(changes)])
-        self.last_compare_report = "\n".join(lines)
+        self.last_compare_report = compare_report_text(changes, source.name, target.name)
         self.compare_changes = list(changes)
-        headers = ["Ação", "Tipo", "Nome", "Destrutiva", "DDL de origem"]
-        self.compare_table.setSortingEnabled(False); self.compare_table.clear(); self.compare_table.setColumnCount(len(headers)); self.compare_table.setRowCount(len(changes)); self.compare_table.setHorizontalHeaderLabels(headers)
-        for row, change in enumerate(changes):
-            values = [change.action, change.object.kind, change.object.name, "SIM" if change.destructive else "NÃO", change.object.ddl]
-            for column, value in enumerate(values):
-                self.compare_table.setItem(row, column, QTableWidgetItem(str(value)))
-        self.compare_table.resizeColumnsToContents(); self.compare_table.setSortingEnabled(True); self._filter_compare_rows(self.compare_filter.text())
+        fill_compare_table(self.compare_table, changes)
+        self._filter_compare_rows()
+        # Showing the result window can deactivate the SQL document and clear
+        # self.editor, so keep the editor that was current when the read finished.
+        editor = self.editor
         self.result_tabs.setCurrentWidget(self.compare_panel)
-        self.editor.setPlainText(self.last_compare_report)
+        if editor is not None:
+            editor.setPlainText(self.last_compare_report)
         self._log_event("Comparação concluída", source=source.name, target=target.name, changes=len(changes))
         self.status.setText(f"Comparação concluída: {len(changes)} diferença(s). Nenhuma alteração foi aplicada.")
 
-    def _filter_compare_rows(self, text: str = ""):
-        needle = (text or self.compare_filter.text()).strip().casefold()
-        action = self.compare_action_filter.currentText()
-        for row in range(self.compare_table.rowCount()):
-            values = [self.compare_table.item(row, col).text() if self.compare_table.item(row, col) else "" for col in range(self.compare_table.columnCount())]
-            matches_text = not needle or needle in " ".join(values).casefold()
-            matches_action = action == "Todas as ações" or values[0] == action
-            self.compare_table.setRowHidden(row, not (matches_text and matches_action))
+    def _filter_compare_rows(self, *_):
+        from .diagnostic_views import filter_compare_rows
+
+        filter_compare_rows(self.compare_table, self.compare_filter.text(), self.compare_action_filter.currentText())
 
     def save_compare_report(self):
         """Save the most recent comparison report without applying any change."""

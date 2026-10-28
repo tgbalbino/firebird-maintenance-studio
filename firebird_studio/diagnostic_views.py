@@ -79,3 +79,53 @@ def render_plan(tree_widget, output_widget, result):
         details_button.setEnabled(bool(result.raw.strip()))
         details_button.setText("Mostrar detalhes técnicos")
 
+
+
+COMPARE_HEADERS = ["Ação", "Tipo", "Nome", "Destrutiva", "DDL de origem"]
+ALL_ACTIONS = "Todas as ações"
+
+
+def health_report_text(report) -> str:
+    """Plain-text rendering of a health report (metrics, then findings)."""
+    lines = ["INDICADORES", ""] + [f"{key}: {value}" for key, value in report.metrics.items()]
+    lines.extend(["", "RECOMENDAÇÕES", ""])
+    for finding in report.findings:
+        lines.extend([f"[{finding.severity.upper()}] {finding.title}", f"Evidência: {finding.evidence}", f"Ação sugerida: {finding.recommendation}", ""])
+    return "\n".join(lines)
+
+
+def compare_report_text(changes, source_name: str, target_name: str) -> str:
+    """Plain-text comparison report including the migration preview."""
+    from .schema import generate_migration
+
+    lines = [f"ORIGEM: {source_name}", f"DESTINO: {target_name}", "", f"Diferenças: {len(changes)}", ""]
+    for change in changes:
+        marker = "REVISAR" if change.destructive else change.action
+        lines.append(f"[{marker}] {change.object.kind} {change.object.name}")
+    lines.extend(["", "PRÉVIA DE MIGRAÇÃO", "", generate_migration(changes)])
+    return "\n".join(lines)
+
+
+def fill_compare_table(table, changes) -> None:
+    from PySide6.QtWidgets import QTableWidgetItem
+
+    table.setSortingEnabled(False)
+    table.clear()
+    table.setColumnCount(len(COMPARE_HEADERS))
+    table.setRowCount(len(changes))
+    table.setHorizontalHeaderLabels(COMPARE_HEADERS)
+    for row, change in enumerate(changes):
+        values = [change.action, change.object.kind, change.object.name, "SIM" if change.destructive else "NÃO", change.object.ddl]
+        for column, value in enumerate(values):
+            table.setItem(row, column, QTableWidgetItem(str(value)))
+    table.resizeColumnsToContents()
+    table.setSortingEnabled(True)
+
+
+def filter_compare_rows(table, text: str, action: str) -> None:
+    needle = (text or "").strip().casefold()
+    for row in range(table.rowCount()):
+        values = [table.item(row, col).text() if table.item(row, col) else "" for col in range(table.columnCount())]
+        matches_text = not needle or needle in " ".join(values).casefold()
+        matches_action = action == ALL_ACTIONS or values[0] == action
+        table.setRowHidden(row, not (matches_text and matches_action))
