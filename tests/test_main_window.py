@@ -72,6 +72,45 @@ class MainWindowLayoutTests(WindowTestCase):
         self.assertIsNotNone(editor)
         self.assertEqual(editor.frameShape(), editor.Shape.NoFrame)
 
+    def _leaf_actions(self, menu):
+        for action in menu.actions():
+            if action.menu() is not None:
+                yield from self._leaf_actions(action.menu())
+            elif not action.isSeparator():
+                yield action
+
+    def test_every_menu_action_has_a_handler(self):
+        """Refactor guard: an extraction must not leave a menu entry unconnected."""
+        from PySide6.QtCore import SIGNAL
+
+        window = self.make_window()
+        orphans = []
+        for top in window._window.menuBar().actions():
+            for action in self._leaf_actions(top.menu()):
+                if action.receivers(SIGNAL("triggered(bool)")) == 0 and action.receivers(SIGNAL("triggered()")) == 0:
+                    orphans.append(f"{top.text()} > {action.text()}")
+        self.assertEqual(orphans, [])
+
+    def test_sql_tabs_open_and_close_cleanly(self):
+        window = self.make_window()
+        for _ in range(3):
+            window._new_sql_tab()
+        self.assertEqual(window.sql_tabs.count(), 3)
+        self.assertFalse(window.welcome_page.isVisible())
+        while window.sql_tabs.count():
+            window.close_sql_tab(0)
+            self.app.processEvents()
+        self.assertTrue(window.welcome_page.isVisible())
+
+    def test_theme_switch_keeps_window_usable(self):
+        window = self.make_window()
+        window._new_sql_tab()
+        for theme in ("dark", "blue", "gray", "light"):
+            window._set_theme(theme)
+            self.app.processEvents()
+            self.assertEqual(window._settings.value("theme"), theme)
+            self.assertTrue(window.sql_tabs.isVisible())
+
     def test_sql_document_replaces_welcome_page(self):
         window = self.make_window()
         window._new_sql_tab()
@@ -273,6 +312,391 @@ class GridEditingFlowTests(WindowTestCase):
         self.assertIn("\"NOME\" = 'Ana Maria'", sql)
         self.assertIn("WHERE \"ID\" = 1", sql)
         self.assertIn("chave primária foi usada", sql)
+
+
+@unittest.skipIf(QSettings is None, "PySide6 não instalado")
+class SqlExecutionFlowTests(WindowTestCase):
+    """Characterizes execute -> pending transaction -> commit/rollback with no database."""
+
+    def open_window(self, select_result=None):
+        from unittest import mock
+
+        from firebird_studio.models import ConnectionProfile, ProfileStore
+        from firebird_studio.sql import QueryResult
+        from firebird_studio.ui import MainWindow
+
+        path = Path(self._tmp.name) / "flow_profiles.json"
+        ProfileStore(path).save([ConnectionProfile(name="Vendas", database="C:/db/v.fdb")])
+        window = MainWindow(ProfileStore(path))
+        window._window.show()
+        self.addCleanup(self._dispose, window)
+        window._new_sql_tab()
+        window.editor.setProperty("query_profile", "Vendas")
+        self.messages = []
+        window._show_message = lambda title, text, warning=False: self.messages.append(title)
+        result = select_result or QueryResult(True, ["ID", "NOME"], [(1, "Ana"), (2, "Bruno")], "2 linha(s) retornada(s).", 1.5)
+        from PySide6.QtWidgets import QMessageBox
+
+        for patcher in (
+            mock.patch("firebird_studio.sql.execute_sql", lambda *a, **k: result),
+            mock.patch("firebird_studio.transaction.TransactionSession", _FakeSession),
+            mock.patch("PySide6.QtWidgets.QMessageBox.question", return_value=QMessageBox.Yes),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        return window
+
+    def test_select_fills_result_grid_and_summary(self):
+        window = self.open_window()
+        window._execute_sql_text("select id, nome from cliente")
+        self.assertEqual(window.result_table.rowCount(), 2)
+        self.assertEqual(window.result_table.columnCount(), 2)
+        self.assertIn("2 linha(s)", window.result_summary.text())
+        self.assertIsNone(window._transaction_session)
+
+    def test_empty_sql_is_rejected_without_executing(self):
+        window = self.open_window()
+        window._execute_sql_text("   ")
+        self.assertIn("Digite uma instrução SQL", window.status.text())
+        self.assertEqual(window.result_table.rowCount(), 0)
+
+    def test_failed_select_reports_error_and_keeps_window_alive(self):
+        from firebird_studio.sql import QueryResult
+
+        window = self.open_window(QueryResult(False, [], [], "Table unknown: X", 0.0))
+        window._execute_sql_text("select * from x")
+        self.assertIn("Falha ao executar SQL", self.messages)
+        self.assertIn("falha", window.result_summary.text())
+
+    def test_update_opens_pending_transaction_and_blocks_next_command(self):
+        window = self.open_window()
+        window._execute_sql_text("update cliente set nome = 'X' where id = 1")
+        self.assertTrue(window._transaction_session.dirty)
+        self.assertIn("Transação pendente", window.status.text())
+        window._execute_sql_text("select 1 from rdb$database")
+        self.assertIn("Transação não finalizada", self.messages)
+
+    def test_rollback_discards_and_allows_new_commands(self):
+        window = self.open_window()
+        window._execute_sql_text("delete from cliente where id = 1")
+        session = _FakeSession.last
+        window._rollback_transaction()
+        self.assertTrue(session.rolled_back)
+        self.assertIn("Rollback concluído", window.status.text())
+        self.assertIsNone(window._transaction_session)
+
+    def test_commit_confirms_and_closes_transaction(self):
+        window = self.open_window()
+        window._execute_sql_text("insert into cliente (id) values (9)")
+        session = _FakeSession.last
+        window._commit_transaction()
+        self.assertTrue(session.committed)
+        self.assertIn("Commit confirmado", window.status.text())
+        self.assertIsNone(window._transaction_session)
+
+    def test_read_only_mode_blocks_mutating_statements(self):
+        window = self.open_window()
+        _controls = window.editor.property("execution_controls")
+        _controls[1].setChecked(True)
+        window._execute_sql_text("drop table cliente")
+        self.assertIn("somente leitura", window.status.text())
+        self.assertIsNone(window._transaction_session)
+
+
+
+@unittest.skipIf(QSettings is None, "PySide6 não instalado")
+class SqlAutocompleteTests(WindowTestCase):
+    def open_editor(self):
+        from PySide6.QtWidgets import QTextEdit
+
+        from firebird_studio.models import ConnectionProfile, ProfileStore
+        from firebird_studio.schema import SchemaObject
+        from firebird_studio.ui import MainWindow
+
+        path = Path(self._tmp.name) / "ac_profiles.json"
+        ProfileStore(path).save([ConnectionProfile(name="A", database="a"), ConnectionProfile(name="B", database="b")])
+        window = MainWindow(ProfileStore(path))
+        window._window.show()
+        self.addCleanup(self._dispose, window)
+        window._new_sql_tab()
+        window.profile_objects = {
+            "A": [SchemaObject("TABLE", "CLIENTES", "")],
+            "B": [SchemaObject("TABLE", "SO_NO_B", "")],
+        }
+        editor = window.sql_tabs.activeSubWindow().widget().findChild(QTextEdit, "sqlEditor")
+        window._set_current_query_profile("A", editor)
+        self.app.processEvents()
+        return window, editor
+
+    def test_suggestions_come_only_from_the_query_database(self):
+        window, editor = self.open_editor()
+        words = editor.property("completion_model").stringList()
+        self.assertIn("CLIENTES", words)
+        self.assertNotIn("SO_NO_B", words)
+        window._set_current_query_profile("B", editor)
+        words = editor.property("completion_model").stringList()
+        self.assertIn("SO_NO_B", words)
+        self.assertNotIn("CLIENTES", words)
+
+    def test_typing_opens_popup_and_accepting_replaces_dollar_names_whole(self):
+        from PySide6.QtCore import Qt
+        from PySide6.QtTest import QTest
+
+        window, editor = self.open_editor()
+        popup = editor.property("completion").popup()
+        QTest.keyClicks(editor, "select * from rdb$rel")
+        self.app.processEvents()
+        self.assertTrue(popup.isVisible())
+        window._insert_completion(editor, "RDB$RELATIONS")
+        self.assertEqual(editor.toPlainText(), "select * from RDB$RELATIONS")
+        self.assertFalse(popup.isVisible())
+
+    def test_dot_after_alias_lists_that_tables_columns(self):
+        from PySide6.QtGui import QTextCursor
+        from PySide6.QtTest import QTest
+
+        from firebird_studio.schema import SchemaObject
+
+        window, editor = self.open_editor()
+        window.profile_objects["A"] = [SchemaObject("TABLE", "CLIENTES", "", columns=(("NOME", "V", "", "", ""), ("LIMITE", "N", "", "", "")))]
+        window._refresh_sql_completer(editor)
+        editor.setPlainText("select  from clientes c")
+        cursor = editor.textCursor()
+        cursor.setPosition(len("select "))
+        editor.setTextCursor(cursor)
+        QTest.keyClicks(editor, "c.")
+        self.app.processEvents()
+        completer = editor.property("completion")
+        self.assertTrue(completer.popup().isVisible())
+        self.assertEqual(sorted(editor.property("completion_model").stringList()), ["LIMITE", "NOME"])
+        QTest.keyClicks(editor, "no")
+        self.assertEqual(completer.completionCount(), 1)
+        window._insert_completion(editor, "NOME")
+        self.assertEqual(editor.toPlainText(), "select c.NOME from clientes c")
+        # Back to a plain word: the full vocabulary returns.
+        QTest.keyClicks(editor, " sel")
+        self.assertIn("SELECT", editor.property("completion_model").stringList())
+
+    def test_popup_does_not_open_when_text_is_loaded_programmatically(self):
+        window, editor = self.open_editor()
+        popup = editor.property("completion").popup()
+        editor.setPlainText("select nome from clientes")
+        self.app.processEvents()
+        self.assertFalse(popup.isVisible())
+
+
+
+@unittest.skipIf(QSettings is None, "PySide6 não instalado")
+class TreeContextMenuTests(WindowTestCase):
+    """Characterizes which commands the navigator offers per item."""
+
+    def open_window(self):
+        from firebird_studio.models import ConnectionProfile, ProfileStore
+        from firebird_studio.schema import SchemaObject
+        from firebird_studio.ui import MainWindow
+
+        path = Path(self._tmp.name) / "tree_profiles.json"
+        ProfileStore(path).save([ConnectionProfile(name="Vendas", database="C:/db/v.fdb")])
+        window = MainWindow(ProfileStore(path))
+        window._window.show()
+        self.addCleanup(self._dispose, window)
+        window.profile_objects = {"Vendas": [SchemaObject("TABLE", "CLIENTES", "")]}
+        window.refresh_profiles()
+        self.app.processEvents()
+        self.menus = []
+        window._popup_menu_fitting = lambda menu, origin, reference=None: self.menus.append(menu)
+        return window
+
+    def labels(self, menu):
+        return [a.text() for a in menu.actions() if not a.isSeparator()]
+
+    def open_menu_for(self, window, item):
+        window.profile_list.scrollToItem(item)
+        window._tree_context_menu(window.profile_list.visualItemRect(item).center())
+        return self.menus[-1]
+
+    def test_database_item_offers_profile_commands(self):
+        window = self.open_window()
+        root = window.profile_list.topLevelItem(0)
+        labels = self.labels(self.open_menu_for(window, root))
+        for expected in ("Alterar cadastro...", "Copiar nome do banco", "Copiar caminho ou alias",
+                         "Monitorar consultas", "Manutenção do banco", "Recolher todos os bancos"):
+            self.assertIn(expected, labels)
+        self.assertNotIn("Desconectar banco", labels)
+
+    def test_disconnect_is_offered_only_for_connected_databases(self):
+        window = self.open_window()
+        window.connected_profiles.add("Vendas")
+        root = window.profile_list.topLevelItem(0)
+        self.assertIn("Desconectar banco", self.labels(self.open_menu_for(window, root)))
+
+    def test_expand_and_collapse_follow_item_state(self):
+        window = self.open_window()
+        root = window.profile_list.topLevelItem(0)
+        root.setExpanded(True)
+        labels = self.labels(self.open_menu_for(window, root))
+        self.assertIn("Recolher objetos", labels)
+        self.assertNotIn("Expandir objetos", labels)
+        root.setExpanded(False)
+        self.assertIn("Expandir objetos", self.labels(self.open_menu_for(window, root)))
+
+    def test_table_object_offers_new_table_script(self):
+        # Current behavior: the command is offered on objects inside the
+        # "Tabelas" folder, not on the folder item itself.
+        window = self.open_window()
+        root = window.profile_list.topLevelItem(0)
+        root.setExpanded(True)
+        category = next(root.child(i) for i in range(root.childCount()) if root.child(i).text(0).startswith("Tabelas"))
+        category.setExpanded(True)
+        self.assertGreater(category.childCount(), 0)
+        self.assertIn("Nova tabela...", self.labels(self.open_menu_for(window, category.child(0))))
+        self.assertNotIn("Nova tabela...", self.labels(self.open_menu_for(window, category)))
+
+    def test_empty_area_opens_no_menu(self):
+        from PySide6.QtCore import QPoint
+
+        window = self.open_window()
+        window._tree_context_menu(QPoint(5, window.profile_list.viewport().height() - 3))
+        self.assertEqual(self.menus, [])
+
+
+
+@unittest.skipIf(QSettings is None, "PySide6 não instalado")
+class ActivityPanelFlowTests(WindowTestCase):
+    """Characterizes how a finished activity read reaches the panel."""
+
+    def open_window(self):
+        from firebird_studio.models import ConnectionProfile, ProfileStore
+        from firebird_studio.ui import MainWindow
+
+        path = Path(self._tmp.name) / "activity_profiles.json"
+        ProfileStore(path).save([ConnectionProfile(name="Vendas", database="C:/db/v.fdb")])
+        window = MainWindow(ProfileStore(path))
+        window._window.show()
+        self.addCleanup(self._dispose, window)
+        self.shown = []
+        window._show_result_window = lambda *a, **k: self.shown.append(True)
+        self.messages = []
+        window._show_message = lambda title, text, warning=False: self.messages.append(title)
+        return window
+
+    def report(self):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(metrics={"estimated_size_mb": 5.0, "attachments": 2})
+
+    def rows(self):
+        return [
+            {"id": 7, "attachment_id": 1, "user": "ANA", "address": "pc", "application": "app", "started": None, "elapsed_seconds": 1.0, "sql": "select a"},
+            {"id": 8, "attachment_id": 2, "user": "BRUNO", "address": "pc", "application": "app", "started": None, "elapsed_seconds": 9.0, "sql": "select b"},
+        ]
+
+    def test_finished_read_fills_metrics_table_and_status(self):
+        window = self.open_window()
+        window._finish_activity_operation((self.report(), self.rows()), window.profiles[0])
+        self.assertEqual(window.activity_profile_name, "Vendas")
+        self.assertEqual(window.activity_table.rowCount(), 2)
+        self.assertEqual(window.activity_table.item(0, 0).text(), "8")
+        self.assertIn("Banco: Vendas", window.activity_metrics.toPlainText())
+        self.assertIn("2 consulta(s) em execução", window.status.text())
+        self.assertTrue(self.shown)
+
+    def test_selected_statement_survives_a_refresh(self):
+        window = self.open_window()
+        profile = window.profiles[0]
+        window._finish_activity_operation((self.report(), self.rows()), profile)
+        window.activity_table.selectRow(1)
+        selected = window.activity_table.item(1, 0).text()
+        window._finish_activity_operation((self.report(), self.rows()), profile)
+        row = window.activity_table.currentRow()
+        self.assertEqual(window.activity_table.item(row, 0).text(), selected)
+
+    def test_filter_applies_to_new_rows(self):
+        window = self.open_window()
+        window.activity_filter.setText("bruno")
+        window._finish_activity_operation((self.report(), self.rows()), window.profiles[0])
+        hidden = [window.activity_table.isRowHidden(r) for r in range(2)]
+        self.assertEqual(sorted(hidden), [False, True])
+
+    def test_failure_reports_error_and_keeps_previous_table(self):
+        window = self.open_window()
+        window._finish_activity_operation((self.report(), self.rows()), window.profiles[0])
+        window._finish_activity_operation(RuntimeError("sem permissão"), window.profiles[0])
+        self.assertIn("Falha ao ler atividade", self.messages)
+        self.assertIn("sem permissão", window.status.text())
+        self.assertEqual(window.activity_table.rowCount(), 2)
+
+
+class HealthAndCompareFlowTests(WindowTestCase):
+    """Characterizes how finished health and comparison reads reach the window."""
+
+    def open_window(self):
+        from firebird_studio.models import ConnectionProfile, ProfileStore
+        from firebird_studio.ui import MainWindow
+
+        path = Path(self._tmp.name) / "compare_profiles.json"
+        ProfileStore(path).save([ConnectionProfile(name="Origem", database="C:/db/o.fdb"), ConnectionProfile(name="Destino", database="C:/db/d.fdb")])
+        window = MainWindow(ProfileStore(path))
+        window._window.show()
+        self.addCleanup(self._dispose, window)
+        self.messages = []
+        window._show_message = lambda title, text, warning=False: self.messages.append(title)
+        window._new_sql_tab()
+        return window
+
+    def changes(self):
+        from firebird_studio.schema import SchemaChange, SchemaObject
+
+        return [
+            SchemaChange("ADD", SchemaObject("TABLE", "CLIENTES", "create table CLIENTES (id integer)")),
+            SchemaChange("REMOVE", SchemaObject("VIEW", "V_ANTIGA", "create view V_ANTIGA as select 1 from rdb$database"), destructive=True),
+        ]
+
+    def test_health_report_goes_to_editor_and_status(self):
+        from firebird_studio.health import HealthFinding, HealthReport
+
+        window = self.open_window()
+        report = HealthReport(metrics={"conexoes": 3}, findings=[HealthFinding("alta", "Backup antigo", "30 dias", "Fazer backup")])
+        window._finish_health_operation(report, window.profiles[0])
+        self.assertIn("conexoes: 3", window.last_health_report)
+        self.assertIn("[ALTA] Backup antigo", window.editor.toPlainText())
+        self.assertIn("1 recomendação", window.status.text())
+
+    def test_health_failure_reports_error(self):
+        window = self.open_window()
+        window._finish_health_operation(RuntimeError("sem acesso"), window.profiles[0])
+        self.assertIn("Falha ao analisar saúde", self.messages)
+        self.assertIn("sem acesso", window.status.text())
+
+    def test_compare_fills_table_report_and_status(self):
+        window = self.open_window()
+        source, target = window.profiles
+        window._finish_compare_operation(self.changes(), source, target)
+        self.assertEqual(window.compare_table.rowCount(), 2)
+        rows = {window.compare_table.item(r, 2).text(): r for r in range(2)}
+        self.assertEqual(window.compare_table.item(rows["V_ANTIGA"], 3).text(), "SIM")
+        self.assertEqual(window.compare_table.item(rows["CLIENTES"], 3).text(), "NÃO")
+        self.assertIn("ORIGEM: Origem", window.last_compare_report)
+        self.assertIn("[REVISAR] VIEW V_ANTIGA", window.last_compare_report)
+        self.assertIn("2 diferença(s)", window.status.text())
+
+    def test_compare_action_filter_includes_all_actions_option(self):
+        window = self.open_window()
+        window._finish_compare_operation(self.changes(), *window.profiles)
+        hidden = lambda: sorted(window.compare_table.isRowHidden(r) for r in range(2))
+        window.compare_action_filter.setCurrentText("ADD")
+        self.assertEqual(hidden(), [False, True])
+        window.compare_action_filter.setCurrentText("Todas as ações")
+        self.assertEqual(hidden(), [False, False])
+
+    def test_compare_text_filter_and_failure(self):
+        window = self.open_window()
+        window._finish_compare_operation(self.changes(), *window.profiles)
+        window.compare_filter.setText("clientes")
+        self.assertEqual(sorted(window.compare_table.isRowHidden(r) for r in range(2)), [False, True])
+        window._finish_compare_operation(RuntimeError("falhou"), *window.profiles)
+        self.assertIn("Falha ao comparar estruturas", self.messages)
+        self.assertEqual(window.compare_table.rowCount(), 2)
 
 
 if __name__ == "__main__":

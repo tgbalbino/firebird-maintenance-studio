@@ -1187,6 +1187,7 @@ class MainWindow:
         target = editor or self.editor
         if target is not None and profile_name:
             target.setProperty("query_profile", profile_name)
+            self._refresh_sql_completer(target)
             index = self.sql_tabs.indexOf(target)
             if index >= 0:
                 self._update_sql_tab_title(index)
@@ -1302,7 +1303,7 @@ class MainWindow:
         editor.installEventFilter(completion_filter)
         completer.popup().installEventFilter(completion_filter)
         editor.setProperty("completion_key_filter", completion_filter)
-        editor.textChanged.connect(lambda target=editor: self._auto_complete_sql(target))
+        editor.document().contentsChange.connect(lambda _pos, removed, added, target=editor: self._on_sql_contents_change(target, removed, added))
         completion_shortcut = QShortcut(QKeySequence("Ctrl+Space"), editor)
         completion_shortcut.activated.connect(lambda target=editor: self._show_sql_completions(target))
         editor.setProperty("completion_model", completion_model)
@@ -1624,54 +1625,111 @@ class MainWindow:
         cursor = target.textCursor()
         self.query_cursor_status.setText(f"Linha {cursor.blockNumber() + 1}, coluna {cursor.positionInBlock() + 1}")
 
-    def _completion_words(self):
+    def _completion_words(self, profile_name=None):
         from .sql_completion import completion_words
-        return completion_words(self.profile_objects)
+        return completion_words(self.profile_objects, profile_name=profile_name)
 
     def _refresh_sql_completer(self, editor=None):
         target = editor or self.editor
         if target is None:
             return
         model = target.property("completion_model")
-        if model is not None:
-            model.setStringList(self._completion_words())
-
-    def _show_sql_completions(self, editor):
-        from PySide6.QtGui import QTextCursor
-        completer = editor.property("completion")
-        if completer is None:
+        completer = target.property("completion")
+        if target.property("completion_contextual") and completer is not None and completer.popup().isVisible():
+            # A "table." column list is on screen; the next keystroke
+            # restores the full vocabulary when the context ends.
             return
+        if model is not None:
+            model.setStringList(self._completion_words(target.property("query_profile") or None))
+
+    def _completion_prefix(self, editor) -> str:
+        """Identifier fragment before the cursor (``$`` counts as a letter)."""
+        from .sql_completion import word_bounds
         cursor = editor.textCursor()
-        cursor.select(QTextCursor.WordUnderCursor)
-        completer.setCompletionPrefix(cursor.selectedText())
+        line = cursor.block().text()
+        column = cursor.positionInBlock()
+        start, _end = word_bounds(line, column)
+        return line[start:column]
+
+    def _contextual_columns(self, editor):
+        """Columns for ``table.`` / ``alias.`` before the cursor, else ``None``."""
+        from .sql_completion import columns_for_qualifier, current_statement, qualifier_before, word_bounds
+        cursor = editor.textCursor()
+        line = cursor.block().text()
+        column = cursor.positionInBlock()
+        start, _end = word_bounds(line, column)
+        qualifier = qualifier_before(line, start)
+        if not qualifier:
+            return None
+        profile_name = editor.property("query_profile") or ""
+        objects = self.profile_objects.get(profile_name, [])
+        statement = current_statement(editor.toPlainText(), cursor.position())
+        return columns_for_qualifier(qualifier, statement, objects)
+
+    def _popup_completions(self, editor, prefix: str) -> bool:
+        completer = editor.property("completion")
+        model = editor.property("completion_model")
+        if completer is None or model is None:
+            return False
+        columns = self._contextual_columns(editor)
+        if columns is not None:
+            model.setStringList(columns)
+            editor.setProperty("completion_contextual", True)
+        elif editor.property("completion_contextual"):
+            editor.setProperty("completion_contextual", False)
+            self._refresh_sql_completer(editor)
+        completer.setCompletionPrefix(prefix)
+        if not completer.completionCount():
+            completer.popup().hide()
+            return False
         rectangle = editor.cursorRect()
         rectangle.setWidth(completer.popup().sizeHintForColumn(0) + completer.popup().verticalScrollBar().sizeHint().width())
         completer.complete(rectangle)
+        return True
+
+    def _show_sql_completions(self, editor):
+        self._popup_completions(editor, self._completion_prefix(editor))
+
+    def _on_sql_contents_change(self, editor, removed: int, added: int):
+        """Auto-complete only after a single typed character.
+
+        Loading a file, undo, paste or accepting a suggestion changes many
+        characters at once and must not reopen the popup.
+        """
+        if editor.property("completion_inserting") or removed > 1 or added != 1:
+            return
+        self._auto_complete_sql(editor)
 
     def _auto_complete_sql(self, editor):
         """Offer completion while typing, without interrupting short words."""
-        from PySide6.QtGui import QTextCursor
-        cursor = editor.textCursor()
-        cursor.select(QTextCursor.WordUnderCursor)
-        prefix = cursor.selectedText()
-        if len(prefix) < 2 or not prefix.replace("_", "A").replace("$", "A").isalnum():
+        prefix = self._completion_prefix(editor)
+        contextual = self._contextual_columns(editor) is not None
+        # An empty prefix only qualifies right after "table." / "alias.";
+        # otherwise wait for two characters so short words are not interrupted.
+        if (not prefix and not contextual) or (len(prefix) < 2 and not contextual) or (prefix and prefix[0].isdigit()):
+            completer = editor.property("completion")
+            if completer is not None:
+                completer.popup().hide()
             return
-        completer = editor.property("completion")
-        if completer is None:
-            return
-        completer.setCompletionPrefix(prefix)
-        if not completer.completionCount():
-            return
-        rectangle = editor.cursorRect()
-        rectangle.setWidth(completer.popup().sizeHintForColumn(0) + completer.popup().verticalScrollBar().sizeHint().width())
-        completer.complete(rectangle)
+        self._popup_completions(editor, prefix)
 
     def _insert_completion(self, editor, text):
-        from PySide6.QtGui import QTextCursor
+        from .sql_completion import word_bounds
         cursor = editor.textCursor()
-        cursor.select(QTextCursor.WordUnderCursor)
-        cursor.insertText(text)
+        line = cursor.block().text()
+        start, end = word_bounds(line, cursor.positionInBlock())
+        block_start = cursor.block().position()
+        cursor.setPosition(block_start + start)
+        cursor.setPosition(block_start + end, cursor.MoveMode.KeepAnchor)
+        editor.setProperty("completion_inserting", True)
+        try:
+            cursor.insertText(text)
+        finally:
+            editor.setProperty("completion_inserting", False)
         editor.setTextCursor(cursor)
+        completer = editor.property("completion")
+        if completer is not None:
+            completer.popup().hide()
 
     def _on_profile_clicked(self, item):
         """Select a database/object; loading happens only on double click."""
@@ -4179,11 +4237,9 @@ class MainWindow:
             self.status.setText(f"Falha ao ler saúde: {report}")
             self._show_message("Falha ao analisar saúde", str(report))
             return
-        lines = ["INDICADORES", ""] + [f"{key}: {value}" for key, value in report.metrics.items()]
-        lines.extend(["", "RECOMENDAÇÕES", ""])
-        for finding in report.findings:
-            lines.extend([f"[{finding.severity.upper()}] {finding.title}", f"Evidência: {finding.evidence}", f"Ação sugerida: {finding.recommendation}", ""])
-        self.last_health_report = "\n".join(lines)
+        from .diagnostic_views import health_report_text
+
+        self.last_health_report = health_report_text(report)
         self.editor.setPlainText(self.last_health_report)
         self._log_event("Saúde analisada", profile=profile.name, findings=len(report.findings))
         self.status.setText(f"Saúde analisada: {len(report.findings)} recomendação(ões).")
@@ -4294,16 +4350,8 @@ class MainWindow:
 
     def _finish_activity_operation(self, result, profile):
         from PySide6.QtCore import Qt
-        from PySide6.QtWidgets import QTableWidgetItem
         from datetime import datetime
-
-        class DurationItem(QTableWidgetItem):
-            def __lt__(self, other):
-                left = self.data(Qt.UserRole)
-                right = other.data(Qt.UserRole) if other is not None else None
-                if isinstance(left, (int, float)) and isinstance(right, (int, float)):
-                    return float(left) < float(right)
-                return super().__lt__(other)
+        from .activity_views import activity_metrics_lines, fill_activity_table
 
         if isinstance(result, Exception):
             self._log_event("Falha ao ler atividade", profile=profile.name, error=str(result))
@@ -4316,21 +4364,7 @@ class MainWindow:
         selected_statement_id = selected_item.text() if selected_item is not None else ""
         metrics = report.metrics
         size = metrics.get("estimated_size_mb")
-        lines = [
-            f"Banco: {profile.name}",
-            f"Tamanho estimado: {size:.1f} MB" if isinstance(size, (int, float)) else "Tamanho estimado: indisponível",
-            f"Página: {metrics.get('page_size') or 'N/D'} bytes · páginas: {metrics.get('pages') or 'N/D'}",
-            f"ODS: {metrics.get('ods_major') or 'N/D'}.{metrics.get('ods_minor') or 'N/D'} · conexões: {metrics.get('attachments') or 0}",
-            f"Transações: oldest={metrics.get('oldest_transaction') or 'N/D'} · active={metrics.get('oldest_active') or 'N/D'} · next={metrics.get('next_transaction') or 'N/D'}",
-            f"Consultas em execução: {len(statements)}",
-            "Escopo: consultas ativas de todas as aplicações/conexões visíveis para a conta do banco.",
-            "Estado: nenhuma consulta em execução neste instante" if not statements else "Estado: consultas em execução encontradas",
-            "Este painel é atualizado automaticamente e mostra apenas consultas ainda em execução no instante da leitura.",
-            "Consultas muito rápidas podem terminar entre duas leituras; use o histórico Trace para capturar consultas concluídas.",
-            "Histórico completo: use o botão 'Iniciar histórico (Trace)' para capturar consultas concluídas.",
-            f"Última atualização: {datetime.now():%d/%m/%Y %H:%M:%S}",
-            "Senha: não exposta pelo monitoramento",
-        ]
+        lines = activity_metrics_lines(profile.name, metrics, len(statements), datetime.now())
         if self.trace.lines or self.trace.process is not None:
             lines.extend([
                 "",
@@ -4340,26 +4374,7 @@ class MainWindow:
                 *self.trace.lines[-200:],
             ])
         self.activity_metrics.setPlainText("\n".join(lines))
-        headers = ["ID", "Conexão", "Usuário", "Terminal", "Aplicação", "Início", "Duração", "SQL"]
-        self.activity_table.setSortingEnabled(False)
-        self.activity_table.clear()
-        self.activity_table.setColumnCount(len(headers)); self.activity_table.setRowCount(len(statements)); self.activity_table.setHorizontalHeaderLabels(headers)
-        for row, statement in enumerate(statements):
-            started = statement.get("started")
-            started_text = started.strftime("%Y-%m-%d %H:%M:%S") if hasattr(started, "strftime") else "N/D"
-            elapsed = statement.get("elapsed_seconds")
-            duration_text = f"{elapsed:.1f} s" if isinstance(elapsed, (int, float)) else "N/D"
-            values = [statement.get("id"), statement.get("attachment_id"), statement.get("user"), statement.get("address"), statement.get("application"), started_text, duration_text, statement.get("sql", "")]
-            for column, value in enumerate(values):
-                cell = DurationItem("" if value is None else str(value)) if column == 6 else QTableWidgetItem("" if value is None else str(value))
-                if column == 6 and isinstance(elapsed, (int, float)):
-                    cell.setData(Qt.UserRole, float(elapsed))
-                self.activity_table.setItem(row, column, cell)
-        self.activity_table.resizeColumnsToContents()
-        self.activity_table.setSortingEnabled(True)
-        # Put the longest running statement first so the expensive query is
-        # visible immediately, while keeping the column sortable by the user.
-        self.activity_table.sortItems(6, Qt.DescendingOrder)
+        fill_activity_table(self.activity_table, statements)
         self._filter_activity_rows(self.activity_filter.text())
         if selected_statement_id:
             for row in range(self.activity_table.rowCount()):
@@ -4379,21 +4394,12 @@ class MainWindow:
         self.status.setText(f"Painel atualizado: {len(statements)} consulta(s) em execução.")
 
     def _filter_activity_rows(self, text: str):
-        needle = text.strip().casefold()
-        for row in range(self.activity_table.rowCount()):
-            values = []
-            for column in range(self.activity_table.columnCount()):
-                item = self.activity_table.item(row, column)
-                values.append(item.text() if item else "")
-            self.activity_table.setRowHidden(row, bool(needle) and needle not in " ".join(values).casefold())
+        from .activity_views import filter_table_rows
+
+        filter_table_rows(self.activity_table, text)
         trace_table = getattr(self, "activity_trace_table", None)
         if trace_table is not None:
-            for row in range(trace_table.rowCount()):
-                values = []
-                for column in range(trace_table.columnCount()):
-                    item = trace_table.item(row, column)
-                    values.append(item.text() if item else "")
-                trace_table.setRowHidden(row, bool(needle) and needle not in " ".join(values).casefold())
+            filter_table_rows(trace_table, text)
 
     def _open_activity_sql_at(self, row: int, _column: int):
         self.activity_table.selectRow(row)
@@ -4796,41 +4802,30 @@ class MainWindow:
         return compare_schema(source_objects, target_objects)
 
     def _finish_compare_operation(self, changes, source, target):
-        from .schema import generate_migration
-        from PySide6.QtWidgets import QTableWidgetItem
+        from .diagnostic_views import compare_report_text, fill_compare_table
 
         if isinstance(changes, Exception):
             self._log_event("Falha ao comparar estruturas", source=source.name, target=target.name, error=str(changes))
             self.status.setText(f"Falha ao comparar estruturas: {changes}")
             self._show_message("Falha ao comparar estruturas", str(changes))
             return
-        lines = [f"ORIGEM: {source.name}", f"DESTINO: {target.name}", "", f"Diferenças: {len(changes)}", ""]
-        for change in changes:
-            marker = "REVISAR" if change.destructive else change.action
-            lines.append(f"[{marker}] {change.object.kind} {change.object.name}")
-        lines.extend(["", "PRÉVIA DE MIGRAÇÃO", "", generate_migration(changes)])
-        self.last_compare_report = "\n".join(lines)
+        self.last_compare_report = compare_report_text(changes, source.name, target.name)
         self.compare_changes = list(changes)
-        headers = ["Ação", "Tipo", "Nome", "Destrutiva", "DDL de origem"]
-        self.compare_table.setSortingEnabled(False); self.compare_table.clear(); self.compare_table.setColumnCount(len(headers)); self.compare_table.setRowCount(len(changes)); self.compare_table.setHorizontalHeaderLabels(headers)
-        for row, change in enumerate(changes):
-            values = [change.action, change.object.kind, change.object.name, "SIM" if change.destructive else "NÃO", change.object.ddl]
-            for column, value in enumerate(values):
-                self.compare_table.setItem(row, column, QTableWidgetItem(str(value)))
-        self.compare_table.resizeColumnsToContents(); self.compare_table.setSortingEnabled(True); self._filter_compare_rows(self.compare_filter.text())
+        fill_compare_table(self.compare_table, changes)
+        self._filter_compare_rows()
+        # Showing the result window can deactivate the SQL document and clear
+        # self.editor, so keep the editor that was current when the read finished.
+        editor = self.editor
         self.result_tabs.setCurrentWidget(self.compare_panel)
-        self.editor.setPlainText(self.last_compare_report)
+        if editor is not None:
+            editor.setPlainText(self.last_compare_report)
         self._log_event("Comparação concluída", source=source.name, target=target.name, changes=len(changes))
         self.status.setText(f"Comparação concluída: {len(changes)} diferença(s). Nenhuma alteração foi aplicada.")
 
-    def _filter_compare_rows(self, text: str = ""):
-        needle = (text or self.compare_filter.text()).strip().casefold()
-        action = self.compare_action_filter.currentText()
-        for row in range(self.compare_table.rowCount()):
-            values = [self.compare_table.item(row, col).text() if self.compare_table.item(row, col) else "" for col in range(self.compare_table.columnCount())]
-            matches_text = not needle or needle in " ".join(values).casefold()
-            matches_action = action == "Todas as ações" or values[0] == action
-            self.compare_table.setRowHidden(row, not (matches_text and matches_action))
+    def _filter_compare_rows(self, *_):
+        from .diagnostic_views import filter_compare_rows
+
+        filter_compare_rows(self.compare_table, self.compare_filter.text(), self.compare_action_filter.currentText())
 
     def save_compare_report(self):
         """Save the most recent comparison report without applying any change."""
