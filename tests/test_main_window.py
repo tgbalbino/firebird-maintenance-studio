@@ -883,5 +883,104 @@ class BackupRestoreFlowTests(WindowTestCase):
         self.assertEqual(self.operations, [])
 
 
+class ProfileDialogFlowTests(WindowTestCase):
+    """Characterizes the modal connection dialog and what it hands to the save path."""
+
+    def open_window(self):
+        from firebird_studio.models import ConnectionProfile, ProfileStore
+        from firebird_studio.ui import MainWindow
+
+        path = Path(self._tmp.name) / "dialog_profiles.json"
+        ProfileStore(path).save([ConnectionProfile(name="Vendas", host="srv", port=3055, database="C:/db/v.fdb", version="4", user="ANA", role="ADM", charset="WIN1252", favorite=True, isql_path="C:/fb/isql.exe", gbak_path="C:/fb/gbak.exe")])
+        window = MainWindow(ProfileStore(path))
+        window._window.show()
+        self.addCleanup(self._dispose, window)
+        self.saved = []
+        window._save_profile_record = lambda *args: self.saved.append(args)
+        window._stored_password = lambda name: "segredo" if name == "Vendas" else None
+        return window
+
+    def run_dialog(self, window, index, inspect=None):
+        from unittest import mock
+        from PySide6.QtWidgets import QDialog
+
+        def fake_exec(dialog):
+            if inspect:
+                inspect(dialog)
+            return QDialog.Accepted
+
+        with mock.patch("PySide6.QtWidgets.QDialog.exec", fake_exec):
+            window._show_profile_dialog(index)
+
+    def test_invalid_index_does_nothing(self):
+        window = self.open_window()
+        self.run_dialog(window, 5)
+        self.run_dialog(window, -1)
+        self.assertEqual(self.saved, [])
+
+    def test_cancel_saves_nothing(self):
+        from unittest import mock
+        from PySide6.QtWidgets import QDialog
+
+        window = self.open_window()
+        with mock.patch("PySide6.QtWidgets.QDialog.exec", lambda dialog: QDialog.Rejected):
+            window._show_profile_dialog(0)
+        self.assertEqual(self.saved, [])
+
+    def test_edit_prefills_fields_and_saves_same_profile(self):
+        window = self.open_window()
+        titles = []
+        self.run_dialog(window, 0, lambda dialog: titles.append(dialog.windowTitle()))
+        self.assertEqual(titles, ["Dados do cadastro — Vendas"])
+        profile, password, save_password, index = self.saved[0]
+        self.assertEqual(profile, window.profiles[0])
+        self.assertEqual((password, save_password, index), ("segredo", True, 0))
+
+    def test_new_profile_starts_blank_with_defaults(self):
+        window = self.open_window()
+        titles = []
+        self.run_dialog(window, None, lambda dialog: titles.append(dialog.windowTitle()))
+        self.assertEqual(titles, ["Nova conexão"])
+        profile, password, save_password, index = self.saved[0]
+        self.assertEqual((profile.name, profile.host, profile.port, profile.version, profile.user), ("", "localhost", 3050, "5", "SYSDBA"))
+        self.assertEqual((password, save_password, index), ("", False, None))
+
+    def test_edited_fields_reach_the_saved_profile(self):
+        from PySide6.QtWidgets import QCheckBox, QLineEdit, QSpinBox
+
+        window = self.open_window()
+
+        def edit(dialog):
+            fields = dialog.findChildren(QLineEdit)
+            fields[0].setText("Outra")
+            dialog.findChildren(QSpinBox)[0].setValue(3051)
+            for box in dialog.findChildren(QCheckBox):
+                if box.text() == "Favorito":
+                    box.setChecked(False)
+
+        self.run_dialog(window, 0, edit)
+        profile = self.saved[0][0]
+        self.assertEqual((profile.name, profile.port, profile.favorite), ("Outra", 3051, False))
+
+    def test_test_button_reports_connection_result(self):
+        from types import SimpleNamespace
+        from unittest import mock
+        from PySide6.QtWidgets import QPlainTextEdit, QPushButton
+
+        window = self.open_window()
+        seen = []
+
+        def press(dialog):
+            next(b for b in dialog.findChildren(QPushButton) if b.text() == "Testar conexão").click()
+            seen.append(dialog.findChild(QPlainTextEdit).toPlainText())
+
+        result = SimpleNamespace(message="Conexão OK", server_version="5.0.1")
+        with mock.patch("firebird_studio.connection.test_connection", return_value=result) as probe:
+            self.run_dialog(window, 0, press)
+        self.assertEqual(seen, ["Conexão OK\nVersão detectada: 5.0.1"])
+        self.assertEqual(probe.call_args[0][1], "segredo")
+        self.assertEqual(probe.call_args[0][0].name, "Vendas")
+
+
 if __name__ == "__main__":
     unittest.main()

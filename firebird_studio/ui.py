@@ -965,86 +965,13 @@ class MainWindow:
         """Create or edit a profile in a modal configuration window."""
         if index is not None and (index < 0 or index >= len(self.profiles)):
             return
-        from PySide6.QtWidgets import QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLineEdit, QPlainTextEdit, QPushButton, QSpinBox, QVBoxLayout, QFileDialog, QWidget
+        from .profile_dialog import ask_profile
 
         profile = self.profiles[index] if index is not None else ConnectionProfile(name="", version="5")
-        dialog = QDialog(self._window)
-        dialog.setWindowTitle(f"{'Nova conexão' if index is None else 'Dados do cadastro — ' + profile.name}")
-        dialog.setModal(True)
-        dialog.resize(560, 520)
-        form = QFormLayout()
-
-        name = QLineEdit(profile.name)
-        host = QLineEdit(profile.host)
-        port = QSpinBox(); port.setRange(1, 65535); port.setValue(profile.port)
-        database = QLineEdit(profile.database)
-        database_browse = QPushButton("...")
-        database_browse.setFixedWidth(34)
-        database_browse.setToolTip("Selecionar arquivo de banco Firebird")
-        database_row = QWidget()
-        database_layout = QHBoxLayout(database_row)
-        database_layout.setContentsMargins(0, 0, 0, 0)
-        database_layout.setSpacing(6)
-        database_layout.addWidget(database, 1)
-        database_layout.addWidget(database_browse)
-        version = QComboBox(); version.addItems(SUPPORTED_VERSIONS); version.setCurrentText(profile.version)
-        user = QLineEdit(profile.user)
-        role = QLineEdit(profile.role)
-        password = QLineEdit(self._stored_password(profile.name) or ""); password.setEchoMode(QLineEdit.Password)
-        save_password = QCheckBox("Salvar senha criptografada no Windows")
-        save_password.setChecked(bool(password.text()))
-        charset = QLineEdit(profile.charset)
-        isql_path = QLineEdit(profile.isql_path)
-        gbak_path = QLineEdit(profile.gbak_path)
-        favorite = QCheckBox("Favorito"); favorite.setChecked(profile.favorite)
-        for label, widget in (("Nome", name), ("Host", host), ("Porta", port), ("Caminho ou alias", database_row), ("Firebird", version), ("Usuário", user), ("Role", role), ("Senha", password), ("Charset", charset), ("Caminho isql", isql_path), ("Caminho gbak", gbak_path)):
-            form.addRow(label, widget)
-        form.addRow("", save_password)
-        form.addRow("", favorite)
-        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
-        test_button = QPushButton("Testar conexão")
-        buttons.addButton(test_button, QDialogButtonBox.ActionRole)
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        output = QPlainTextEdit(); output.setReadOnly(True); output.setPlaceholderText("O resultado do teste aparecerá aqui.")
-
-        def browse_dialog_database():
-            start_dir = database.text().strip()
-            if start_dir and not Path(start_dir).is_dir():
-                start_dir = str(Path(start_dir).parent)
-            filename, _ = QFileDialog.getOpenFileName(
-                dialog,
-                "Selecionar arquivo do banco Firebird",
-                start_dir or str(Path.home()),
-                "Bancos Firebird (*.fdb *.FDB *.gdb *.GDB);;Todos os arquivos (*.*)",
-            )
-            if filename:
-                database.setText(filename)
-
-        database_browse.clicked.connect(browse_dialog_database)
-
-        def test_dialog_connection():
-            from .connection import test_connection
-            candidate = ConnectionProfile(
-                name=name.text(), host=host.text(), port=port.value(), database=database.text(),
-                version=version.currentText(), user=user.text(), role=role.text(), charset=charset.text(),
-                favorite=favorite.isChecked(), isql_path=isql_path.text(), gbak_path=gbak_path.text(),
-            )
-            result = test_connection(candidate, password.text())
-            output.setPlainText(result.message + (f"\nVersão detectada: {result.server_version}" if result.server_version else ""))
-
-        test_button.clicked.connect(test_dialog_connection)
-        layout = QVBoxLayout(dialog); layout.addLayout(form); layout.addWidget(output, 1); layout.addWidget(buttons)
-        if dialog.exec() != QDialog.Accepted:
-            return
-
-        candidate = ConnectionProfile(
-            name=name.text(), host=host.text(), port=port.value(), database=database.text(),
-            version=version.currentText(), user=user.text(), role=role.text(),
-            charset=charset.text(), favorite=favorite.isChecked(),
-            isql_path=isql_path.text(), gbak_path=gbak_path.text(),
-        )
-        self._save_profile_record(candidate, password.text(), save_password.isChecked(), index)
+        title = "Nova conexão" if index is None else f"Dados do cadastro — {profile.name}"
+        edit = ask_profile(self._window, profile, title, self._stored_password(profile.name))
+        if edit is not None:
+            self._save_profile_record(edit.profile, edit.password, edit.save_password, index)
 
     def _set_table_data_enabled(self, enabled: bool):
         self.open_data_button.setEnabled(enabled)
