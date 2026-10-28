@@ -428,6 +428,53 @@ class SqlAutocompleteTests(WindowTestCase):
         self.app.processEvents()
         return window, editor
 
+    def test_popup_lines_up_with_the_start_of_the_typed_word(self):
+        from PySide6.QtCore import QPoint
+
+        from firebird_studio.schema import SchemaObject
+
+        window, editor = self.open_editor()
+        window._window.resize(1280, 720)
+        window.profile_objects["A"] = [SchemaObject("TABLE", "TBLCLIENTE", "")]
+        window._refresh_sql_completer(editor)
+        editor.setPlainText("select * from TBLcl")
+        cursor = editor.textCursor()
+        cursor.movePosition(cursor.MoveOperation.End)
+        editor.setTextCursor(cursor)
+        self.app.processEvents()
+        window._show_sql_completions(editor)
+        popup = editor.property("completion").popup()
+        self.assertTrue(popup.isVisible())
+        start = editor.textCursor()
+        start.setPosition(start.position() - len("TBLcl"))
+        expected = editor.viewport().mapToGlobal(editor.cursorRect(start).bottomLeft())
+        self.assertLessEqual(abs(popup.mapToGlobal(QPoint(0, 0)).x() - expected.x()), 2)
+
+    def test_typing_opens_the_popup_under_the_word_being_typed(self):
+        from PySide6.QtCore import QPoint
+        from PySide6.QtTest import QTest
+
+        from firebird_studio.schema import SchemaObject
+
+        window, editor = self.open_editor()
+        window._window.resize(1280, 720)
+        window.profile_objects["A"] = [SchemaObject("TABLE", "TBLCLIENTE", "")]
+        window._refresh_sql_completer(editor)
+        editor.setFocus()
+        popup = editor.property("completion").popup()
+        xs = {}
+        for typed in "SELECT * FROM TBlCL":
+            QTest.keyClicks(editor, typed)
+            self.app.processEvents()
+            xs[editor.toPlainText()] = popup.mapToGlobal(QPoint(0, 0)).x() if popup.isVisible() else None
+        self.assertTrue(popup.isVisible())
+        word_start = editor.textCursor()
+        word_start.setPosition(word_start.position() - len("TBlCL"))
+        expected = editor.viewport().mapToGlobal(editor.cursorRect(word_start).bottomLeft()).x()
+        self.assertLessEqual(abs(xs["SELECT * FROM TBlCL"] - expected), 2)
+        # Further letters keep the popup under the same word.
+        self.assertLessEqual(abs(xs["SELECT * FROM TB"] - expected), 2)
+
     def test_suggestions_come_only_from_the_query_database(self):
         window, editor = self.open_editor()
         words = editor.property("completion_model").stringList()
@@ -445,6 +492,7 @@ class SqlAutocompleteTests(WindowTestCase):
         window, editor = self.open_editor()
         popup = editor.property("completion").popup()
         QTest.keyClicks(editor, "select * from rdb$rel")
+        self.app.processEvents()
         self.app.processEvents()
         self.assertTrue(popup.isVisible())
         window._insert_completion(editor, "RDB$RELATIONS")
@@ -470,11 +518,13 @@ class SqlAutocompleteTests(WindowTestCase):
         self.assertTrue(completer.popup().isVisible())
         self.assertEqual(sorted(editor.property("completion_model").stringList()), ["LIMITE", "NOME"])
         QTest.keyClicks(editor, "no")
+        self.app.processEvents()
         self.assertEqual(completer.completionCount(), 1)
         window._insert_completion(editor, "NOME")
         self.assertEqual(editor.toPlainText(), "select c.NOME from clientes c")
         # Back to a plain word: the full vocabulary returns.
         QTest.keyClicks(editor, " sel")
+        self.app.processEvents()
         self.assertIn("SELECT", editor.property("completion_model").stringList())
 
     def test_popup_does_not_open_when_text_is_loaded_programmatically(self):
@@ -980,6 +1030,53 @@ class ProfileDialogFlowTests(WindowTestCase):
         self.assertEqual(seen, ["Conexão OK\nVersão detectada: 5.0.1"])
         self.assertEqual(probe.call_args[0][1], "segredo")
         self.assertEqual(probe.call_args[0][0].name, "Vendas")
+
+
+class ResultCellViewTests(WindowTestCase):
+    """The full-value dialog must show what the grid cell holds, for any result."""
+
+    def shown_text(self, window):
+        from unittest import mock
+        from PySide6.QtWidgets import QDialog, QLabel, QTextEdit
+
+        seen = []
+
+        def fake_exec(dialog):
+            seen.append((dialog.findChild(QLabel).text(), dialog.findChild(QTextEdit).toPlainText()))
+            return QDialog.Accepted
+
+        with mock.patch("PySide6.QtWidgets.QDialog.exec", fake_exec):
+            window._view_selected_cell()
+        return seen[0]
+
+    def window_with_rows(self, rows):
+        from firebird_studio.result_views import fill_table
+
+        window = self.make_window()
+        window._new_sql_tab()
+        fill_table(window.result_table, ["NOME", "NOTA"], rows)
+        return window
+
+    def test_query_result_cell_shows_its_value(self):
+        window = self.window_with_rows([("AVENIDA BERNARDES FILHO", 7), (None, None)])
+        window.result_table.setCurrentCell(0, 0)
+        self.assertEqual(self.shown_text(window), ("str", "AVENIDA BERNARDES FILHO"))
+        window.result_table.setCurrentCell(0, 1)
+        self.assertEqual(self.shown_text(window), ("int", "7"))
+
+    def test_null_cell_still_reads_null(self):
+        window = self.window_with_rows([(None, "")])
+        window.result_table.setCurrentCell(0, 0)
+        self.assertEqual(self.shown_text(window), ("NULL", "NULL"))
+        window.result_table.setCurrentCell(0, 1)
+        self.assertEqual(self.shown_text(window), ("str", ""))
+
+    def test_binary_cell_is_described_as_blob(self):
+        window = self.window_with_rows([(b"ol\xc3\xa1",), (b"\xff\x00",)])
+        window.result_table.setCurrentCell(0, 0)
+        self.assertEqual(self.shown_text(window), ("BLOB · 4 bytes · UTF-8", "olá"))
+        window.result_table.setCurrentCell(1, 0)
+        self.assertEqual(self.shown_text(window), ("BLOB binário · 2 bytes · hexadecimal", "ff 00"))
 
 
 if __name__ == "__main__":

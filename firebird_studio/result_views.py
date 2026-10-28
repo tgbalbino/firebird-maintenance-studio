@@ -22,8 +22,12 @@ def configure_result_table(table, *, selection_mode=None, sorting=True, minimum_
     return table
 
 
-def fill_table(table, columns, rows, *, resize=True, sorting=True, preserve_values=False):
-    """Replace a table's contents while preserving a predictable sort state."""
+def fill_table(table, columns, rows, *, resize=True, sorting=True, preserve_values=True):
+    """Replace a table's contents while preserving a predictable sort state.
+
+    The raw value is kept on each cell (Qt.UserRole) so NULL can be told from an
+    empty string and the full value of a cell can be shown.
+    """
     from PySide6.QtWidgets import QTableWidgetItem
 
     table.setSortingEnabled(False)

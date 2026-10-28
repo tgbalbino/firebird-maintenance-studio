@@ -1369,13 +1369,6 @@ class MainWindow:
         breadcrumb.setToolTip("Caminho do objeto selecionado")
         workspace_status = QLabel("Ctrl+Tab alterna as consultas")
         workspace_status.setObjectName("workspaceStatus")
-        context_row = QHBoxLayout()
-        context_row.setObjectName("sqlContextRow")
-        context_row.setSpacing(8)
-        context_row.setContentsMargins(0, 0, 0, 0)
-        context_row.addWidget(QLabel("Navegação"))
-        context_row.addWidget(breadcrumb)
-        context_row.addWidget(workspace_status, 1)
         connection_row = QHBoxLayout()
         connection_row.setObjectName("sqlConnectionRow")
         connection_row.setSpacing(8)
@@ -1384,7 +1377,9 @@ class MainWindow:
         connection_row.addWidget(profile_combo)
         connection_row.addWidget(connection_status)
         connection_row.addWidget(connection_badge)
+        # One header band: connection on the left, object path on the right.
         connection_row.addStretch()
+        connection_row.addWidget(breadcrumb)
         connection_badge.setVisible(True)
         shell = QFrame()
         shell.setObjectName("sqlEditorShell")
@@ -1394,9 +1389,9 @@ class MainWindow:
         shell_layout.setContentsMargins(10, 8, 10, 4)
         shell_layout.setSpacing(5)
         shell_layout.addLayout(connection_row)
-        shell_layout.addLayout(context_row)
         shell_layout.addWidget(document_tabs, 1)
         editor_footer = QHBoxLayout()
+        editor_footer.addWidget(workspace_status)
         editor_footer.addStretch()
         editor_footer.addWidget(cursor_status)
         shell_layout.addLayout(editor_footer)
@@ -1609,7 +1604,16 @@ class MainWindow:
         if not completer.completionCount():
             completer.popup().hide()
             return False
-        rectangle = editor.cursorRect()
+        # QCompleter positions the popup from a rectangle in the editor's own
+        # coordinates, but cursorRect() is relative to the viewport, which the
+        # line-number gutter shifts. Anchor at the start of the word so the
+        # popup lines up with what is being completed.
+        from PySide6.QtCore import QPoint
+
+        start = editor.textCursor()
+        start.setPosition(max(0, start.position() - len(prefix)))
+        rectangle = editor.cursorRect(start)
+        rectangle.translate(editor.viewport().mapTo(editor, QPoint(0, 0)))
         rectangle.setWidth(completer.popup().sizeHintForColumn(0) + completer.popup().verticalScrollBar().sizeHint().width())
         completer.complete(rectangle)
         return True
@@ -1625,7 +1629,23 @@ class MainWindow:
         """
         if editor.property("completion_inserting") or removed > 1 or added != 1:
             return
-        self._auto_complete_sql(editor)
+        # contentsChange fires before the editor lays out the new text, so the
+        # cursor rectangle is still stale and the popup would open at the left
+        # edge. Open it on the next event-loop turn, once per burst of typing.
+        if editor.property("completion_pending"):
+            return
+        from PySide6.QtCore import QTimer
+
+        editor.setProperty("completion_pending", True)
+        QTimer.singleShot(0, lambda: self._run_pending_completion(editor))
+
+    def _run_pending_completion(self, editor):
+        try:
+            editor.setProperty("completion_pending", False)
+            self._auto_complete_sql(editor)
+        except RuntimeError:
+            # The SQL window was closed before the timer fired.
+            pass
 
     def _auto_complete_sql(self, editor):
         """Offer completion while typing, without interrupting short words."""
@@ -2814,7 +2834,7 @@ class MainWindow:
         self._table_original_rows = [tuple(row) for row in result.rows]
         self._show_sql_result()
         from .result_views import fill_table
-        fill_table(self.result_table, result.columns, result.rows, preserve_values=True)
+        fill_table(self.result_table, result.columns, result.rows)
         self._filter_data_rows(self.data_filter.text())
         self.table_page = page
         self.previous_data_button.setEnabled(page > 0)
