@@ -1149,5 +1149,70 @@ class MainMenuTests(WindowTestCase):
             self.assertGreaterEqual(action.menu().minimumWidth(), 240, action.text())
 
 
+class SqlDocumentPaneTests(WindowTestCase):
+    """Editor above, results below: the lower area appears only when needed."""
+
+    open_window = SqlExecutionFlowTests.open_window
+
+    def pane(self, window):
+        return window.editor._document_tabs
+
+    def test_new_document_shows_only_the_editor(self):
+        window = self.open_window()
+        self.app.processEvents()
+        pane = self.pane(window)
+        self.assertTrue(pane.editor_frame.isVisible())
+        self.assertFalse(pane.lower_tabs.isVisible())
+        self.assertEqual([pane.lower_tabs.tabText(i) for i in range(pane.lower_tabs.count())], ["Resultado", "Histórico SQL"] if not window.query_history else ["Resultado", f"Histórico SQL ({len(window.query_history)})"])
+
+    def test_select_reveals_results_under_the_editor(self):
+        window = self.open_window()
+        window._execute_sql_text("select id, nome from cliente")
+        self.app.processEvents()
+        pane = self.pane(window)
+        self.assertTrue(pane.results_visible())
+        self.assertIs(pane.lower_tabs.currentWidget(), window.result_table)
+        self.assertTrue(pane.editor_frame.isVisible())
+        editor_bottom = pane.editor_frame.mapTo(pane, pane.editor_frame.rect().bottomLeft()).y()
+        results_top = pane.lower_tabs.mapTo(pane, pane.lower_tabs.rect().topLeft()).y()
+        self.assertLessEqual(editor_bottom, results_top)
+
+    def test_failed_query_keeps_editor_focused(self):
+        from firebird_studio.sql import QueryResult
+
+        window = self.open_window(QueryResult(False, [], [], "Table unknown: X", 0.0))
+        window._window.activateWindow()
+        window._execute_sql_text("select * from x")
+        self.app.processEvents()
+        self.assertTrue(self.pane(window).editor_frame.isVisible())
+        self.assertTrue(window.editor.hasFocus())
+
+    def test_history_command_opens_history_tab_below(self):
+        window = self.open_window()
+        window.query_history = ["select 1"]
+        window._choose_history_query()
+        self.app.processEvents()
+        pane = self.pane(window)
+        self.assertTrue(pane.results_visible())
+        self.assertIs(pane.lower_tabs.currentWidget(), window.editor._history_panel)
+
+    def test_history_count_label_follows_the_lower_tab(self):
+        window = self.open_window()
+        window.query_history = ["select 1", "select 2"]
+        window._refresh_history_list(window.editor._history_list)
+        self.assertEqual(self.pane(window).lower_tabs.tabText(1), "Histórico SQL (2)")
+
+    def test_dragged_shut_results_come_back_on_next_run(self):
+        window = self.open_window()
+        window._execute_sql_text("select 1 from rdb$database")
+        self.app.processEvents()
+        pane = self.pane(window)
+        pane.setSizes([pane.height(), 0])
+        self.assertFalse(pane.results_visible())
+        window._execute_sql_text("select 2 from rdb$database")
+        self.app.processEvents()
+        self.assertTrue(pane.results_visible())
+
+
 if __name__ == "__main__":
     unittest.main()

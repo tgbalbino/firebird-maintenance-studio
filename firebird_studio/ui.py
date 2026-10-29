@@ -1144,10 +1144,6 @@ class MainWindow:
         result_header.customContextMenuRequested.connect(
             lambda position, table=result_table: self._result_header_context_menu(table, position)
         )
-        document_tabs = QTabWidget()
-        document_tabs.setObjectName("sqlDocumentTabs")
-        document_tabs.setDocumentMode(True)
-        document_tabs.setUsesScrollButtons(True)
         class SqlEditorFrame(QFrame):
             """Paint the editor boundary independently from native Qt styles."""
 
@@ -1183,8 +1179,6 @@ class MainWindow:
                 painter.end()
 
         editor_frame = SqlEditorFrame(editor)
-        document_tabs.addTab(editor_frame, "Editor")
-        document_tabs.addTab(result_table, "Resultado")
         history_list = QListWidget()
         history_list.setObjectName("sqlHistoryList")
         history_list.setAlternatingRowColors(True)
@@ -1226,10 +1220,11 @@ class MainWindow:
         history_layout.addWidget(history_hint)
         history_layout.addLayout(history_actions)
         history_layout.addWidget(history_list, 1)
-        document_tabs.addTab(history_panel, "Histórico SQL")
+        from .sql_document_pane import SqlDocumentPane
+
+        document_tabs = SqlDocumentPane(editor_frame, result_table, history_panel)
         history_list.setProperty("history_document_tabs", document_tabs)
         history_list.setProperty("history_panel", history_panel)
-        document_tabs.setCurrentWidget(editor_frame)
         document_tabs.setProperty("sql_editor", editor)
         editor.setProperty("document_tabs", document_tabs)
         editor.setProperty("result_table", result_table)
