@@ -1280,5 +1280,15 @@ class CursorStatusTests(WindowTestCase):
         self.assertTrue(editor._cursor_status.text().startswith("Linha"))
 
 
+class EventLogLocationTests(WindowTestCase):
+    """The event log belongs to the profile folder, never to the real user home in tests."""
+
+    def test_log_is_written_beside_the_profile_file(self):
+        window = self.make_window()
+        expected = Path(self._tmp.name) / "events.txt"
+        self.assertEqual(window._event_log_path, expected)
+        self.assertIn("Aplicação iniciada", expected.read_text(encoding="utf-8"))
+
+
 if __name__ == "__main__":
     unittest.main()

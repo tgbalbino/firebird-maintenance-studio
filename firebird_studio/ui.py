@@ -93,7 +93,9 @@ class MainWindow:
         self._window.setWindowTitle(f"Firebird Maintenance Studio v{__version__}")
         self._window.resize(1100, 700)
         self.store = store
-        self._event_log_path = Path.home() / ".firebird-maintenance-studio" / "events.txt"
+        # The log lives beside the profile file: the same folder as before in
+        # normal use, and an isolated one for any window built on a scratch store.
+        self._event_log_path = Path(store.path).parent / "events.txt"
         self._log_event("Aplicação iniciada", executable=str(Path(__file__).resolve()))
         self._settings = QSettings("TGBalbino", "FirebirdMaintenanceStudio")
         saved_geometry = self._settings.value("window_geometry")
