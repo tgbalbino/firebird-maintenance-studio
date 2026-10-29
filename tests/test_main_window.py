@@ -45,6 +45,12 @@ class WindowTestCase(unittest.TestCase):
     def _dispose(self, window):
         window._window.close()
         window._window.deleteLater()
+        # processEvents() skips DeferredDelete; without this every closed window
+        # stays alive and each app-wide setStyleSheet restyles all of them.
+        from PySide6.QtCore import QEvent
+        from PySide6.QtWidgets import QApplication
+
+        QApplication.sendPostedEvents(None, QEvent.DeferredDelete)
         self.app.processEvents()
 
 
