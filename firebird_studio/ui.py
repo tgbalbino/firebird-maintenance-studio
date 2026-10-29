@@ -1431,10 +1431,15 @@ class MainWindow:
 
     def _update_cursor_status(self, editor=None):
         target = editor or self.editor
-        if target is None or not hasattr(self, "query_cursor_status"):
+        if target is None:
+            return
+        # Each document owns its label: the shared alias is None while no SQL
+        # window is active and would point at another document's footer.
+        label = getattr(target, "_cursor_status", None)
+        if label is None:
             return
         cursor = target.textCursor()
-        self.query_cursor_status.setText(f"Linha {cursor.blockNumber() + 1}, coluna {cursor.positionInBlock() + 1}")
+        label.setText(f"Linha {cursor.blockNumber() + 1}, coluna {cursor.positionInBlock() + 1}")
 
     def _completion_words(self, profile_name=None):
         from .sql_completion import completion_words

@@ -1214,5 +1214,31 @@ class SqlDocumentPaneTests(WindowTestCase):
         self.assertTrue(pane.results_visible())
 
 
+class CursorStatusTests(WindowTestCase):
+    """Each SQL document updates its own cursor label, active or not."""
+
+    def test_each_document_updates_its_own_label(self):
+        window = self.make_window()
+        window._new_sql_tab()
+        first = window.editor
+        window._new_sql_tab()
+        second = window.editor
+        first.setPlainText("a\nb\ncd")
+        cursor = first.textCursor()
+        cursor.setPosition(first.document().characterCount() - 1)
+        first.setTextCursor(cursor)
+        self.assertEqual(first._cursor_status.text(), "Linha 3, coluna 3")
+        self.assertEqual(second._cursor_status.text(), "Linha 1, coluna 1")
+
+    def test_cursor_move_without_active_label_does_not_raise(self):
+        window = self.make_window()
+        window._new_sql_tab()
+        editor = window.editor
+        window.query_cursor_status = None
+        editor.setPlainText("x\ny")
+        window._update_cursor_status(editor)
+        self.assertTrue(editor._cursor_status.text().startswith("Linha"))
+
+
 if __name__ == "__main__":
     unittest.main()
