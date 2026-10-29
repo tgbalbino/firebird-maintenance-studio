@@ -1,4 +1,5 @@
 import os
+import sys
 import tempfile
 import time
 import unittest
@@ -32,11 +33,15 @@ class HangWatchdogTests(unittest.TestCase):
 
     def test_blocked_ui_thread_leaves_a_stack_dump(self):
         dog = self.watchdog(0.4)
-        time.sleep(1.2)  # the UI thread is stuck here, like a blocking call
+        time.sleep(2.6)  # the UI thread is stuck here, like a blocking call
         dog.stop()
         text = self.path.read_text(encoding="utf-8")
         self.assertIn("most recent call first", text)
         self.assertIn("test_blocked_ui_thread_leaves_a_stack_dump", text)
+        self.assertIn("interface sem resposta", text)
+        if sys.platform == "win32":
+            self.assertIn("pilha nativa da interface, amostra 1/3", text)
+            self.assertRegex(text, r"(ntdll|KERNELBASE|python\d+)\.dll!")
 
     def test_responsive_loop_writes_no_dump(self):
         dog = self.watchdog(0.6)

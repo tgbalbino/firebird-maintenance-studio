@@ -8,6 +8,24 @@ from .models import ConnectionProfile, ProfileStore, SUPPORTED_VERSIONS
 from . import __version__
 
 
+def _install_qt_translation(app):
+    """Load Qt's own Portuguese strings (tab close tips, standard buttons, file dialogs) once."""
+    if getattr(app, "_qt_translator", None) is not None:
+        return
+    import sys
+
+    from PySide6.QtCore import QLibraryInfo, QTranslator
+
+    folders = []
+    if getattr(sys, "_MEIPASS", None):
+        folders.append(str(Path(sys._MEIPASS) / "PySide6" / "translations"))
+    folders.append(QLibraryInfo.path(QLibraryInfo.TranslationsPath))
+    translator = QTranslator(app)
+    if any(translator.load("qtbase_pt_BR", folder) for folder in folders):
+        app.installTranslator(translator)
+        app._qt_translator = translator
+
+
 def create_application():
     from PySide6.QtGui import QFont, QIcon
     import sys
@@ -22,6 +40,7 @@ def create_application():
             app.installNativeEventFilter(native_filter)
             app._windows_f5_filter = native_filter
     app.setApplicationName("Firebird Maintenance Studio")
+    _install_qt_translation(app)
     asset_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
     icon_path = asset_root / "assets" / "firebird-maintenance-studio.ico"
     if icon_path.exists():

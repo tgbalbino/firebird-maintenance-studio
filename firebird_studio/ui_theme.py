@@ -152,7 +152,8 @@ def _close_icon_css() -> str:
         f" QTabBar::close-button {{ image: url({urls['idle']}); subcontrol-position: right; }}"
         f" QTabBar::close-button:hover {{ background: rgba(148,163,184,0.35); border-radius: 3px; }}"
     ), (
-        f" QTabBar::close-button {{ image: url({urls['idle_dark']}); }}"
+        f" QTabBar::close-button {{ image: url({urls['idle_dark']}); subcontrol-position: right; }}"
+        f" QTabBar::close-button:hover {{ background: rgba(203,213,225,0.28); border-radius: 3px; }}"
     )
 
 
