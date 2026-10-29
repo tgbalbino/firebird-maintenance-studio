@@ -2406,6 +2406,11 @@ class MainWindow:
         copy_action = menu.addAction("Copiar seleção")
         copy_action.setEnabled(bool(self.result_table.selectedItems()))
         copy_action.triggered.connect(self._copy_table_selection)
+        copy_as_menu = menu.addMenu("Copiar linhas como")
+        copy_as_menu.setEnabled(self.result_table.rowCount() > 0)
+        from .grid_copy import FORMATS
+        for kind, label in FORMATS.items():
+            copy_as_menu.addAction(label, lambda kind=kind: self._copy_rows_as(kind))
         view_action = menu.addAction("Ver valor completo")
         view_action.setEnabled(bool(self.result_table.currentItem()))
         view_action.triggered.connect(self._view_selected_cell)
@@ -2416,7 +2421,7 @@ class MainWindow:
         menu.addAction(self.generate_insert_action)
         menu.addAction(self.generate_delete_action)
         menu.addAction(self.apply_update_action)
-        menu.exec(self.result_table.viewport().mapToGlobal(position))
+        self._popup_menu_fitting(menu, self.result_table.viewport().mapToGlobal(position), self.result_table)
 
     def _view_selected_cell(self):
         from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout, QTextEdit
@@ -2651,6 +2656,22 @@ class MainWindow:
         from PySide6.QtWidgets import QApplication
         QApplication.clipboard().setText(text)
         self.status.setText(f"{len(rows)} linha(s) copiada(s).")
+
+    def _copy_rows_as(self, kind: str):
+        """Copy the selected rows (or every visible row) in the chosen format."""
+        from PySide6.QtWidgets import QApplication
+
+        from .grid_copy import FORMATS, format_rows, grid_rows
+
+        columns, rows = grid_rows(self.result_table)
+        if not rows:
+            self.status.setText("Não há linhas para copiar.")
+            return
+        text = format_rows(kind, columns, rows)
+        if kind == "insert":
+            text = "-- Ajuste o nome da tabela (TABELA) antes de executar.\n" + text
+        QApplication.clipboard().setText(text)
+        self.status.setText(f"{len(rows)} linha(s) copiada(s) como {FORMATS[kind]}.")
 
     def _filter_data_rows(self, text: str):
         query = (text or "").strip().casefold()

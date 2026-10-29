@@ -1124,6 +1124,45 @@ class ResultCellViewTests(WindowTestCase):
         window.result_table.setCurrentCell(1, 0)
         self.assertEqual(self.shown_text(window), ("BLOB binário · 2 bytes · hexadecimal", "ff 00"))
 
+    def clipboard(self):
+        from PySide6.QtWidgets import QApplication
+
+        return QApplication.clipboard().text()
+
+    def test_copy_rows_as_csv_uses_selected_rows_and_reports(self):
+        window = self.window_with_rows([("Ana", 1), ("Bruno", None), ("Caio", 3)])
+        window.result_table.selectRow(1)
+        window._copy_rows_as("csv")
+        self.assertEqual(self.clipboard().splitlines(), ["NOME,NOTA", "Bruno,"])
+        self.assertEqual(window.status.text(), "1 linha(s) copiada(s) como CSV.")
+
+    def test_copy_rows_as_insert_warns_about_the_table_name(self):
+        window = self.window_with_rows([("Ana", 1)])
+        window._copy_rows_as("insert")
+        lines = self.clipboard().splitlines()
+        self.assertTrue(lines[0].startswith("-- Ajuste o nome da tabela"))
+        self.assertEqual(lines[1], "INSERT INTO \"TABELA\" (\"NOME\", \"NOTA\") VALUES ('Ana', 1);")
+
+    def test_copy_rows_as_with_empty_grid_copies_nothing(self):
+        from PySide6.QtWidgets import QApplication
+
+        window = self.window_with_rows([])
+        QApplication.clipboard().setText("antes")
+        window._copy_rows_as("markdown")
+        self.assertEqual(self.clipboard(), "antes")
+        self.assertEqual(window.status.text(), "Não há linhas para copiar.")
+
+    def test_context_menu_offers_every_copy_format(self):
+        from PySide6.QtCore import QPoint
+
+        window = self.window_with_rows([("Ana", 1)])
+        menus = []
+        window._popup_menu_fitting = lambda menu, origin, reference=None: menus.append(menu)
+        window._table_context_menu(QPoint(5, 5))
+        submenu = next(a.menu() for a in menus[0].actions() if a.text() == "Copiar linhas como")
+        self.assertEqual([a.text() for a in submenu.actions()], ["CSV", "Markdown", "JSON", "INSERT"])
+        self.assertTrue(submenu.isEnabled())
+
 
 class MainMenuTests(WindowTestCase):
     """Characterizes the top-level menu so it can move out of MainWindow safely."""
