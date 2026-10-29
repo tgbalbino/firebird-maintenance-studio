@@ -1085,5 +1085,69 @@ class ResultCellViewTests(WindowTestCase):
         self.assertEqual(self.shown_text(window), ("BLOB binário · 2 bytes · hexadecimal", "ff 00"))
 
 
+class MainMenuTests(WindowTestCase):
+    """Characterizes the top-level menu so it can move out of MainWindow safely."""
+
+    SEP = "-"
+
+    def menu_map(self, window):
+        result = {}
+        for action in window._window.menuBar().actions():
+            items = []
+            for item in action.menu().actions():
+                if item.isSeparator():
+                    items.append(self.SEP)
+                else:
+                    shortcut = item.shortcut().toString()
+                    items.append(item.text() + (f"|{shortcut}" if shortcut else ""))
+            result[action.text()] = items
+        return result
+
+    def test_top_level_menus_keep_their_order(self):
+        window = self.make_window()
+        self.assertEqual(list(self.menu_map(window)), ["Aplicação", "SQL", "Janelas", "Banco", "Dados", "Segurança", "Análise", "Ajuda"])
+
+    def test_application_sql_and_help_items(self):
+        menus = self.menu_map(self.make_window())
+        self.assertEqual(menus["Aplicação"], ["Configurações...|Ctrl+,", self.SEP, "Sempre no topo", "Abrir log de eventos", self.SEP, "Sair"])
+        self.assertEqual(menus["SQL"][:5], ["Nova janela SQL", "Executar SQL|F5", "Executar seleção|Ctrl+Shift+F5", "Ver plano", "Histórico SQL"])
+        self.assertEqual(menus["SQL"][5], self.SEP)
+        self.assertEqual(len(menus["SQL"]), 9)
+        self.assertEqual(menus["Ajuda"], ["Sobre", "Verificar atualizações..."])
+
+    def test_window_and_database_items(self):
+        menus = self.menu_map(self.make_window())
+        self.assertEqual(menus["Janelas"], ["Selecionar consulta aberta", "Mostrar resultados e diagnóstico", "Próxima consulta", "Consulta anterior", "Fechar consulta atual", "Fechar todas as consultas", self.SEP, "Sempre no topo"])
+        self.assertEqual(menus["Banco"][:7], ["Nova conexão", "Salvar conexão", "Abrir banco", "Desconectar banco", self.SEP, "Backup", "Restore"])
+        self.assertEqual(menus["Banco"].count("Backup"), 1)
+        self.assertEqual(menus["Banco"].count("Restore"), 1)
+
+    def test_data_security_and_analysis_items(self):
+        menus = self.menu_map(self.make_window())
+        self.assertEqual(menus["Segurança"], ["Gestão de usuários"])
+        self.assertIn("Exportar CSV", menus["Dados"])
+        self.assertEqual(menus["Análise"][:2], ["Monitorar consultas", self.SEP])
+        self.assertIn("Comparar estruturas", menus["Análise"])
+
+    def test_always_on_top_is_shared_between_menus(self):
+        window = self.make_window()
+        titles = {a.text(): a.menu() for a in window._window.menuBar().actions()}
+        self.assertTrue(window.menu_always_top_action.isCheckable())
+        self.assertIn(window.menu_always_top_action, titles["Aplicação"].actions())
+        self.assertIn(window.menu_always_top_action, titles["Janelas"].actions())
+
+    def test_global_shortcuts_stay_on_the_main_window(self):
+        window = self.make_window()
+        for name, key in (("new_sql_shortcut", "Ctrl+N"), ("execute_sql_shortcut", "F5"), ("execute_selection_shortcut", "Ctrl+Shift+F5"), ("close_all_sql_shortcut", "Ctrl+Shift+W"), ("activity_open_shortcut", "Ctrl+Shift+A")):
+            shortcut = getattr(window, name)
+            self.assertEqual(shortcut.key().toString(), key, name)
+            self.assertIs(shortcut.parent(), window._window, name)
+
+    def test_menus_are_wide_enough_for_their_labels(self):
+        window = self.make_window()
+        for action in window._window.menuBar().actions():
+            self.assertGreaterEqual(action.menu().minimumWidth(), 240, action.text())
+
+
 if __name__ == "__main__":
     unittest.main()
