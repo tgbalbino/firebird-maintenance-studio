@@ -682,6 +682,46 @@ class ActivityPanelFlowTests(WindowTestCase):
         self.assertIn("sem permissão", window.status.text())
         self.assertEqual(window.activity_table.rowCount(), 2)
 
+    def test_auto_refresh_does_not_raise_windows_or_steal_focus(self):
+        window = self.open_window()
+        window.profile_list.setFocus()
+        self.app.processEvents()
+        window._finish_activity_operation((self.report(), self.rows()), window.profiles[0], True)
+        self.assertEqual(self.shown, [])
+        self.assertIsNot(self.app.focusWidget(), window.activity_table)
+        self.assertEqual(window.activity_table.rowCount(), 2)
+
+    def test_auto_refresh_keeps_the_tab_the_user_chose(self):
+        window = self.open_window()
+        window.result_tabs.setCurrentWidget(window.structure_table)
+        window._finish_activity_operation((self.report(), self.rows()), window.profiles[0], True)
+        self.assertIs(window.result_tabs.currentWidget(), window.structure_table)
+
+    def test_auto_refresh_failure_does_not_open_a_message_box(self):
+        window = self.open_window()
+        window._finish_activity_operation(RuntimeError("rede"), window.profiles[0], True)
+        self.assertEqual(self.messages, [])
+        self.assertIn("rede", window.status.text())
+
+    def test_timer_tick_reads_only_while_the_monitor_is_on_screen(self):
+        window = self.open_window()
+        window._new_sql_tab()
+        started = []
+        window._start_background_operation = lambda name, work, done: started.append(name)
+        window._selected_profile_index = 0
+        window.result_mdi_window.hide()
+        window._auto_refresh_activity()
+        self.assertEqual(started, [])
+        window.result_mdi_window.show()
+        window.result_tabs.setCurrentWidget(window.structure_table)
+        window._auto_refresh_activity()
+        self.assertEqual(started, [])
+        window.result_tabs.setCurrentWidget(window.activity_panel)
+        self.shown.clear()
+        window._auto_refresh_activity()
+        self.assertEqual(started, ["Painel do banco"])
+        self.assertEqual(self.shown, [])
+
 
 class HealthAndCompareFlowTests(WindowTestCase):
     """Characterizes how finished health and comparison reads reach the window."""

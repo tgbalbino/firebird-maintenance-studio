@@ -279,7 +279,7 @@ class MainWindow:
         self.activity_refresh_timer = QTimer(self._window)
         self.activity_refresh_timer.setInterval(refresh_interval)
         self.activity_refresh_timer.setTimerType(Qt.CoarseTimer)
-        self.activity_refresh_timer.timeout.connect(self.inspect_activity)
+        self.activity_refresh_timer.timeout.connect(self._auto_refresh_activity)
         # Keep the monitor ready for continuous polling without querying the
         # database while the main window is still being constructed.  The
         # first opening of the activity panel starts the timer below.
@@ -4040,7 +4040,20 @@ class MainWindow:
         self._log_event("Saúde analisada", profile=profile.name, findings=len(report.findings))
         self.status.setText(f"Saúde analisada: {len(report.findings)} recomendação(ões).")
 
-    def inspect_activity(self):
+    def _auto_refresh_activity(self):
+        """Timer tick: refresh the monitor only while it is on screen, without touching focus."""
+        try:
+            watching = (
+                self.result_mdi_window is not None
+                and self.result_mdi_window.isVisible()
+                and self.result_tabs.currentWidget() is self.activity_panel
+            )
+        except RuntimeError:
+            watching = False
+        if watching:
+            self.inspect_activity(background=True)
+
+    def inspect_activity(self, background: bool = False):
         from .health import inspect_health, list_statements
 
         # A refresh is asynchronous. Do not repeatedly raise the result
@@ -4054,7 +4067,7 @@ class MainWindow:
         # Start polling only once the activity panel is actually opened. This
         # keeps startup local and lets the panel be reopened after its MDI
         # child was closed.
-        if self.activity_auto_refresh.isChecked() and not self.activity_refresh_timer.isActive():
+        if not background and self.activity_auto_refresh.isChecked() and not self.activity_refresh_timer.isActive():
             self.activity_refresh_timer.start()
             self.status.setText("Monitor automático iniciado: consultas ativas do banco.")
 
@@ -4062,14 +4075,17 @@ class MainWindow:
         # the MDI child, the activity tab is still selected and no tab-change
         # signal is emitted on the next request; waiting for the worker would
         # leave the click apparently without effect.
-        try:
-            self.result_tabs.setCurrentWidget(self.activity_panel)
-            self._show_result_window()
-            self._log_event("Painel de atividade reaberto")
-        except RuntimeError:
-            # The normal window remains usable even if a closing event is
-            # currently being processed by Qt.
-            pass
+        # An automatic refresh must not move windows, tabs or keyboard focus
+        # while the user works elsewhere (for example in the object tree).
+        if not background:
+            try:
+                self.result_tabs.setCurrentWidget(self.activity_panel)
+                self._show_result_window()
+                self._log_event("Painel de atividade reaberto")
+            except RuntimeError:
+                # The normal window remains usable even if a closing event is
+                # currently being processed by Qt.
+                pass
 
         # The main profile form is hidden during normal SQL work. Prefer the
         # connection assigned to the active SQL document so the monitor never
@@ -4089,7 +4105,7 @@ class MainWindow:
         self._start_background_operation(
             "Painel do banco",
             lambda: (inspect_health(profile, password), list_statements(profile, password)),
-            lambda result: self._finish_activity_operation(result, profile),
+            lambda result: self._finish_activity_operation(result, profile, background),
         )
 
     def _open_activity_for_profile(self, profile_index: int):
@@ -4144,7 +4160,7 @@ class MainWindow:
             if self.activity_auto_refresh.isChecked():
                 timer.start()
 
-    def _finish_activity_operation(self, result, profile):
+    def _finish_activity_operation(self, result, profile, background: bool = False):
         from PySide6.QtCore import Qt
         from datetime import datetime
         from .activity_views import activity_metrics_lines, fill_activity_table
@@ -4152,7 +4168,9 @@ class MainWindow:
         if isinstance(result, Exception):
             self._log_event("Falha ao ler atividade", profile=profile.name, error=str(result))
             self.status.setText(f"Falha ao ler informações do banco: {result}")
-            self._show_message("Falha ao ler atividade", str(result))
+            if not background:
+                # A repeating failure must not stack a modal box every tick.
+                self._show_message("Falha ao ler atividade", str(result))
             return
         report, statements = result
         self.activity_profile_name = profile.name
@@ -4179,14 +4197,16 @@ class MainWindow:
                     self.activity_table.selectRow(row)
                     self.activity_table.scrollToItem(item)
                     break
-        self.result_tabs.setCurrentWidget(self.activity_panel)
-        # The activity tab may already be selected after the MDI result
-        # window was closed. In that case currentChanged is not emitted, so
-        # explicitly show the auxiliary window on every completed refresh.
-        self._show_result_window()
-        if self.result_mdi_window.isVisible():
-            self.activity_table.setFocus(Qt.OtherFocusReason)
-        self._log_event("Atividade lida", profile=profile.name, statements=len(statements), estimated_size_mb=size or "")
+        if not background:
+            self.result_tabs.setCurrentWidget(self.activity_panel)
+            # The activity tab may already be selected after the MDI result
+            # window was closed. In that case currentChanged is not emitted, so
+            # explicitly show the auxiliary window on every manual refresh.
+            self._show_result_window()
+            if self.result_mdi_window.isVisible():
+                self.activity_table.setFocus(Qt.OtherFocusReason)
+        if not background:
+            self._log_event("Atividade lida", profile=profile.name, statements=len(statements), estimated_size_mb=size or "")
         self.status.setText(f"Painel atualizado: {len(statements)} consulta(s) em execução.")
 
     def _filter_activity_rows(self, text: str):
