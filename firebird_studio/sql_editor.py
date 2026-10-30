@@ -8,10 +8,10 @@ from __future__ import annotations
 try:
     from PySide6.QtCore import QObject, Signal, Slot, QEvent, Qt, QTimer, QAbstractNativeEventFilter
     from PySide6.QtCore import QRect
-    from PySide6.QtGui import QColor, QFont, QPainter, QSyntaxHighlighter, QTextCharFormat
-    from PySide6.QtWidgets import QApplication, QWidget
+    from PySide6.QtGui import QColor, QFont, QPainter, QSyntaxHighlighter, QTextCharFormat, QTextFormat
+    from PySide6.QtWidgets import QApplication, QTextEdit, QWidget
 
-    class SqlEditor(__import__("PySide6.QtWidgets", fromlist=["QTextEdit"]).QTextEdit):
+    class SqlEditor(QTextEdit):
         """SQL editor with a direct keyboard path for the execution commands."""
 
         execute_requested = Signal(bool)
@@ -23,7 +23,26 @@ try:
             self.verticalScrollBar().valueChanged.connect(lambda _value: self._gutter.update())
             self.textChanged.connect(self._gutter.update)
             self.cursorPositionChanged.connect(self._gutter.update)
+            self.cursorPositionChanged.connect(self._highlight_current_line)
             self._update_gutter_width()
+            self._highlight_current_line()
+
+        def _highlight_current_line(self):
+            base = self.palette().base().color()
+            dark = base.lightness() < 128
+            shade = QColor(base)
+            shade = shade.lighter(118) if dark else shade.darker(104)
+            selection = QTextEdit.ExtraSelection()
+            selection.format.setBackground(shade)
+            selection.format.setProperty(QTextFormat.FullWidthSelection, True)
+            selection.cursor = self.textCursor()
+            selection.cursor.clearSelection()
+            self.setExtraSelections([selection])
+
+        def changeEvent(self, event):
+            super().changeEvent(event)
+            if event.type() == QEvent.PaletteChange:
+                self._highlight_current_line()
 
         def gutter_width(self) -> int:
             digits = max(2, len(str(self.document().blockCount())))
