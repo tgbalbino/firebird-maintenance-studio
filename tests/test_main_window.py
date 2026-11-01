@@ -1373,6 +1373,36 @@ class ProfileSaveFailureTests(WindowTestCase):
         self.assertIn("Não foi possível salvar", window.status.text())
         self.assertIn("Falha ao salvar conexão", window._event_log_path.read_text(encoding="utf-8"))
 
+class NewProfileSaveTests(WindowTestCase):
+    """The "Nova conexão" dialog hands over index=None, not -1."""
+
+    def setUp(self):
+        (Path(self._tmp.name) / "profiles.json").unlink(missing_ok=True)
+
+    def test_new_profile_with_no_selected_index_is_saved_to_disk(self):
+        from firebird_studio.models import ConnectionProfile, ProfileStore
+
+        window = self.make_window()
+        window._show_message = lambda *args, **kwargs: self.fail(args)
+        profile = ConnectionProfile(name="Cliente A", database="C:/dados/a.fdb")
+        window._save_profile_record(profile, "", False, None)
+        self.assertEqual([item.name for item in window.profiles], ["Cliente A"])
+        self.assertEqual([item.name for item in ProfileStore(window.store.path).load()], ["Cliente A"])
+        self.assertEqual(window.profile_list.topLevelItemCount(), 1)
+
+    def test_new_profile_dialog_result_is_saved(self):
+        from unittest import mock
+
+        from firebird_studio.models import ConnectionProfile, ProfileStore
+        from firebird_studio.profile_dialog import ProfileEdit
+
+        window = self.make_window()
+        edit = ProfileEdit(ConnectionProfile(name="Via dialogo", database="x.fdb"), "", False)
+        with mock.patch("firebird_studio.profile_dialog.ask_profile", return_value=edit):
+            window._show_profile_dialog()
+        self.assertEqual([item.name for item in ProfileStore(window.store.path).load()], ["Via dialogo"])
+
+
 
 if __name__ == "__main__":
     unittest.main()

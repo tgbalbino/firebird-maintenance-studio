@@ -3333,6 +3333,8 @@ class MainWindow:
         self._save_profile_record(self._profile_from_form(), self._password_for(), self.save_password.isChecked(), self._profile_index_for_item())
 
     def _save_profile_record(self, profile, password, save_password, selected):
+        if selected is None:  # "Nova conexão" has no row yet
+            selected = -1
         errors = profile.validate()
         if errors:
             message = " ".join(errors)
