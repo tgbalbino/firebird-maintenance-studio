@@ -8,6 +8,24 @@ from .models import ConnectionProfile, ProfileStore, SUPPORTED_VERSIONS
 from . import __version__
 
 
+def _install_qt_translation(app):
+    """Load Qt's own Portuguese strings (tab close tips, standard buttons, file dialogs) once."""
+    if getattr(app, "_qt_translator", None) is not None:
+        return
+    import sys
+
+    from PySide6.QtCore import QLibraryInfo, QTranslator
+
+    folders = []
+    if getattr(sys, "_MEIPASS", None):
+        folders.append(str(Path(sys._MEIPASS) / "PySide6" / "translations"))
+    folders.append(QLibraryInfo.path(QLibraryInfo.TranslationsPath))
+    translator = QTranslator(app)
+    if any(translator.load("qtbase_pt_BR", folder) for folder in folders):
+        app.installTranslator(translator)
+        app._qt_translator = translator
+
+
 def create_application():
     from PySide6.QtGui import QFont, QIcon
     import sys
@@ -22,6 +40,7 @@ def create_application():
             app.installNativeEventFilter(native_filter)
             app._windows_f5_filter = native_filter
     app.setApplicationName("Firebird Maintenance Studio")
+    _install_qt_translation(app)
     asset_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
     icon_path = asset_root / "assets" / "firebird-maintenance-studio.ico"
     if icon_path.exists():
@@ -93,7 +112,9 @@ class MainWindow:
         self._window.setWindowTitle(f"Firebird Maintenance Studio v{__version__}")
         self._window.resize(1100, 700)
         self.store = store
-        self._event_log_path = Path.home() / ".firebird-maintenance-studio" / "events.txt"
+        # The log lives beside the profile file: the same folder as before in
+        # normal use, and an isolated one for any window built on a scratch store.
+        self._event_log_path = Path(store.path).parent / "events.txt"
         self._log_event("Aplicação iniciada", executable=str(Path(__file__).resolve()))
         self._settings = QSettings("TGBalbino", "FirebirdMaintenanceStudio")
         saved_geometry = self._settings.value("window_geometry")
@@ -279,7 +300,7 @@ class MainWindow:
         self.activity_refresh_timer = QTimer(self._window)
         self.activity_refresh_timer.setInterval(refresh_interval)
         self.activity_refresh_timer.setTimerType(Qt.CoarseTimer)
-        self.activity_refresh_timer.timeout.connect(self.inspect_activity)
+        self.activity_refresh_timer.timeout.connect(self._auto_refresh_activity)
         # Keep the monitor ready for continuous polling without querying the
         # database while the main window is still being constructed.  The
         # first opening of the activity panel starts the timer below.
@@ -681,115 +702,9 @@ class MainWindow:
 
     def _setup_main_menu(self):
         """Create the compact application menu for global commands."""
-        from PySide6.QtCore import Qt
-        from PySide6.QtGui import QKeySequence, QShortcut
+        from .main_menu import build_main_menu
 
-        from PySide6.QtWidgets import QApplication
-        app = QApplication.instance()
-        if app is not None:
-            app._sql_execution_handler = self._handle_sql_execution_key
-
-        menu_bar = self._window.menuBar()
-        # Keep the top level labels readable when the window is restored to a
-        # smaller size.  The previous compact padding made adjacent labels
-        # look joined together and could clip the last menu name.
-        menu_bar.setMinimumHeight(32)
-        menu_bar.setObjectName("mainMenuBar")
-        menu_bar.setStyleSheet(
-            "QMenuBar { spacing: 2px; }"
-            " QMenuBar::item { padding: 6px 12px; margin: 0 1px; }"
-            " QMenu { padding: 4px 0; }"
-            " QMenu::item { padding: 6px 28px 6px 12px; }"
-        )
-        app_menu = menu_bar.addMenu("Aplicação")
-        settings_action = app_menu.addAction("Configurações...")
-        settings_action.setShortcut("Ctrl+," )
-        settings_action.triggered.connect(self.show_app_settings)
-        app_menu.addSeparator()
-        self.menu_always_top_action = app_menu.addAction("Sempre no topo")
-        self.menu_always_top_action.setCheckable(True)
-        self.menu_always_top_action.setChecked(bool(self._settings.value("always_on_top", False, type=bool)))
-        self.menu_always_top_action.toggled.connect(self._set_always_on_top)
-        app_menu.addAction("Abrir log de eventos", self.open_event_log)
-        app_menu.addSeparator()
-        app_menu.addAction("Sair", self._window.close)
-
-        sql_menu = menu_bar.addMenu("SQL")
-        new_sql_action = sql_menu.addAction("Nova janela SQL", self._new_sql_tab)
-        new_sql_action.setToolTip("Abrir uma nova janela SQL (Ctrl+N)")
-        self.new_sql_shortcut = QShortcut(QKeySequence("Ctrl+N"), self._window)
-        self.new_sql_shortcut.setContext(Qt.ApplicationShortcut)
-        self.new_sql_shortcut.activated.connect(self._new_sql_tab)
-        execute_action = sql_menu.addAction("Executar SQL", self.execute_selected)
-        execute_action.setToolTip("Executar a consulta da janela SQL ativa (F5)")
-        # QAction shortcuts can stop reaching the handler when another child
-        # widget owns the focus. Keep explicit application shortcuts on the
-        # main window so execution remains available from every SQL subview.
-        self.execute_sql_shortcut = QShortcut(QKeySequence("F5"), self._window)
-        self.execute_sql_shortcut.setContext(Qt.ApplicationShortcut)
-        self.execute_sql_shortcut.activated.connect(self.execute_selected)
-        execute_action.setShortcut(QKeySequence("F5"))
-        execute_action.setShortcutContext(Qt.ApplicationShortcut)
-        selection_menu_action = sql_menu.addAction("Executar seleção", self.execute_selection)
-        self.execute_selection_shortcut = QShortcut(QKeySequence("Ctrl+Shift+F5"), self._window)
-        self.execute_selection_shortcut.setContext(Qt.ApplicationShortcut)
-        self.execute_selection_shortcut.activated.connect(self.execute_selection)
-        selection_menu_action.setShortcut(QKeySequence("Ctrl+Shift+F5"))
-        selection_menu_action.setShortcutContext(Qt.ApplicationShortcut)
-        sql_menu.addAction("Ver plano", self.inspect_plan)
-        sql_menu.addAction("Histórico SQL", self._choose_history_query)
-        sql_menu.addSeparator()
-        sql_menu.addAction(self.begin_transaction_action)
-        sql_menu.addAction(self.commit_transaction_action)
-        sql_menu.addAction(self.rollback_transaction_action)
-
-        window_menu = menu_bar.addMenu("Janelas")
-        window_menu.addAction("Selecionar consulta aberta", self._choose_sql_window)
-        window_menu.addAction("Mostrar resultados e diagnóstico", self._show_result_window)
-        window_menu.addAction("Próxima consulta", self.sql_tabs.activate_next)
-        window_menu.addAction("Consulta anterior", self.sql_tabs.activate_previous)
-        window_menu.addAction("Fechar consulta atual", lambda: self.close_sql_tab(self.sql_tabs.currentIndex()))
-        close_all_action = window_menu.addAction("Fechar todas as consultas", self._close_all_sql_tabs)
-        close_all_action.setToolTip("Fechar todas as janelas SQL (Ctrl+Shift+W)")
-        self.close_all_sql_shortcut = QShortcut(QKeySequence("Ctrl+Shift+W"), self._window)
-        self.close_all_sql_shortcut.setContext(Qt.ApplicationShortcut)
-        self.close_all_sql_shortcut.activated.connect(self._close_all_sql_tabs)
-        window_menu.addSeparator()
-        window_menu.addAction(self.menu_always_top_action)
-
-        database_menu = menu_bar.addMenu("Banco")
-        database_menu.addAction("Nova conexão", self.new_profile)
-        database_menu.addAction("Salvar conexão", self.save_profile)
-        database_menu.addAction("Abrir banco", self.open_profile)
-        database_menu.addAction("Desconectar banco", self.disconnect_selected)
-        database_menu.addSeparator()
-        existing = {action.text() for action in database_menu.actions()}
-        database_menu.addAction("Backup", self.execute_backup)
-        database_menu.addAction("Restore", self.execute_restore)
-        existing |= {"Backup", "Restore"}
-        for action in self._command_menus["Banco"].menu().actions():
-            if action.text() not in existing:
-                database_menu.addAction(action)
-
-        data_menu = menu_bar.addMenu("Dados")
-        data_menu.addActions(self._command_menus["Dados"].menu().actions())
-        security_menu = menu_bar.addMenu("Segurança")
-        security_menu.addActions(self._command_menus["Segurança"].menu().actions())
-
-        analysis_menu = menu_bar.addMenu("Análise")
-        activity_action = analysis_menu.addAction("Monitorar consultas", self.inspect_activity)
-        activity_action.setToolTip("Abrir o monitor de consultas em execução (Ctrl+Shift+A)")
-        self.activity_open_shortcut = QShortcut(QKeySequence("Ctrl+Shift+A"), self._window)
-        self.activity_open_shortcut.setContext(Qt.ApplicationShortcut)
-        self.activity_open_shortcut.activated.connect(self.inspect_activity)
-        analysis_menu.addSeparator()
-        analysis_menu.addActions(self._command_menus["Análise"].menu().actions())
-
-        help_menu = menu_bar.addMenu("Ajuda")
-        help_menu.addAction("Sobre", self.show_about)
-        help_menu.addAction("Verificar atualizações...", self.check_for_updates)
-        for menu in (app_menu, sql_menu, window_menu, database_menu, data_menu, security_menu, analysis_menu, help_menu):
-            menu.setMinimumWidth(240)
+        build_main_menu(self)
 
     def _choose_history_query(self):
         if not self.query_history:
@@ -1250,10 +1165,6 @@ class MainWindow:
         result_header.customContextMenuRequested.connect(
             lambda position, table=result_table: self._result_header_context_menu(table, position)
         )
-        document_tabs = QTabWidget()
-        document_tabs.setObjectName("sqlDocumentTabs")
-        document_tabs.setDocumentMode(True)
-        document_tabs.setUsesScrollButtons(True)
         class SqlEditorFrame(QFrame):
             """Paint the editor boundary independently from native Qt styles."""
 
@@ -1289,8 +1200,6 @@ class MainWindow:
                 painter.end()
 
         editor_frame = SqlEditorFrame(editor)
-        document_tabs.addTab(editor_frame, "Editor")
-        document_tabs.addTab(result_table, "Resultado")
         history_list = QListWidget()
         history_list.setObjectName("sqlHistoryList")
         history_list.setAlternatingRowColors(True)
@@ -1332,10 +1241,11 @@ class MainWindow:
         history_layout.addWidget(history_hint)
         history_layout.addLayout(history_actions)
         history_layout.addWidget(history_list, 1)
-        document_tabs.addTab(history_panel, "Histórico SQL")
+        from .sql_document_pane import SqlDocumentPane
+
+        document_tabs = SqlDocumentPane(editor_frame, result_table, history_panel)
         history_list.setProperty("history_document_tabs", document_tabs)
         history_list.setProperty("history_panel", history_panel)
-        document_tabs.setCurrentWidget(editor_frame)
         document_tabs.setProperty("sql_editor", editor)
         editor.setProperty("document_tabs", document_tabs)
         editor.setProperty("result_table", result_table)
@@ -1542,10 +1452,15 @@ class MainWindow:
 
     def _update_cursor_status(self, editor=None):
         target = editor or self.editor
-        if target is None or not hasattr(self, "query_cursor_status"):
+        if target is None:
+            return
+        # Each document owns its label: the shared alias is None while no SQL
+        # window is active and would point at another document's footer.
+        label = getattr(target, "_cursor_status", None)
+        if label is None:
             return
         cursor = target.textCursor()
-        self.query_cursor_status.setText(f"Linha {cursor.blockNumber() + 1}, coluna {cursor.positionInBlock() + 1}")
+        label.setText(f"Linha {cursor.blockNumber() + 1}, coluna {cursor.positionInBlock() + 1}")
 
     def _completion_words(self, profile_name=None):
         from .sql_completion import completion_words
@@ -2510,6 +2425,11 @@ class MainWindow:
         copy_action = menu.addAction("Copiar seleção")
         copy_action.setEnabled(bool(self.result_table.selectedItems()))
         copy_action.triggered.connect(self._copy_table_selection)
+        copy_as_menu = menu.addMenu("Copiar linhas como")
+        copy_as_menu.setEnabled(self.result_table.rowCount() > 0)
+        from .grid_copy import FORMATS
+        for kind, label in FORMATS.items():
+            copy_as_menu.addAction(label, lambda kind=kind: self._copy_rows_as(kind))
         view_action = menu.addAction("Ver valor completo")
         view_action.setEnabled(bool(self.result_table.currentItem()))
         view_action.triggered.connect(self._view_selected_cell)
@@ -2520,7 +2440,7 @@ class MainWindow:
         menu.addAction(self.generate_insert_action)
         menu.addAction(self.generate_delete_action)
         menu.addAction(self.apply_update_action)
-        menu.exec(self.result_table.viewport().mapToGlobal(position))
+        self._popup_menu_fitting(menu, self.result_table.viewport().mapToGlobal(position), self.result_table)
 
     def _view_selected_cell(self):
         from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout, QTextEdit
@@ -2755,6 +2675,22 @@ class MainWindow:
         from PySide6.QtWidgets import QApplication
         QApplication.clipboard().setText(text)
         self.status.setText(f"{len(rows)} linha(s) copiada(s).")
+
+    def _copy_rows_as(self, kind: str):
+        """Copy the selected rows (or every visible row) in the chosen format."""
+        from PySide6.QtWidgets import QApplication
+
+        from .grid_copy import FORMATS, format_rows, grid_rows
+
+        columns, rows = grid_rows(self.result_table)
+        if not rows:
+            self.status.setText("Não há linhas para copiar.")
+            return
+        text = format_rows(kind, columns, rows)
+        if kind == "insert":
+            text = "-- Ajuste o nome da tabela (TABELA) antes de executar.\n" + text
+        QApplication.clipboard().setText(text)
+        self.status.setText(f"{len(rows)} linha(s) copiada(s) como {FORMATS[kind]}.")
 
     def _filter_data_rows(self, text: str):
         query = (text or "").strip().casefold()
@@ -4146,7 +4082,20 @@ class MainWindow:
         self._log_event("Saúde analisada", profile=profile.name, findings=len(report.findings))
         self.status.setText(f"Saúde analisada: {len(report.findings)} recomendação(ões).")
 
-    def inspect_activity(self):
+    def _auto_refresh_activity(self):
+        """Timer tick: refresh the monitor only while it is on screen, without touching focus."""
+        try:
+            watching = (
+                self.result_mdi_window is not None
+                and self.result_mdi_window.isVisible()
+                and self.result_tabs.currentWidget() is self.activity_panel
+            )
+        except RuntimeError:
+            watching = False
+        if watching:
+            self.inspect_activity(background=True)
+
+    def inspect_activity(self, background: bool = False):
         from .health import inspect_health, list_statements
 
         # A refresh is asynchronous. Do not repeatedly raise the result
@@ -4160,7 +4109,7 @@ class MainWindow:
         # Start polling only once the activity panel is actually opened. This
         # keeps startup local and lets the panel be reopened after its MDI
         # child was closed.
-        if self.activity_auto_refresh.isChecked() and not self.activity_refresh_timer.isActive():
+        if not background and self.activity_auto_refresh.isChecked() and not self.activity_refresh_timer.isActive():
             self.activity_refresh_timer.start()
             self.status.setText("Monitor automático iniciado: consultas ativas do banco.")
 
@@ -4168,14 +4117,17 @@ class MainWindow:
         # the MDI child, the activity tab is still selected and no tab-change
         # signal is emitted on the next request; waiting for the worker would
         # leave the click apparently without effect.
-        try:
-            self.result_tabs.setCurrentWidget(self.activity_panel)
-            self._show_result_window()
-            self._log_event("Painel de atividade reaberto")
-        except RuntimeError:
-            # The normal window remains usable even if a closing event is
-            # currently being processed by Qt.
-            pass
+        # An automatic refresh must not move windows, tabs or keyboard focus
+        # while the user works elsewhere (for example in the object tree).
+        if not background:
+            try:
+                self.result_tabs.setCurrentWidget(self.activity_panel)
+                self._show_result_window()
+                self._log_event("Painel de atividade reaberto")
+            except RuntimeError:
+                # The normal window remains usable even if a closing event is
+                # currently being processed by Qt.
+                pass
 
         # The main profile form is hidden during normal SQL work. Prefer the
         # connection assigned to the active SQL document so the monitor never
@@ -4195,7 +4147,7 @@ class MainWindow:
         self._start_background_operation(
             "Painel do banco",
             lambda: (inspect_health(profile, password), list_statements(profile, password)),
-            lambda result: self._finish_activity_operation(result, profile),
+            lambda result: self._finish_activity_operation(result, profile, background),
         )
 
     def _open_activity_for_profile(self, profile_index: int):
@@ -4250,7 +4202,7 @@ class MainWindow:
             if self.activity_auto_refresh.isChecked():
                 timer.start()
 
-    def _finish_activity_operation(self, result, profile):
+    def _finish_activity_operation(self, result, profile, background: bool = False):
         from PySide6.QtCore import Qt
         from datetime import datetime
         from .activity_views import activity_metrics_lines, fill_activity_table
@@ -4258,7 +4210,9 @@ class MainWindow:
         if isinstance(result, Exception):
             self._log_event("Falha ao ler atividade", profile=profile.name, error=str(result))
             self.status.setText(f"Falha ao ler informações do banco: {result}")
-            self._show_message("Falha ao ler atividade", str(result))
+            if not background:
+                # A repeating failure must not stack a modal box every tick.
+                self._show_message("Falha ao ler atividade", str(result))
             return
         report, statements = result
         self.activity_profile_name = profile.name
@@ -4285,14 +4239,16 @@ class MainWindow:
                     self.activity_table.selectRow(row)
                     self.activity_table.scrollToItem(item)
                     break
-        self.result_tabs.setCurrentWidget(self.activity_panel)
-        # The activity tab may already be selected after the MDI result
-        # window was closed. In that case currentChanged is not emitted, so
-        # explicitly show the auxiliary window on every completed refresh.
-        self._show_result_window()
-        if self.result_mdi_window.isVisible():
-            self.activity_table.setFocus(Qt.OtherFocusReason)
-        self._log_event("Atividade lida", profile=profile.name, statements=len(statements), estimated_size_mb=size or "")
+        if not background:
+            self.result_tabs.setCurrentWidget(self.activity_panel)
+            # The activity tab may already be selected after the MDI result
+            # window was closed. In that case currentChanged is not emitted, so
+            # explicitly show the auxiliary window on every manual refresh.
+            self._show_result_window()
+            if self.result_mdi_window.isVisible():
+                self.activity_table.setFocus(Qt.OtherFocusReason)
+        if not background:
+            self._log_event("Atividade lida", profile=profile.name, statements=len(statements), estimated_size_mb=size or "")
         self.status.setText(f"Painel atualizado: {len(statements)} consulta(s) em execução.")
 
     def _filter_activity_rows(self, text: str):

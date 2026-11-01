@@ -124,3 +124,76 @@ class MenuIconSpacingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipIf(QTableWidget is None, "PySide6 não instalado")
+class TabCloseHoverTests(unittest.TestCase):
+    """The tab close button must react to the mouse in every theme."""
+
+    @classmethod
+    def setUpClass(cls):
+        from firebird_studio.ui import create_application
+
+        cls.app = create_application()
+
+    def changed_pixels(self, theme):
+        from PySide6.QtCore import QEvent
+        from PySide6.QtWidgets import QApplication, QTabBar
+
+        from firebird_studio.ui_theme import apply_theme
+
+        apply_theme(theme)
+        bar = QTabBar()
+        bar.setTabsClosable(True)
+        bar.addTab("SQL 1")
+        bar.addTab("SQL 2")
+        bar.setCurrentIndex(1)
+        bar.resize(300, 40)
+        bar.show()
+        self.addCleanup(bar.deleteLater)
+        self.app.processEvents()
+        button = bar.tabButton(0, QTabBar.RightSide)
+        QTest.mouseMove(bar, QPoint(290, 35))
+        self.app.processEvents()
+        idle = button.grab().toImage()
+        QTest.mouseMove(button, button.rect().center())
+        QApplication.sendEvent(button, QEvent(QEvent.Enter))
+        self.app.processEvents()
+        hover = button.grab().toImage()
+        return sum(
+            1 for x in range(idle.width()) for y in range(idle.height()) if idle.pixel(x, y) != hover.pixel(x, y)
+        )
+
+    def test_close_button_shows_hover_in_every_theme(self):
+        for theme in ("light", "gray", "dark", "blue"):
+            self.assertGreater(self.changed_pixels(theme), 50, theme)
+
+    def tearDown(self):
+        from firebird_studio.ui_theme import apply_theme
+
+        apply_theme("light")
+
+
+@unittest.skipIf(QTableWidget is None, "PySide6 não instalado")
+class QtTranslationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from firebird_studio.ui import create_application
+
+        cls.app = create_application()
+
+    def test_built_in_qt_texts_are_portuguese(self):
+        from PySide6.QtWidgets import QTabBar
+
+        bar = QTabBar()
+        bar.setTabsClosable(True)
+        bar.addTab("SQL 1")
+        self.addCleanup(bar.deleteLater)
+        self.assertEqual(bar.tabButton(0, QTabBar.RightSide).toolTip(), "Fechar aba")
+
+    def test_translator_is_installed_only_once(self):
+        from firebird_studio.ui import create_application
+
+        translator = self.app._qt_translator
+        self.assertIs(create_application(), self.app)
+        self.assertIs(self.app._qt_translator, translator)

@@ -70,6 +70,11 @@ def main(argv: list[str] | None = None) -> int:
     # Start in the same maximized workspace used by database tools such as
     # IBExpert, while still allowing the user to restore the window normally.
     window.showMaximized()
+    # Leaves a stack dump next to the event log if the window ever freezes.
+    from .hang_watchdog import HangWatchdog
+
+    watchdog = HangWatchdog(profile_path.parent / "hang.txt", parent=window._window)
+    watchdog.start()
     if args.backup and args.backup.suffix.lower() in {".fbk", ".gbk"}:
         from PySide6.QtCore import QTimer
         QTimer.singleShot(250, lambda: window.restore_backup_file(args.backup))

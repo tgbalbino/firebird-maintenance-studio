@@ -45,6 +45,12 @@ class WindowTestCase(unittest.TestCase):
     def _dispose(self, window):
         window._window.close()
         window._window.deleteLater()
+        # processEvents() skips DeferredDelete; without this every closed window
+        # stays alive and each app-wide setStyleSheet restyles all of them.
+        from PySide6.QtCore import QEvent
+        from PySide6.QtWidgets import QApplication
+
+        QApplication.sendPostedEvents(None, QEvent.DeferredDelete)
         self.app.processEvents()
 
 
@@ -676,6 +682,46 @@ class ActivityPanelFlowTests(WindowTestCase):
         self.assertIn("sem permissão", window.status.text())
         self.assertEqual(window.activity_table.rowCount(), 2)
 
+    def test_auto_refresh_does_not_raise_windows_or_steal_focus(self):
+        window = self.open_window()
+        window.profile_list.setFocus()
+        self.app.processEvents()
+        window._finish_activity_operation((self.report(), self.rows()), window.profiles[0], True)
+        self.assertEqual(self.shown, [])
+        self.assertIsNot(self.app.focusWidget(), window.activity_table)
+        self.assertEqual(window.activity_table.rowCount(), 2)
+
+    def test_auto_refresh_keeps_the_tab_the_user_chose(self):
+        window = self.open_window()
+        window.result_tabs.setCurrentWidget(window.structure_table)
+        window._finish_activity_operation((self.report(), self.rows()), window.profiles[0], True)
+        self.assertIs(window.result_tabs.currentWidget(), window.structure_table)
+
+    def test_auto_refresh_failure_does_not_open_a_message_box(self):
+        window = self.open_window()
+        window._finish_activity_operation(RuntimeError("rede"), window.profiles[0], True)
+        self.assertEqual(self.messages, [])
+        self.assertIn("rede", window.status.text())
+
+    def test_timer_tick_reads_only_while_the_monitor_is_on_screen(self):
+        window = self.open_window()
+        window._new_sql_tab()
+        started = []
+        window._start_background_operation = lambda name, work, done: started.append(name)
+        window._selected_profile_index = 0
+        window.result_mdi_window.hide()
+        window._auto_refresh_activity()
+        self.assertEqual(started, [])
+        window.result_mdi_window.show()
+        window.result_tabs.setCurrentWidget(window.structure_table)
+        window._auto_refresh_activity()
+        self.assertEqual(started, [])
+        window.result_tabs.setCurrentWidget(window.activity_panel)
+        self.shown.clear()
+        window._auto_refresh_activity()
+        self.assertEqual(started, ["Painel do banco"])
+        self.assertEqual(self.shown, [])
+
 
 class HealthAndCompareFlowTests(WindowTestCase):
     """Characterizes how finished health and comparison reads reach the window."""
@@ -1077,6 +1123,210 @@ class ResultCellViewTests(WindowTestCase):
         self.assertEqual(self.shown_text(window), ("BLOB · 4 bytes · UTF-8", "olá"))
         window.result_table.setCurrentCell(1, 0)
         self.assertEqual(self.shown_text(window), ("BLOB binário · 2 bytes · hexadecimal", "ff 00"))
+
+    def clipboard(self):
+        from PySide6.QtWidgets import QApplication
+
+        return QApplication.clipboard().text()
+
+    def test_copy_rows_as_csv_uses_selected_rows_and_reports(self):
+        window = self.window_with_rows([("Ana", 1), ("Bruno", None), ("Caio", 3)])
+        window.result_table.selectRow(1)
+        window._copy_rows_as("csv")
+        self.assertEqual(self.clipboard().splitlines(), ["NOME,NOTA", "Bruno,"])
+        self.assertEqual(window.status.text(), "1 linha(s) copiada(s) como CSV.")
+
+    def test_copy_rows_as_insert_warns_about_the_table_name(self):
+        window = self.window_with_rows([("Ana", 1)])
+        window._copy_rows_as("insert")
+        lines = self.clipboard().splitlines()
+        self.assertTrue(lines[0].startswith("-- Ajuste o nome da tabela"))
+        self.assertEqual(lines[1], "INSERT INTO \"TABELA\" (\"NOME\", \"NOTA\") VALUES ('Ana', 1);")
+
+    def test_copy_rows_as_with_empty_grid_copies_nothing(self):
+        from PySide6.QtWidgets import QApplication
+
+        window = self.window_with_rows([])
+        QApplication.clipboard().setText("antes")
+        window._copy_rows_as("markdown")
+        self.assertEqual(self.clipboard(), "antes")
+        self.assertEqual(window.status.text(), "Não há linhas para copiar.")
+
+    def test_context_menu_offers_every_copy_format(self):
+        from PySide6.QtCore import QPoint
+
+        window = self.window_with_rows([("Ana", 1)])
+        menus = []
+        window._popup_menu_fitting = lambda menu, origin, reference=None: menus.append(menu)
+        window._table_context_menu(QPoint(5, 5))
+        submenu = next(a.menu() for a in menus[0].actions() if a.text() == "Copiar linhas como")
+        self.assertEqual([a.text() for a in submenu.actions()], ["CSV", "Markdown", "JSON", "INSERT"])
+        self.assertTrue(submenu.isEnabled())
+
+
+class MainMenuTests(WindowTestCase):
+    """Characterizes the top-level menu so it can move out of MainWindow safely."""
+
+    SEP = "-"
+
+    def menu_map(self, window):
+        result = {}
+        for action in window._window.menuBar().actions():
+            items = []
+            for item in action.menu().actions():
+                if item.isSeparator():
+                    items.append(self.SEP)
+                else:
+                    shortcut = item.shortcut().toString()
+                    items.append(item.text() + (f"|{shortcut}" if shortcut else ""))
+            result[action.text()] = items
+        return result
+
+    def test_top_level_menus_keep_their_order(self):
+        window = self.make_window()
+        self.assertEqual(list(self.menu_map(window)), ["Aplicação", "SQL", "Janelas", "Banco", "Dados", "Segurança", "Análise", "Ajuda"])
+
+    def test_application_sql_and_help_items(self):
+        menus = self.menu_map(self.make_window())
+        self.assertEqual(menus["Aplicação"], ["Configurações...|Ctrl+,", self.SEP, "Sempre no topo", "Abrir log de eventos", self.SEP, "Sair"])
+        self.assertEqual(menus["SQL"][:5], ["Nova janela SQL", "Executar SQL|F5", "Executar seleção|Ctrl+Shift+F5", "Ver plano", "Histórico SQL"])
+        self.assertEqual(menus["SQL"][5], self.SEP)
+        self.assertEqual(len(menus["SQL"]), 9)
+        self.assertEqual(menus["Ajuda"], ["Sobre", "Verificar atualizações..."])
+
+    def test_window_and_database_items(self):
+        menus = self.menu_map(self.make_window())
+        self.assertEqual(menus["Janelas"], ["Selecionar consulta aberta", "Mostrar resultados e diagnóstico", "Próxima consulta", "Consulta anterior", "Fechar consulta atual", "Fechar todas as consultas", self.SEP, "Sempre no topo"])
+        self.assertEqual(menus["Banco"][:7], ["Nova conexão", "Salvar conexão", "Abrir banco", "Desconectar banco", self.SEP, "Backup", "Restore"])
+        self.assertEqual(menus["Banco"].count("Backup"), 1)
+        self.assertEqual(menus["Banco"].count("Restore"), 1)
+
+    def test_data_security_and_analysis_items(self):
+        menus = self.menu_map(self.make_window())
+        self.assertEqual(menus["Segurança"], ["Gestão de usuários"])
+        self.assertIn("Exportar CSV", menus["Dados"])
+        self.assertEqual(menus["Análise"][:2], ["Monitorar consultas", self.SEP])
+        self.assertIn("Comparar estruturas", menus["Análise"])
+
+    def test_always_on_top_is_shared_between_menus(self):
+        window = self.make_window()
+        titles = {a.text(): a.menu() for a in window._window.menuBar().actions()}
+        self.assertTrue(window.menu_always_top_action.isCheckable())
+        self.assertIn(window.menu_always_top_action, titles["Aplicação"].actions())
+        self.assertIn(window.menu_always_top_action, titles["Janelas"].actions())
+
+    def test_global_shortcuts_stay_on_the_main_window(self):
+        window = self.make_window()
+        for name, key in (("new_sql_shortcut", "Ctrl+N"), ("execute_sql_shortcut", "F5"), ("execute_selection_shortcut", "Ctrl+Shift+F5"), ("close_all_sql_shortcut", "Ctrl+Shift+W"), ("activity_open_shortcut", "Ctrl+Shift+A")):
+            shortcut = getattr(window, name)
+            self.assertEqual(shortcut.key().toString(), key, name)
+            self.assertIs(shortcut.parent(), window._window, name)
+
+    def test_menus_are_wide_enough_for_their_labels(self):
+        window = self.make_window()
+        for action in window._window.menuBar().actions():
+            self.assertGreaterEqual(action.menu().minimumWidth(), 240, action.text())
+
+
+class SqlDocumentPaneTests(WindowTestCase):
+    """Editor above, results below: the lower area appears only when needed."""
+
+    open_window = SqlExecutionFlowTests.open_window
+
+    def pane(self, window):
+        return window.editor._document_tabs
+
+    def test_new_document_shows_only_the_editor(self):
+        window = self.open_window()
+        self.app.processEvents()
+        pane = self.pane(window)
+        self.assertTrue(pane.editor_frame.isVisible())
+        self.assertFalse(pane.lower_tabs.isVisible())
+        self.assertEqual([pane.lower_tabs.tabText(i) for i in range(pane.lower_tabs.count())], ["Resultado", "Histórico SQL"] if not window.query_history else ["Resultado", f"Histórico SQL ({len(window.query_history)})"])
+
+    def test_select_reveals_results_under_the_editor(self):
+        window = self.open_window()
+        window._execute_sql_text("select id, nome from cliente")
+        self.app.processEvents()
+        pane = self.pane(window)
+        self.assertTrue(pane.results_visible())
+        self.assertIs(pane.lower_tabs.currentWidget(), window.result_table)
+        self.assertTrue(pane.editor_frame.isVisible())
+        editor_bottom = pane.editor_frame.mapTo(pane, pane.editor_frame.rect().bottomLeft()).y()
+        results_top = pane.lower_tabs.mapTo(pane, pane.lower_tabs.rect().topLeft()).y()
+        self.assertLessEqual(editor_bottom, results_top)
+
+    def test_failed_query_keeps_editor_focused(self):
+        from firebird_studio.sql import QueryResult
+
+        window = self.open_window(QueryResult(False, [], [], "Table unknown: X", 0.0))
+        window._window.activateWindow()
+        window._execute_sql_text("select * from x")
+        self.app.processEvents()
+        self.assertTrue(self.pane(window).editor_frame.isVisible())
+        self.assertTrue(window.editor.hasFocus())
+
+    def test_history_command_opens_history_tab_below(self):
+        window = self.open_window()
+        window.query_history = ["select 1"]
+        window._choose_history_query()
+        self.app.processEvents()
+        pane = self.pane(window)
+        self.assertTrue(pane.results_visible())
+        self.assertIs(pane.lower_tabs.currentWidget(), window.editor._history_panel)
+
+    def test_history_count_label_follows_the_lower_tab(self):
+        window = self.open_window()
+        window.query_history = ["select 1", "select 2"]
+        window._refresh_history_list(window.editor._history_list)
+        self.assertEqual(self.pane(window).lower_tabs.tabText(1), "Histórico SQL (2)")
+
+    def test_dragged_shut_results_come_back_on_next_run(self):
+        window = self.open_window()
+        window._execute_sql_text("select 1 from rdb$database")
+        self.app.processEvents()
+        pane = self.pane(window)
+        pane.setSizes([pane.height(), 0])
+        self.assertFalse(pane.results_visible())
+        window._execute_sql_text("select 2 from rdb$database")
+        self.app.processEvents()
+        self.assertTrue(pane.results_visible())
+
+
+class CursorStatusTests(WindowTestCase):
+    """Each SQL document updates its own cursor label, active or not."""
+
+    def test_each_document_updates_its_own_label(self):
+        window = self.make_window()
+        window._new_sql_tab()
+        first = window.editor
+        window._new_sql_tab()
+        second = window.editor
+        first.setPlainText("a\nb\ncd")
+        cursor = first.textCursor()
+        cursor.setPosition(first.document().characterCount() - 1)
+        first.setTextCursor(cursor)
+        self.assertEqual(first._cursor_status.text(), "Linha 3, coluna 3")
+        self.assertEqual(second._cursor_status.text(), "Linha 1, coluna 1")
+
+    def test_cursor_move_without_active_label_does_not_raise(self):
+        window = self.make_window()
+        window._new_sql_tab()
+        editor = window.editor
+        window.query_cursor_status = None
+        editor.setPlainText("x\ny")
+        window._update_cursor_status(editor)
+        self.assertTrue(editor._cursor_status.text().startswith("Linha"))
+
+
+class EventLogLocationTests(WindowTestCase):
+    """The event log belongs to the profile folder, never to the real user home in tests."""
+
+    def test_log_is_written_beside_the_profile_file(self):
+        window = self.make_window()
+        expected = Path(self._tmp.name) / "events.txt"
+        self.assertEqual(window._event_log_path, expected)
+        self.assertIn("Aplicação iniciada", expected.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
