@@ -6,6 +6,7 @@ from .connection import _connect_callable, _connection_kwargs
 from .models import ConnectionProfile
 from .sql import DEFAULT_MAX_RESULT_ROWS, QueryResult
 from .sql import is_mutating_statement
+from .sql_script import is_script, split_script
 
 
 class TransactionSession:
@@ -29,6 +30,37 @@ class TransactionSession:
             return QueryResult(False, [], [], "Informe uma instrução SQL.")
         if max_rows < 1:
             return QueryResult(False, [], [], "O limite de linhas deve ser maior que zero.")
+        if is_script(sql):
+            return self._execute_script(sql, max_rows)
+        return self._execute_statement(sql, max_rows)
+
+    def _execute_script(self, sql: str, max_rows: int) -> QueryResult:
+        """Run an isql-style script statement by statement in this transaction."""
+        started = time.perf_counter()
+        executed = 0
+        last = QueryResult(True, [], [], "")
+        for item in split_script(sql):
+            if item.kind == "sql":
+                result = self._execute_statement(item.text, max_rows)
+                executed += 1
+                if not result.ok:
+                    pending = " As instruções anteriores continuam pendentes na transação." if self.dirty else ""
+                    return QueryResult(False, [], [], f"Instrução {executed} do script falhou: {result.message}{pending}",
+                                       (time.perf_counter() - started) * 1000)
+                if result.columns:
+                    last = result
+            elif item.kind in ("commit", "rollback"):
+                try:
+                    (self.commit if item.kind == "commit" else self.rollback)()
+                except Exception as exc:
+                    return QueryResult(False, [], [], f"Falha no {item.kind.upper()} do script: {exc}",
+                                       (time.perf_counter() - started) * 1000)
+        message = f"Script executado: {executed} instrução(ões)."
+        if last.columns:
+            message += f" Último resultado: {len(last.rows)} linha(s)."
+        return QueryResult(True, last.columns, last.rows, message, (time.perf_counter() - started) * 1000)
+
+    def _execute_statement(self, sql: str, max_rows: int) -> QueryResult:
         started = time.perf_counter()
         cursor = None
         try:
