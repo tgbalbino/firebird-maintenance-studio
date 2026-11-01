@@ -67,6 +67,12 @@ def main(argv: list[str] | None = None) -> int:
     register_backup_association()
     profile_path = args.profiles or Path.home() / ".firebird-maintenance-studio" / "profiles.json"
     window = MainWindow(ProfileStore(profile_path))
+    from . import error_reporting
+
+    error_reporting.install(
+        profile_path.parent / "events.txt",
+        lambda title, text: window._show_message(title, text, warning=True),
+    )
     # Start in the same maximized workspace used by database tools such as
     # IBExpert, while still allowing the user to restore the window normally.
     window.showMaximized()

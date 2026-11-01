@@ -1329,5 +1329,50 @@ class EventLogLocationTests(WindowTestCase):
         self.assertIn("Aplicação iniciada", expected.read_text(encoding="utf-8"))
 
 
+class ProfileSaveFailureTests(WindowTestCase):
+    """A profile that cannot be written to disk must never look saved."""
+
+    def failing_window(self):
+        from firebird_studio.models import ConnectionProfile
+
+        window = self.make_window()
+        self.messages = []
+        window._show_message = lambda title, text, warning=False: self.messages.append((title, text))
+
+        def refuse(profiles):
+            raise PermissionError(13, "Acesso negado", str(window.store.path))
+
+        window.store.save = refuse
+        profile = ConnectionProfile(name="Novo", database="C:/dados/novo.fdb")
+        return window, profile
+
+    def test_new_profile_is_reported_and_not_kept_when_disk_refuses(self):
+        window, profile = self.failing_window()
+        window._save_profile_record(profile, "masterkey", True, -1)
+        self.assertEqual(window.profiles, [])
+        self.assertEqual(window.profile_list.topLevelItemCount(), 0)
+        self.assertEqual([title for title, _ in self.messages], ["Não foi possível salvar a conexão"])
+        text = self.messages[0][1]
+        self.assertIn(str(window.store.path), text)
+        self.assertIn("Acesso negado", text)
+
+    def test_edit_is_reverted_and_names_stay_connected_when_disk_refuses(self):
+        from dataclasses import replace
+
+        window, profile = self.failing_window()
+        window.profiles.append(profile)
+        window.connected_profiles.add("Novo")
+        window._save_profile_record(replace(profile, name="Renomeado"), "", False, 0)
+        self.assertEqual([item.name for item in window.profiles], ["Novo"])
+        self.assertEqual(window.connected_profiles, {"Novo"})
+        self.assertEqual(len(self.messages), 1)
+
+    def test_failure_is_written_to_the_event_log_and_status(self):
+        window, profile = self.failing_window()
+        window._save_profile_record(profile, "", False, -1)
+        self.assertIn("Não foi possível salvar", window.status.text())
+        self.assertIn("Falha ao salvar conexão", window._event_log_path.read_text(encoding="utf-8"))
+
+
 if __name__ == "__main__":
     unittest.main()
