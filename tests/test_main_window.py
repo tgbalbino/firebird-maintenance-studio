@@ -1403,6 +1403,130 @@ class NewProfileSaveTests(WindowTestCase):
         self.assertEqual([item.name for item in ProfileStore(window.store.path).load()], ["Via dialogo"])
 
 
+@unittest.skipIf(QSettings is None, "PySide6 não instalado")
+class SqlScriptFlowTests(WindowTestCase):
+    """isql-style scripts (SET TERM, COMMIT, QUIT) run through the editor."""
+
+    SCRIPT = """/* Inclui o usuario tecnico. */
+SET TERM ^;
+
+EXECUTE BLOCK AS
+BEGIN
+  INSERT INTO USUARIO (A) VALUES (1);
+  UPDATE USUARIO SET A = 2;
+END^
+
+SET TERM ;^
+COMMIT;
+
+QUIT;
+"""
+
+    def open_window(self):
+        import sys
+        import types
+        from unittest import mock
+
+        from firebird_studio.models import ConnectionProfile, ProfileStore
+        from firebird_studio.ui import MainWindow
+
+        class Cursor:
+            description = None
+            rowcount = 1
+
+            def __init__(self, owner):
+                self.owner = owner
+
+            def execute(self, sql):
+                self.owner.statements.append(sql)
+
+            def close(self):
+                pass
+
+        class Connection:
+            def __init__(self):
+                self.statements, self.commits, self.rollbacks, self.closed = [], 0, 0, False
+
+            def cursor(self):
+                return Cursor(self)
+
+            def commit(self):
+                self.commits += 1
+
+            def rollback(self):
+                self.rollbacks += 1
+
+            def close(self):
+                self.closed = True
+
+        self.connection = Connection()
+        driver = types.ModuleType("firebird.driver")
+        driver.connect = lambda **kwargs: self.connection
+        patcher = mock.patch.dict(sys.modules, {"firebird.driver": driver})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        path = Path(self._tmp.name) / "script_profiles.json"
+        ProfileStore(path).save([ConnectionProfile(name="Vendas", database="C:/db/v.fdb")])
+        window = MainWindow(ProfileStore(path))
+        window._window.show()
+        self.addCleanup(self._dispose, window)
+        window._new_sql_tab()
+        window.editor.setProperty("query_profile", "Vendas")
+        self.messages = []
+        window._show_message = lambda title, text, warning=False: self.messages.append(title)
+        return window
+
+    def test_supporte_script_executes_and_leaves_nothing_pending(self):
+        window = self.open_window()
+        window._execute_sql_text(self.SCRIPT)
+        self.assertEqual(self.messages, [])
+        self.assertEqual(len(self.connection.statements), 1)
+        self.assertTrue(self.connection.statements[0].startswith("EXECUTE BLOCK AS"))
+        self.assertEqual(self.connection.commits, 1)
+        self.assertIn("Script executado: 1 instrução", window.status.text())
+        self.assertIn("nenhuma transação pendente", window.status.text())
+        self.assertIsNone(window._transaction_session)
+        self.assertTrue(self.connection.closed)
+
+    def test_script_without_final_commit_stays_pending_for_the_user(self):
+        window = self.open_window()
+        window._execute_sql_text("INSERT INTO T VALUES (1);\nINSERT INTO T VALUES (2);")
+        self.assertEqual(len(self.connection.statements), 2)
+        self.assertTrue(window._transaction_session.dirty)
+        self.assertIn("Transação pendente", window.status.text())
+
+    def test_failing_script_reports_the_statement_and_rolls_back(self):
+        window = self.open_window()
+        original = self.connection.cursor
+
+        def cursor():
+            made = original()
+            execute = made.execute
+
+            def boom(sql):
+                execute(sql)
+                if "BAD" in sql:
+                    raise RuntimeError("tabela inexistente")
+
+            made.execute = boom
+            return made
+
+        self.connection.cursor = cursor
+        window._execute_sql_text("INSERT INTO T VALUES (1); INSERT INTO BAD VALUES (2); INSERT INTO T VALUES (3);")
+        self.assertIn("Falha ao executar SQL", self.messages)
+        self.assertIn("Instrução 2", window.result_summary.text() + window.status.text())
+        self.assertEqual(len(self.connection.statements), 2)
+        self.assertIsNone(window._transaction_session)
+        self.assertGreaterEqual(self.connection.rollbacks, 1)
+
+    def test_read_only_mode_blocks_a_script_that_changes_data(self):
+        window = self.open_window()
+        window.read_only_mode.setChecked(True)
+        window._execute_sql_text(self.SCRIPT)
+        self.assertIn("somente leitura", window.status.text())
+        self.assertEqual(self.connection.statements, [])
+
+
 
 if __name__ == "__main__":
     unittest.main()

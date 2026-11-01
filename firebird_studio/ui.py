@@ -3488,6 +3488,7 @@ class MainWindow:
     def _execute_sql_text(self, sql_text: str):
         from PySide6.QtWidgets import QTableWidgetItem
         from .sql import execute_sql, is_mutating_statement
+        from .sql_script import is_script, split_script
 
         if not sql_text or not sql_text.strip():
             self.status.setText("Digite uma instrução SQL antes de executar.")
@@ -3495,7 +3496,12 @@ class MainWindow:
                 self.editor.setFocus()
             return
         statement = sql_text.lstrip().upper()
-        changes_data = is_mutating_statement(sql_text)
+        script = is_script(sql_text)
+        if script:
+            # isql scripts (SET TERM, COMMIT, several statements) run piece by piece.
+            changes_data = any(is_mutating_statement(item.text) for item in split_script(sql_text) if item.kind == "sql")
+        else:
+            changes_data = is_mutating_statement(sql_text)
         commit_control = self.commit_changes
         read_only_control = self.read_only_mode
         if commit_control is None and self.editor is not None:
@@ -3526,7 +3532,7 @@ class MainWindow:
             self._show_message("Transação não finalizada", message, warning=True)
             return
         auto_transaction = False
-        if changes_data and not explicit_transaction:
+        if (changes_data or script) and not explicit_transaction:
             # DML is always explicit now: the user must decide whether to
             # commit or undo it before another SQL command can run.
             from .transaction import TransactionSession
@@ -3562,15 +3568,19 @@ class MainWindow:
             while QApplication.overrideCursor() is not None:
                 QApplication.restoreOverrideCursor()
         self._log_event("SQL executado", profile=profile.name, statement=statement.split(None, 1)[0] if statement else "", commit=commit, ok=result.ok, rows=len(result.rows), elapsed_ms=f"{result.elapsed_ms:.1f}", detail=result.message)
+        pending = explicit_transaction and result.ok and getattr(self._transaction_session, "dirty", changes_data)
         if explicit_transaction:
             self._set_transaction_actions(True)
         if auto_transaction and not result.ok:
             self._close_transaction(rollback=True)
+        elif auto_transaction and script and not pending:
+            # The script committed or rolled back everything itself.
+            self._close_transaction(rollback=False)
         self._add_query_history(sql_text)
         if not result.ok:
             self._show_sql_error(result.message)
             self._show_message("Falha ao executar SQL", result.message, warning=True)
-        suffix = " Transação pendente; escolha Commit ou Rollback." if explicit_transaction and changes_data and result.ok else (" Alterações confirmadas." if changes_data and commit and result.ok else (" Alterações desfeitas (modo seguro)." if changes_data and result.ok else ""))
+        suffix = " Transação pendente; escolha Commit ou Rollback." if pending else (" Script concluído; nenhuma transação pendente." if script and result.ok else " Alterações confirmadas." if changes_data and commit and result.ok else (" Alterações desfeitas (modo seguro)." if changes_data and result.ok else ""))
         self.status.setText(f"{result.message} ({result.elapsed_ms:.1f} ms)." + suffix)
         self.result_summary.setText(f"Resultado: {'OK' if result.ok else 'falha'} · {len(result.rows)} linha(s) · {result.elapsed_ms:.1f} ms")
         self.pagination_bar.setVisible(True)

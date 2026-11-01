@@ -223,5 +223,67 @@ class TransactionTests(unittest.TestCase):
         self.assertTrue(connection.committed)
 
 
+class _ScriptCursor(_Cursor):
+    description = None
+
+    def execute(self, sql):
+        self.connection.statements.append(sql)
+        if "BOOM" in sql:
+            raise RuntimeError("erro de teste")
+
+
+class _ScriptConnection(_Connection):
+    def cursor(self):
+        return _ScriptCursor(self)
+
+
+class ScriptExecutionTests(unittest.TestCase):
+    def session(self):
+        connection = _ScriptConnection()
+        fake_driver = types.ModuleType("firebird.driver")
+        fake_driver.connect = lambda **kwargs: connection
+        patcher = patch.dict(sys.modules, {"firebird.driver": fake_driver})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        session = TransactionSession(ConnectionProfile("Local", database="s.fdb", version="5"))
+        return session, connection
+
+    def test_script_runs_each_statement_and_honours_commit_and_quit(self):
+        session, connection = self.session()
+        result = session.execute(
+            "SET TERM ^;\nEXECUTE BLOCK AS BEGIN INSERT INTO T VALUES (1); END^\nSET TERM ;^\nCOMMIT;\nQUIT;\nDROP TABLE T;"
+        )
+        self.assertTrue(result.ok, result.message)
+        self.assertEqual(connection.statements, ["EXECUTE BLOCK AS BEGIN INSERT INTO T VALUES (1); END"])
+        self.assertEqual(connection.commits, 1)
+        self.assertFalse(session.dirty)
+        self.assertIn("1 instrução", result.message)
+
+    def test_changes_after_the_last_commit_stay_pending(self):
+        session, connection = self.session()
+        session.execute("INSERT INTO T VALUES (1); COMMIT; UPDATE T SET A = 2;")
+        self.assertEqual(connection.statements, ["INSERT INTO T VALUES (1)", "UPDATE T SET A = 2"])
+        self.assertTrue(session.dirty)
+
+    def test_rollback_in_script_undoes_pending_changes(self):
+        session, connection = self.session()
+        session.execute("INSERT INTO T VALUES (1); ROLLBACK;")
+        self.assertEqual(connection.rollbacks, 1)
+        self.assertFalse(session.dirty)
+
+    def test_failure_stops_the_script_and_names_the_statement(self):
+        session, connection = self.session()
+        result = session.execute("INSERT INTO T VALUES (1); UPDATE BOOM SET A = 1; DELETE FROM T;")
+        self.assertFalse(result.ok)
+        self.assertIn("Instrução 2", result.message)
+        self.assertIn("erro de teste", result.message)
+        self.assertEqual(len(connection.statements), 2)
+
+    def test_single_statement_with_trailing_semicolon_is_sent_untouched(self):
+        session, connection = self.session()
+        session.execute("INSERT INTO T VALUES (1);")
+        self.assertEqual(connection.statements, ["INSERT INTO T VALUES (1);"])
+
+
 if __name__ == "__main__":
     unittest.main()
