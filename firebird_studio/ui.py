@@ -3258,9 +3258,17 @@ class MainWindow:
         if open_queries:
             if not self._close_all_sql_tabs():
                 return
+        remaining = [item for index, item in enumerate(self.profiles) if index != selected]
+        try:
+            self.store.save(remaining)
+        except OSError as exc:
+            reason = exc.strerror or str(exc)
+            self._log_event("Falha ao excluir cadastro", profile=profile.name, profile_store=str(self.store.path), error=repr(exc))
+            self.status.setText(f"Não foi possível excluir o cadastro: {reason}")
+            self._show_message("Não foi possível excluir o cadastro", f"O arquivo {self.store.path} não pôde ser gravado.\n\nMotivo: {reason}", warning=True)
+            return
         self.connected_profiles.discard(profile.name)
-        self.profiles.pop(selected)
-        self.store.save(self.profiles)
+        self.profiles[:] = remaining
         self._log_event("Cadastro excluído", profile=profile.name, remaining=len(self.profiles), profile_store=str(self.store.path))
         from .credentials import CredentialStore
         try:
@@ -3325,6 +3333,8 @@ class MainWindow:
         self._save_profile_record(self._profile_from_form(), self._password_for(), self.save_password.isChecked(), self._profile_index_for_item())
 
     def _save_profile_record(self, profile, password, save_password, selected):
+        if selected is None:  # "Nova conexão" has no row yet
+            selected = -1
         errors = profile.validate()
         if errors:
             message = " ".join(errors)
@@ -3338,8 +3348,21 @@ class MainWindow:
             self._show_message("Nome duplicado", message, warning=True)
             return
         previous_name = self.profiles[selected].name if 0 <= selected < len(self.profiles) else None
-        if 0 <= selected < len(self.profiles): self.profiles[selected] = profile
-        else: self.profiles.append(profile)
+        # Write first, on a copy: if the disk refuses, nothing in memory or on
+        # screen may pretend the connection was saved.
+        candidate = list(self.profiles)
+        if 0 <= selected < len(candidate): candidate[selected] = profile
+        else: candidate.append(profile)
+        try:
+            self.store.save(candidate)
+        except OSError as exc:
+            reason = exc.strerror or str(exc)
+            message = f"O cadastro não foi gravado em:\n{self.store.path}\n\nMotivo: {reason}"
+            self._log_event("Falha ao salvar conexão", profile=profile.name, profile_store=str(self.store.path), error=repr(exc))
+            self.status.setText(f"Não foi possível salvar a conexão: {reason}")
+            self._show_message("Não foi possível salvar a conexão", message, warning=True)
+            return
+        self.profiles[:] = candidate
         if previous_name and previous_name != profile.name:
             if previous_name in self.connected_profiles:
                 self.connected_profiles.discard(previous_name)
@@ -3353,7 +3376,6 @@ class MainWindow:
                         editor.setProperty("query_profile", profile.name)
                 except RuntimeError:
                     continue
-        self.store.save(self.profiles)
         self._log_event("Conexão salva", profile=profile.name, count=len(self.profiles), profile_store=str(self.store.path))
         from .credentials import CredentialStore
         try:
